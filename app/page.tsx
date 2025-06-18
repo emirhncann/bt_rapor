@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Lottie from 'lottie-react';
-import ReportTable from './components/ReportTable';
+import CBakiyeTable from './components/tables/c_bakiye_table';
 import DashboardLayout from './components/DashboardLayout';
 
-export default function Home() {
+export default function CBakiye() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -85,7 +85,7 @@ ORDER BY
   };
 
   return (
-    <DashboardLayout title="Dashboard">
+    <DashboardLayout title="Cari Bakiye Raporu">
       {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -112,6 +112,29 @@ ORDER BY
       )}
       
       <div className="space-y-6">
+        {/* Welcome Section */}
+        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-8 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <img 
+                src="/img/btRapor.png" 
+                alt="btRapor Logo" 
+                className="h-16 w-auto mr-6 bg-white rounded-lg p-2"
+              />
+              <div>
+                <h2 className="text-3xl font-bold mb-2">Hoş Geldiniz!</h2>
+                <p className="text-red-100 text-lg">BT Rapor - Cari Bakiye Analiz Sistemi</p>
+              </div>
+            </div>
+            <div className="hidden md:block">
+              <div className="text-right">
+                <p className="text-red-100 text-sm">Bugün</p>
+                <p className="text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
@@ -259,7 +282,7 @@ ORDER BY
             </div>
           </div>
       ) : data.length > 0 ? (
-        <ReportTable data={data} />
+        <CBakiyeTable data={data} />
       ) : (
           <div className="bg-white rounded-lg shadow p-12">
             <div className="text-center">

@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 
-interface ReportTableProps {
+interface CBakiyeTableProps {
   data: any[];
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function ReportTable({ data }: ReportTableProps) {
+export default function CBakiyeTable({ data }: CBakiyeTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -17,7 +17,10 @@ export default function ReportTable({ data }: ReportTableProps) {
   const [minValue, setMinValue] = useState<string>('');
   const [maxValue, setMaxValue] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
-  const itemsPerPage = 25;
+  const [columnWidths, setColumnWidths] = useState<{[key: string]: number}>({});
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
 
   // Sayısal sütunlar
   const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 
@@ -162,6 +165,45 @@ export default function ReportTable({ data }: ReportTableProps) {
     }).format(numValue);
   };
 
+  // Sütun genişliği ayarlama fonksiyonları
+  const getColumnWidth = (column: string): number => {
+    return columnWidths[column] || (column === 'DETAY' ? 50 : 150);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, column: string) => {
+    e.preventDefault();
+    setIsResizing(true);
+    setResizingColumn(column);
+    
+    const startX = e.clientX;
+    const startWidth = getColumnWidth(column);
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - startX;
+      const newWidth = Math.max(50, startWidth + diff); // Minimum 50px
+      setColumnWidths(prev => ({
+        ...prev,
+        [column]: newWidth
+      }));
+    };
+    
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setResizingColumn(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Sayfa başına kayıt sayısını değiştirme
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Sayfa sayısı değiştiğinde ilk sayfaya dön
+  };
+
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="p-4 border-b border-gray-200">
@@ -282,30 +324,68 @@ export default function ReportTable({ data }: ReportTableProps) {
       </div>
 
       {/* Desktop Tablo Görünümü */}
-      <div className="hidden md:block w-full overflow-x-auto">
-        <table className="w-full border-separate border-spacing-0">
-          <thead>
-            <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
-              <th className="px-6 py-4 text-center text-sm font-bold uppercase tracking-wider border-b border-red-800">
-                DETAY
-              </th>
-              {data.length > 0 &&
-                Object.keys(data[0])
-                  .filter(header => header !== 'LOGICALREF')
-                  .map((header) => (
-                    <th
-                      key={header}
-                      className="px-6 py-4 text-left text-sm font-bold uppercase tracking-wider border-b border-red-800 cursor-pointer hover:bg-red-800 transition-colors duration-200"
-                      onClick={() => handleSort(header)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>{header}</span>
-                        {getSortIcon(header)}
-                      </div>
-                    </th>
-                  ))}
-            </tr>
-          </thead>
+      <div className="hidden md:block relative">
+        <div 
+          className="w-full overflow-auto max-h-[70vh] border border-gray-200 rounded-lg" 
+          style={{ 
+            scrollbarWidth: 'auto',
+            msOverflowStyle: 'auto'
+          }}
+        >
+          <table className="w-full border-separate border-spacing-0" style={{ minWidth: '800px' }}>
+            <thead>
+              <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
+                <th 
+                  className="py-4 text-center text-sm font-bold uppercase tracking-wider border-b border-red-800 relative"
+                  style={{ 
+                    position: 'sticky', 
+                    top: 0, 
+                    zIndex: 10,
+                    background: 'linear-gradient(to right, rgb(127 29 29), rgb(153 27 27))',
+                    width: getColumnWidth('DETAY'),
+                    minWidth: getColumnWidth('DETAY'),
+                    maxWidth: getColumnWidth('DETAY')
+                  }}
+                >
+                  <div className="px-6">DETAY</div>
+                  <div 
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-red-600 opacity-0 hover:opacity-100 transition-opacity"
+                    onMouseDown={(e) => handleMouseDown(e, 'DETAY')}
+                  />
+                </th>
+                {data.length > 0 &&
+                  Object.keys(data[0])
+                    .filter(header => header !== 'LOGICALREF')
+                    .map((header) => (
+                      <th
+                        key={header}
+                        className="py-4 text-left text-sm font-bold uppercase tracking-wider border-b border-red-800 cursor-pointer hover:bg-red-800 transition-colors duration-200 relative"
+                        style={{ 
+                          position: 'sticky', 
+                          top: 0, 
+                          zIndex: 10,
+                          background: 'linear-gradient(to right, rgb(127 29 29), rgb(153 27 27))',
+                          width: getColumnWidth(header),
+                          minWidth: getColumnWidth(header),
+                          maxWidth: getColumnWidth(header)
+                        }}
+                        onClick={() => handleSort(header)}
+                      >
+                        <div className="flex items-center justify-between px-6">
+                          <span>{header}</span>
+                          {getSortIcon(header)}
+                        </div>
+                        <div 
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-red-600 opacity-0 hover:opacity-100 transition-opacity z-20"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleMouseDown(e, header);
+                          }}
+                        />
+                      </th>
+                    ))}
+              </tr>
+            </thead>
           <tbody>
             {paginatedData.map((row, index) => (
               <tr
@@ -314,7 +394,14 @@ export default function ReportTable({ data }: ReportTableProps) {
                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                 } hover:bg-red-50 transition-colors duration-200`}
               >
-                <td className="px-6 py-4 text-center border-b border-gray-200">
+                <td 
+                  className="py-4 text-center border-b border-gray-200"
+                  style={{
+                    width: getColumnWidth('DETAY'),
+                    minWidth: getColumnWidth('DETAY'),
+                    maxWidth: getColumnWidth('DETAY')
+                  }}
+                >
                   <button
                     onClick={() => {
                       // İleride detay modal açılacak
@@ -334,7 +421,7 @@ export default function ReportTable({ data }: ReportTableProps) {
                   .map(([key, value], cellIndex) => (
                     <td
                       key={cellIndex}
-                      className={`px-6 py-4 whitespace-nowrap text-sm border-b border-gray-200 ${
+                      className={`py-4 whitespace-nowrap text-sm border-b border-gray-200 ${
                         key === 'BORÇ' || key === 'ALACAK'
                           ? 'text-right font-bold text-red-800'
                           : (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE'))
@@ -345,7 +432,13 @@ export default function ReportTable({ data }: ReportTableProps) {
                           ? 'text-gray-700 font-medium'
                           : 'text-gray-800 font-medium'
                       }`}
+                      style={{
+                        width: getColumnWidth(key),
+                        minWidth: getColumnWidth(key),
+                        maxWidth: getColumnWidth(key)
+                      }}
                     >
+                      <div className="px-6 overflow-hidden text-ellipsis">
                     {(() => {
                       // BAKİYE özel formatı
                       if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
@@ -368,12 +461,14 @@ export default function ReportTable({ data }: ReportTableProps) {
                       
                       return String(value);
                     })()}
+                      </div>
                   </td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Mobil Card Görünümü */}
@@ -460,16 +555,41 @@ export default function ReportTable({ data }: ReportTableProps) {
       </div>
 
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-gray-200">
-        <button
-          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-          disabled={currentPage === 1}
-          className="px-5 py-2 text-sm font-medium text-white bg-red-800 rounded-lg hover:bg-red-900 disabled:opacity-40 disabled:cursor-not-allowed transition"
-        >
-          Önceki
-        </button>
-        <span className="text-sm font-medium text-gray-700">
-          Sayfa {currentPage} / {totalPages}
-        </span>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-5 py-2 text-sm font-medium text-white bg-red-800 rounded-lg hover:bg-red-900 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            Önceki
+          </button>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Sayfa başına:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+              className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={30}>30</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-sm text-gray-600">kayıt</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-gray-700">
+            Sayfa {currentPage} / {totalPages}
+          </span>
+          <span className="text-sm text-gray-600">
+            ({sortedData.length} kayıt)
+          </span>
+        </div>
+        
         <button
           onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
           disabled={currentPage === totalPages}

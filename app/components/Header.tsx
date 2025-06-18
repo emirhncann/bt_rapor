@@ -9,7 +9,7 @@ interface HeaderProps {
 export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderProps) {
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 h-16 flex items-center justify-between px-4 lg:px-6">
-      {/* Left side - Menu button and title */}
+      {/* Left side - Menu button, logo and title */}
       <div className="flex items-center">
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -20,7 +20,15 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
           </svg>
         </button>
         
-        <h1 className="ml-4 lg:ml-0 text-2xl font-semibold text-gray-800">{title}</h1>
+        {/* Logo */}
+        <div className="ml-4 flex items-center">
+          <img 
+            src="/img/btRapor.png" 
+            alt="btRapor Logo" 
+            className="h-8 w-auto mr-3"
+          />
+          <h1 className="text-2xl font-semibold text-gray-800">{title}</h1>
+        </div>
       </div>
 
       {/* Right side - User actions */}

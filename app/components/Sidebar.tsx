@@ -68,10 +68,12 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         {/* Logo Area */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center">
-            <div className="w-8 h-8 bg-gradient-to-r from-red-800 to-red-900 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">B</span>
-            </div>
-            <span className="ml-3 text-xl font-bold text-gray-800">BT Rapor</span>
+            <img 
+              src="/img/btRapor.png" 
+              alt="btRapor Logo" 
+              className="h-10 w-auto"
+            />
+           
           </div>
           <button
             onClick={() => setIsOpen(false)}
