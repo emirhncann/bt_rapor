@@ -1,26 +1,36 @@
 import { NextResponse } from 'next/server';
-import * as sql from 'mssql';
 
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    const config = {
-      user: 'sa',
-      password: 'Ozt129103',
-      server: '192.168.2.100',
-      database: 'GOWINGS',
-      options: {
-        encrypt: false,
-        trustServerCertificate: true,
-      },
-    };
-
-    await sql.connect(config);
-    const result = await sql.query(body.query);
+    console.log('Gönderilen request body:', body);
     
-    return NextResponse.json(result.recordset);
+    // localhost:45678 adresine SQL isteği gönder
+    const response = await fetch('http://localhost:45678/sql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body)
+    });
+
+    console.log('localhost:45678 response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('localhost:45678 error response:', errorText);
+      return NextResponse.json(
+        { status: 'error', message: `Server hatası: ${response.status}` },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    console.log('localhost:45678 response data:', data);
+    
+    return NextResponse.json(data);
   } catch (error) {
     console.error('SQL Hatası:', error);
     return NextResponse.json(

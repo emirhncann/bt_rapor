@@ -20,7 +20,7 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
   const [columnWidths, setColumnWidths] = useState<{[key: string]: number}>({});
   const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Sayısal sütunlar
   const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 

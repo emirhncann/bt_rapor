@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -8,6 +8,20 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+
+  useEffect(() => {
+    const name = localStorage.getItem('userName');
+    const email = localStorage.getItem('userEmail');
+    if (name) {
+      setUserName(name);
+    }
+    if (email) {
+      setUserEmail(email);
+    }
+  }, []);
+
   const menuItems = [
     {
       name: 'Dashboard',
@@ -108,12 +122,16 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         {/* Footer */}
         <div className="p-4 border-t border-gray-200">
           <div className="flex items-center">
-            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-              <span className="text-gray-600 font-medium text-sm">U</span>
+            <div className="w-8 h-8 bg-gradient-to-r from-red-800 to-red-900 rounded-full flex items-center justify-center">
+              <span className="text-white font-medium text-sm">
+                {userName ? userName.charAt(0).toUpperCase() : (userEmail ? userEmail.charAt(0).toUpperCase() : 'U')}
+              </span>
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-700">Kullanıcı</p>
-              <p className="text-xs text-gray-500">user@example.com</p>
+              <p className="text-sm font-medium text-gray-700">
+                {userName || (userEmail ? userEmail.split('@')[0] : 'Kullanıcı')}
+              </p>
+              <p className="text-xs text-gray-500">{userEmail || 'user@example.com'}</p>
             </div>
           </div>
         </div>

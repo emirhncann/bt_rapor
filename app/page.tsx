@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import CBakiyeTable from './components/tables/c_bakiye_table';
 import DashboardLayout from './components/DashboardLayout';
@@ -8,16 +9,36 @@ import DashboardLayout from './components/DashboardLayout';
 export default function CBakiye() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const router = useRouter();
   
   // Animation data'yı yükleyelim
   const [animationData, setAnimationData] = useState(null);
   
+  // Authentication kontrolü
   useEffect(() => {
-    fetch('/animations/rapor.json')
-      .then(res => res.json())
-      .then(data => setAnimationData(data))
-      .catch(err => console.log('Animation yüklenemedi:', err));
-  }, []);
+    const checkAuth = () => {
+      const isLoggedIn = localStorage.getItem('isLoggedIn');
+      if (isLoggedIn === 'true') {
+        setIsAuthenticated(true);
+      } else {
+        router.push('/login');
+      }
+      setIsCheckingAuth(false);
+    };
+
+    checkAuth();
+  }, [router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetch('/animations/rapor.json')
+        .then(res => res.json())
+        .then(data => setAnimationData(data))
+        .catch(err => console.log('Animation yüklenemedi:', err));
+    }
+  }, [isAuthenticated]);
 
   // Güvenli sayı parse fonksiyonu
   const safeParseFloat = (value: any): number => {
@@ -27,9 +48,11 @@ export default function CBakiye() {
   };
 
   const fetchSqlData = async () => {
+    if (!isAuthenticated) return;
+    
     setLoading(true);
     try {
-      const response = await fetch('/api/sql', {
+      const response = await fetch('http://localhost:45678/sql', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -37,36 +60,34 @@ export default function CBakiye() {
         body: JSON.stringify({
           connectionString: "Server=192.168.2.100;Database=GOWINGS;User Id=sa;Password=Ozt129103;",
           query: `
-      SELECT 
-    CLCARD.LOGICALREF, 
-    CLCARD.CODE AS KODU, 
-    CLCARD.DEFINITION_ AS ÜNVANI, 
-    SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) AS BORÇ, 
-    SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS ALACAK, 
-    CAST(
-        SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) - SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) 
-        AS DECIMAL(18,2)
-    ) AS BAKIYE
-FROM 
-    LG_005_01_CLFLINE CLFLINE 
-    RIGHT JOIN LG_005_CLCARD CLCARD ON CLFLINE.CLIENTREF = CLCARD.LOGICALREF
-WHERE 
-    CLFLINE.CANCELLED = 0 
-    AND CLFLINE.TRCURR = 0
-GROUP BY 
-    CLCARD.LOGICALREF, CLCARD.CODE, CLCARD.DEFINITION_, CLCARD.ACTIVE
-HAVING 
-    CLCARD.CODE LIKE '%' 
-    AND CLCARD.DEFINITION_ LIKE '%' 
-    AND CLCARD.ACTIVE = 0
-ORDER BY 
-    CLCARD.DEFINITION_ ;
+      SELECT CLCARD.LOGICALREF, CLCARD.CODE AS KODU, CLCARD.DEFINITION_ AS ÜNVANI, SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) AS BORÇ, SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS ALACAK, CAST(SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) - SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS DECIMAL(18,2)) AS BAKIYE FROM LG_005_01_CLFLINE CLFLINE RIGHT JOIN LG_005_CLCARD CLCARD ON CLFLINE.CLIENTREF = CLCARD.LOGICALREF WHERE CLFLINE.CANCELLED = 0 AND CLFLINE.TRCURR = 0 GROUP BY CLCARD.LOGICALREF, CLCARD.CODE, CLCARD.DEFINITION_, CLCARD.ACTIVE HAVING CLCARD.CODE LIKE '%' AND CLCARD.DEFINITION_ LIKE '%' AND CLCARD.ACTIVE = 0 ORDER BY CLCARD.DEFINITION_
     `
         })
       });
       const jsonData = await response.json();
       
-      setData(jsonData);
+      // localhost:45678'den gelen data formatını kontrol et
+      console.log('Gelen data:', jsonData);
+      
+      // Error kontrolü
+      if (jsonData.status === 'error') {
+        console.error('Server hatası:', jsonData.message);
+        alert(`Veritabanı hatası: ${jsonData.message}`);
+        setData([]);
+        return;
+      }
+      
+      // Eğer data array değilse, uygun formata çevir
+      if (Array.isArray(jsonData)) {
+        setData(jsonData);
+      } else if (jsonData && Array.isArray(jsonData.data)) {
+        setData(jsonData.data);
+      } else if (jsonData && Array.isArray(jsonData.recordset)) {
+        setData(jsonData.recordset);
+      } else {
+        console.error('Beklenmeyen data formatı:', jsonData);
+        setData([]);
+      }
     } catch (error) {
       console.error('Veri çekme hatası:', error);
     } finally {
@@ -74,9 +95,32 @@ ORDER BY
     }
   };
 
+  // Authentication kontrolü devam ediyorsa loading göster
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
+          <div className="flex flex-col items-center justify-center">
+            <svg className="animate-spin h-12 w-12 text-red-800 mb-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p className="text-gray-700 font-medium text-lg mt-4">Yükleniyor...</p>
+            <p className="text-gray-500 text-sm mt-2">Lütfen bekleyiniz</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Eğer kullanıcı authenticated değilse, login sayfasına yönlendirme zaten yapıldı
+  if (!isAuthenticated) {
+    return null;
+  }
+
   // Bakiye sütun adını bul
   const getBakiyeColumnName = () => {
-    if (data.length === 0) return 'BAKİYE';
+    if (!Array.isArray(data) || data.length === 0) return 'BAKİYE';
     const keys = Object.keys(data[0]);
     return keys.find(key => 
       key === 'BAKİYE' || key === 'BAKIYE' || 
@@ -148,7 +192,7 @@ ORDER BY
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Toplam Müşteri</p>
-                <p className="text-2xl font-semibold text-gray-900">{data.length}</p>
+                <p className="text-2xl font-semibold text-gray-900">{Array.isArray(data) ? data.length : 0}</p>
               </div>
             </div>
           </div>
@@ -165,12 +209,12 @@ ORDER BY
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Toplam Alacak</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {data.reduce((sum, item) => sum + safeParseFloat(item.ALACAK), 0).toLocaleString('tr-TR', { 
+                  {Array.isArray(data) ? data.reduce((sum, item) => sum + safeParseFloat(item.ALACAK), 0).toLocaleString('tr-TR', { 
                     style: 'currency', 
                     currency: 'TRY',
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
-                  })}
+                  }) : '₺0,00'}
                 </p>
               </div>
             </div>
@@ -188,12 +232,12 @@ ORDER BY
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Toplam Borç</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {data.reduce((sum, item) => sum + safeParseFloat(item.BORÇ), 0).toLocaleString('tr-TR', { 
+                  {Array.isArray(data) ? data.reduce((sum, item) => sum + safeParseFloat(item.BORÇ), 0).toLocaleString('tr-TR', { 
                     style: 'currency', 
                     currency: 'TRY',
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
-                  })}
+                  }) : '₺0,00'}
                 </p>
               </div>
             </div>
@@ -212,11 +256,13 @@ ORDER BY
                 <p className="text-sm font-medium text-gray-500">Net Bakiye</p>
                 <p className={`text-2xl font-semibold ${
                   (() => {
+                    if (!Array.isArray(data)) return 'text-gray-900';
                     const netBakiye = data.reduce((sum, item) => sum + safeParseFloat(item[getBakiyeColumnName()]), 0);
                     return netBakiye < 0 ? 'text-red-600' : netBakiye > 0 ? 'text-green-600' : 'text-gray-900';
                   })()
                 }`}>
                   {(() => {
+                    if (!Array.isArray(data)) return '₺0,00';
                     const netBakiye = data.reduce((sum, item) => sum + safeParseFloat(item[getBakiyeColumnName()]), 0);
                     const formattedAmount = Math.abs(netBakiye).toLocaleString('tr-TR', { 
                       style: 'currency', 
@@ -281,7 +327,7 @@ ORDER BY
               <p className="text-gray-600 font-medium">Veriler yükleniyor...</p>
             </div>
           </div>
-      ) : data.length > 0 ? (
+      ) : Array.isArray(data) && data.length > 0 ? (
         <CBakiyeTable data={data} />
       ) : (
           <div className="bg-white rounded-lg shadow p-12">
