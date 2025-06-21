@@ -38,6 +38,7 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
     localStorage.removeItem('userRole');
     localStorage.removeItem('userId');
     localStorage.removeItem('userPhone');
+    localStorage.removeItem('companyRef');
     router.push('/login');
   };
 

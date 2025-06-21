@@ -58,6 +58,7 @@ export default function Login() {
         localStorage.setItem('userId', data.user.id.toString());
         localStorage.setItem('userPhone', data.user.phone || '');
         localStorage.setItem('userRole', data.user.role);
+        localStorage.setItem('companyRef', data.user.company_ref || '');
         
         router.push('/');
       } else {
