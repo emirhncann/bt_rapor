@@ -194,16 +194,99 @@ export default function EnposCiro() {
     
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:45678/sql', {
+      // Önce localStorage'dan connection bilgilerini kontrol et
+      let connectionInfo = null;
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      
+      if (cachedConnectionInfo) {
+        try {
+          connectionInfo = JSON.parse(cachedConnectionInfo);
+          console.log('✅ Connection bilgileri localStorage\'dan alındı (Ciro):', connectionInfo);
+        } catch (e) {
+          console.log('⚠️ localStorage\'daki connection bilgileri parse edilemedi, API\'den alınacak');
+        }
+      }
+      
+      // Eğer localStorage'da yoksa API'den al
+      if (!connectionInfo) {
+        const companyRef = localStorage.getItem('companyRef');
+        if (!companyRef) {
+          showErrorMessage('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+          setLoading(false);
+          return;
+        }
+
+        console.log('🔄 Connection bilgileri API\'den alınıyor (Ciro)...');
+        const connectionResponse = await fetch(`http://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const connectionData = await connectionResponse.json();
+
+        if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
+          showErrorMessage('Veritabanı bağlantı bilgileri alınamadı. Lütfen sistem yöneticisi ile iletişime geçin.');
+          setLoading(false);
+          return;
+        }
+
+        connectionInfo = connectionData.data;
+        localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+        console.log('💾 Connection bilgileri localStorage\'a kaydedildi (Ciro)');
+      }
+
+      // public_ip'den dış IP ve portu ayır
+      let externalIP = 'localhost';
+      let servicePort = '45678';
+      
+      if (connectionInfo.public_ip) {
+        const [ip, port] = connectionInfo.public_ip.split(':');
+        externalIP = ip || 'localhost';
+        servicePort = port || '45678';
+      }
+
+      // ENPOS bilgileri varsa onları kullan, yoksa normal database bilgilerini kullan
+      const useEnposDb = connectionInfo.enpos_server_name && connectionInfo.enpos_database_name;
+      
+      const connectionString = useEnposDb ? 
+        `Server=${connectionInfo.enpos_server_name};Database=${connectionInfo.enpos_database_name};User Id=${connectionInfo.enpos_username || ''};Password=${connectionInfo.enpos_password || ''};` :
+        `Server=${connectionInfo.second_server_name || connectionInfo.first_server_name || ''};Database=${connectionInfo.second_db_name || connectionInfo.first_db_name || ''};User Id=${connectionInfo.second_username || connectionInfo.first_username || ''};Password=${connectionInfo.second_password || connectionInfo.first_password || ''};`;
+      
+      // Firma no'yu al - ENPOS varsa enpos_firma_no kullan
+      const firmaNo = useEnposDb ? 
+        (connectionInfo.enpos_firma_no || '9') : 
+        (connectionInfo.second_firma_no || connectionInfo.first_firma_no || '9');
+      
+      console.log('🔗 Oluşturulan Connection String (Ciro):', connectionString);
+      console.log('🏢 Firma No (Ciro):', firmaNo);
+      console.log('🏪 ENPOS DB Kullanılıyor:', useEnposDb ? 'EVET' : 'HAYIR');
+      console.log('🌐 Hedef Service (Ciro):', `http://${externalIP}:${servicePort}/sql`);
+
+      // Dinamik SQL sorgusu oluştur
+      const sqlQuery = `
+      SELECT Sube_No, D.NAME, 
+             SUM(CASE WHEN B.Belge_Tipi IN ('EAR', 'FIS','FAT') THEN CASHTOTAL ELSE 0 END) AS 'NAKİT SATIŞ', 
+             SUM(CASE WHEN B.Belge_Tipi IN ('EAR', 'FIS','FAT') THEN CREDITTOTAL ELSE 0 END) AS 'KREDİ KARTI İLE SATIŞ', 
+             SUM(CASE WHEN B.Belge_Tipi='YMK' THEN CASHTOTAL+CREDITTOTAL ELSE 0 END) AS 'YEMEK KARTI', 
+             SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CASHTOTAL ELSE 0 END) AS 'NAKİT İADE', 
+             SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CREDITTOTAL ELSE 0 END) AS 'KREDİ KARTI İADE', 
+             SUM(Toplam) - SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CASHTOTAL ELSE 0 END) - SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CREDITTOTAL ELSE 0 END) AS TOPLAM 
+      FROM BELGE B 
+      LEFT JOIN GO3..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=${firmaNo} 
+      WHERE Iptal=0 AND BELGETARIH between '${formatToSQLDate(startYYMMDD)} 00:00:00.000' and '${formatToSQLDate(endYYMMDD)} 23:59:59.000' 
+      and B.Belge_Tipi NOT IN ('XRP','ZRP') 
+      GROUP BY Sube_No,D.NAME 
+      ORDER BY Sube_No`;
+
+      console.log('📝 Dinamik SQL Sorgusu (Ciro):', sqlQuery);
+
+      const response = await fetch('http://btrapor.boluteknoloji.tr/proxy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          connectionString: "Server=192.168.1.101;Database=INTER_BOS;User Id=sa;Password=Ozt129103;",
-                    query: `
-            SELECT Sube_No, D.NAME, SUM(CASE WHEN B.Belge_Tipi IN ('EAR', 'FIS','FAT') THEN CASHTOTAL ELSE 0 END) AS 'NAKİT SATIŞ', SUM(CASE WHEN B.Belge_Tipi IN ('EAR', 'FIS','FAT') THEN CREDITTOTAL ELSE 0 END) AS 'KREDİ KARTI İLE SATIŞ', SUM(CASE WHEN B.Belge_Tipi='YMK' THEN CASHTOTAL+CREDITTOTAL ELSE 0 END) AS 'YEMEK KARTI', SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CASHTOTAL ELSE 0 END) AS 'NAKİT İADE', SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CREDITTOTAL ELSE 0 END) AS 'KREDİ KARTI İADE', SUM(Toplam) - SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CASHTOTAL ELSE 0 END) - SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CREDITTOTAL ELSE 0 END) AS TOPLAM FROM BELGE B LEFT JOIN GO3..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=9 WHERE Iptal=0 AND BELGETARIH between '${formatToSQLDate(startYYMMDD)} 00:00:00.000' and '${formatToSQLDate(endYYMMDD)} 23:59:59.000' and B.Belge_Tipi NOT IN ('XRP','ZRP') GROUP BY Sube_No,D.NAME ORDER BY Sube_No
-            `
+          target_url: `http://${externalIP}:${servicePort}/sql`,
+          payload: {
+            connectionString,
+            query: sqlQuery
+          }
         })
       });
       const jsonData = await response.json();

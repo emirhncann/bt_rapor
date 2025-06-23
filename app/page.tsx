@@ -26,6 +26,8 @@ export default function Dashboard() {
         setIsAuthenticated(true);
         setUserName(name || '');
         setUserRole(role || '');
+        // Ana sayfaya geldiğinde connection bilgilerini localStorage'a kaydet
+        loadConnectionInfoToStorage();
       } else {
         router.push('/login');
       }
@@ -34,6 +36,34 @@ export default function Dashboard() {
 
     checkAuth();
   }, [router]);
+
+  // Connection bilgilerini localStorage'a kaydet
+  const loadConnectionInfoToStorage = async () => {
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        console.log('Company ref bulunamadı, connection bilgileri yüklenemedi');
+        return;
+      }
+
+      console.log('🔄 Ana sayfada connection bilgileri localStorage\'a kaydediliyor...');
+      
+      const response = await fetch(`http://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+      const data = await response.json();
+
+      if (response.ok && data.status === 'success' && data.data) {
+        const connectionInfo = data.data;
+        
+        // Connection bilgilerini localStorage'a kaydet
+        localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+        console.log('✅ Connection bilgileri localStorage\'a kaydedildi:', connectionInfo);
+      } else {
+        console.log('⚠️ Connection bilgileri alınamadı:', data.message);
+      }
+    } catch (error) {
+      console.error('❌ Connection bilgileri yüklenirken hata:', error);
+    }
+  };
 
   useEffect(() => {
     if (isAuthenticated) {

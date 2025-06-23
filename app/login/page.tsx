@@ -35,8 +35,8 @@ export default function Login() {
     }
 
     try {
-      // Next.js API route'u üzerinden login isteği gönder
-      const response = await fetch('/api/login', {
+      // Doğrudan backend'e login isteği gönder (static export için)
+      const response = await fetch('http://btrapor.boluteknoloji.tr/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

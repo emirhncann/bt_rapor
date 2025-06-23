@@ -61,7 +61,14 @@ export default function Settings() {
         useSameDb: false,
         isCurrent: false
       }
-    ]
+    ],
+    // ENPOS özel alanları
+    enposFirmaNo: '',
+    enposDonemNo: '',
+    enposDbHost: '',
+    enposDbName: '',
+    enposDbUser: '',
+    enposDbPassword: ''
   });
   const router = useRouter();
 
@@ -99,7 +106,7 @@ export default function Settings() {
         return;
       }
 
-      const response = await fetch(`https://btrapor.boluteknoloji.tr/users-by-company/${companyRef}`);
+      const response = await fetch(`http://btrapor.boluteknoloji.tr/users-by-company/${companyRef}`);
       const data = await response.json();
 
       console.log('API Response:', data); // Debug için
@@ -127,17 +134,40 @@ export default function Settings() {
 
       
 
-      const response = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+      const response = await fetch(`http://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
       const data = await response.json();
 
       console.log('📦 Database Settings Response:', data);
+      console.log('📊 Connection Info Detail:', data.data);
 
       if (response.ok && data.status === 'success' && data.data) {
         const connectionInfo = data.data;
         
-        // FormData'yı güncelle
+        // public_ip'den IP ve port'u ayır (örn: "178.233.252.90:45678")
+        let externalIP = '';
+        let servicePort = '45678'; // Varsayılan port
+        
+        if (connectionInfo.public_ip) {
+          const [ip, port] = connectionInfo.public_ip.split(':');
+          externalIP = ip || '';
+          servicePort = port || '45678';
+          console.log('🌐 IP ayırımı:', { ip: externalIP, port: servicePort });
+        }
+        
+        // FormData'yı güncelle - API'den gelen değerleri direkt kullan
+        console.log('🔧 Database ayarları işleniyor...');
+        console.log('📊 İlk DB Bilgileri:', {
+          firma: connectionInfo.first_firma_no,
+          donem: connectionInfo.first_donem_no,
+          host: connectionInfo.first_server_name,
+          db: connectionInfo.first_db_name,
+          user: connectionInfo.first_username
+        });
+        
         setFormData(prev => ({
           ...prev,
+          externalIP,
+          servicePort,
           databases: [
             {
               ...prev.databases[0],
@@ -166,7 +196,14 @@ export default function Settings() {
               dbUser: connectionInfo.third_username || '',
               dbPassword: connectionInfo.third_password || ''
             }
-          ]
+          ],
+          // ENPOS alanlarını da güncelle
+          enposFirmaNo: connectionInfo.enpos_firma_no || '',
+          enposDonemNo: connectionInfo.enpos_donem_no || '',
+          enposDbHost: connectionInfo.enpos_server_name || '',
+          enposDbName: connectionInfo.enpos_database_name || '',  // backend'den enpos_database_name geliyor
+          enposDbUser: connectionInfo.enpos_username || '',
+          enposDbPassword: connectionInfo.enpos_password || ''
         }));
 
         console.log('✅ Database ayarları başarıyla yüklendi');
@@ -189,11 +226,11 @@ export default function Settings() {
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
 
-    console.log('Silme API URL:', `https://btrapor.boluteknoloji.tr/delete-sub-user/${userToDelete.id}`); // Debug için
+    console.log('Silme API URL:', `http://btrapor.boluteknoloji.tr/delete-sub-user/${userToDelete.id}`); // Debug için
 
     setIsDeletingUser(true);
     try {
-      const response = await fetch(`https://btrapor.boluteknoloji.tr/delete-sub-user/${userToDelete.id}`, {
+      const response = await fetch(`http://btrapor.boluteknoloji.tr/delete-sub-user/${userToDelete.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -295,7 +332,7 @@ export default function Settings() {
         return;
       }
 
-      const response = await fetch('https://btrapor.boluteknoloji.tr/change-password', {
+      const response = await fetch('http://btrapor.boluteknoloji.tr/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -351,12 +388,20 @@ export default function Settings() {
       const connectionData = {
         company_ref: companyRef,
         
+        // Sistem ayarları - IP ve Port birleştirilerek public_ip olarak gönderilir
+        public_ip: formData.externalIP && formData.servicePort 
+          ? `${formData.externalIP}:${formData.servicePort}` 
+          : '',
+        
         // İlk database (index 0)
         first_server_name: formData.databases[0]?.dbHost || '',
         first_db_name: formData.databases[0]?.dbName || '',
         first_username: formData.databases[0]?.dbUser || '',
         first_password: formData.databases[0]?.dbPassword || '',
-        first_firma_no: formData.databases[0]?.firmaNo ? String(formData.databases[0].firmaNo).padStart(3, '0') : '',
+        first_firma_no: formData.databases[0]?.firmaNo ? 
+          (formData.databases[0].firmaNo.toString().length === 3 ? 
+            formData.databases[0].firmaNo.toString() : 
+            String(formData.databases[0].firmaNo).padStart(3, '0')) : '',
         first_donem_no: formData.databases[0]?.donemNo || '',
         
         // İkinci database (index 1)
@@ -364,7 +409,10 @@ export default function Settings() {
         second_db_name: formData.databases[1]?.dbName || '',
         second_username: formData.databases[1]?.dbUser || '',
         second_password: formData.databases[1]?.dbPassword || '',
-        second_firma_no: formData.databases[1]?.firmaNo ? String(formData.databases[1].firmaNo).padStart(3, '0') : '',
+        second_firma_no: formData.databases[1]?.firmaNo ? 
+          (formData.databases[1].firmaNo.toString().length === 3 ? 
+            formData.databases[1].firmaNo.toString() : 
+            String(formData.databases[1].firmaNo).padStart(3, '0')) : '',
         second_donem_no: formData.databases[1]?.donemNo || '',
         
         // Üçüncü database (index 2)
@@ -372,16 +420,27 @@ export default function Settings() {
         third_db_name: formData.databases[2]?.dbName || '',
         third_username: formData.databases[2]?.dbUser || '',
         third_password: formData.databases[2]?.dbPassword || '',
-        third_firma_no: formData.databases[2]?.firmaNo ? String(formData.databases[2].firmaNo).padStart(3, '0') : '',
-        third_donem_no: formData.databases[2]?.donemNo || ''
+        third_firma_no: formData.databases[2]?.firmaNo ? 
+          (formData.databases[2].firmaNo.toString().length === 3 ? 
+            formData.databases[2].firmaNo.toString() : 
+            String(formData.databases[2].firmaNo).padStart(3, '0')) : '',
+        third_donem_no: formData.databases[2]?.donemNo || '',
+
+        // ENPOS özel alanları
+        enpos_firma_no: formData.enposFirmaNo || '',
+        enpos_donem_no: formData.enposDonemNo || '',
+        enpos_server_name: formData.enposDbHost || '',
+        enpos_database_name: formData.enposDbName || '',  // backend'de enpos_database_name bekleniyor
+        enpos_username: formData.enposDbUser || '',
+        enpos_password: formData.enposDbPassword || ''
       };
 
       console.log('🚀 API İsteği Gönderiliyor:');
-      console.log('📋 URL:', 'https://btrapor.boluteknoloji.tr/save-connections');
+      console.log('📋 URL:', 'http://btrapor.boluteknoloji.tr/save-connections');
       console.log('📦 Gönderilen Data:', connectionData);
       console.log('💾 JSON String:', JSON.stringify(connectionData, null, 2));
 
-      const response = await fetch('https://btrapor.boluteknoloji.tr/save-connections', {
+      const response = await fetch('http://btrapor.boluteknoloji.tr/save-connections', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -455,7 +514,7 @@ export default function Settings() {
         role: 'user' // Sabit user rolü
       };
 
-      const response = await fetch('https://btrapor.boluteknoloji.tr/add-sub-user', {
+      const response = await fetch('http://btrapor.boluteknoloji.tr/add-sub-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -483,17 +542,7 @@ export default function Settings() {
     }
   };
 
-  const handleSystemSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Sistem ayarları kaydetme
-    console.log('Sistem ayarları:', {
-      externalIP: formData.externalIP,
-      servicePort: formData.servicePort
-    });
-    
-    alert('Sistem ayarları kaydedildi!');
-  };
+
 
   const tabs = [
     { id: 'profile', name: 'Profil & Şifre', icon: '👤' },
@@ -619,10 +668,44 @@ export default function Settings() {
             {/* Veritabanı Tab */}
             {activeTab === 'database' && userRole === 'admin' && (
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Firma Bazlı Veritabanı Ayarları</h3>
-                <p className="text-gray-600 text-sm mb-6">Son 3 yıl için firma ve dönem bazlı veritabanı konfigürasyonları</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Veritabanı & Sistem Ayarları</h3>
+                <p className="text-gray-600 text-sm mb-6">Sistem bağlantı ayarları ve firma bazlı veritabanı konfigürasyonları</p>
                 
                 <form onSubmit={handleDatabaseSave} className="space-y-6">
+                  {/* Sistem Ayarları - En Üstte */}
+                  <div className="border-2 border-blue-300 bg-blue-50 rounded-lg p-4">
+                    <h4 className="text-md font-medium text-blue-900 mb-4">BT Service Bağlantı Ayarları</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Dış IP Adresi
+                        </label>
+                        <input
+                          type="text"
+                          name="externalIP"
+                          value={formData.externalIP}
+                          onChange={handleInputChange}
+                          placeholder="192.168.1.100"
+                          className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Sabit dış IP adresi</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Service Port
+                        </label>
+                        <input
+                          type="number"
+                          name="servicePort"
+                          value={formData.servicePort}
+                          onChange={handleInputChange}
+                          placeholder="45678"
+                          className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">BT Service portu</p>
+                      </div>
+                    </div>
+                  </div>
                   {formData.databases.map((db, index) => (
                     <div key={db.id} className={`border rounded-lg p-4 ${
                       db.isCurrent 
@@ -751,6 +834,118 @@ export default function Settings() {
                     Tüm Ayarları Kaydet
                   </button>
                 </form>
+
+                {/* ENPOS Veritabanı Bilgileri - Tüm müşteriler için */}
+                  <div className="mt-12 pt-8 border-t border-gray-200">
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
+                      <div className="flex items-center mb-4">
+                        <div className="bg-purple-100 p-2 rounded-lg mr-3">
+                          <span className="text-xl">🏪</span>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-purple-800">ENPOS Veritabanı Bilgileri</h3>
+                          <p className="text-sm text-purple-600">POS sistemi için özel veritabanı ayarları</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-lg border border-purple-200 p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              🏢 ENPOS Firma No
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="999"
+                              value={formData.enposFirmaNo || ''}
+                              onChange={(e) => setFormData(prev => ({...prev, enposFirmaNo: e.target.value}))}
+                              placeholder="Örn: 9"
+                              className="w-full px-3 py-3 md:py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            <p className="text-xs text-purple-500 mt-1">
+                              ENPOS sistemindeki firma numarası
+                            </p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              📅 ENPOS Dönem No
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.enposDonemNo || ''}
+                              onChange={(e) => setFormData(prev => ({...prev, enposDonemNo: e.target.value}))}
+                              placeholder="01"
+                              className="w-full px-3 py-3 md:py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              🖥️ ENPOS Server
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.enposDbHost || ''}
+                              onChange={(e) => setFormData(prev => ({...prev, enposDbHost: e.target.value}))}
+                              placeholder="192.168.2.101"
+                              className="w-full px-3 py-3 md:py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              🗄️ ENPOS Database
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.enposDbName || ''}
+                              onChange={(e) => setFormData(prev => ({...prev, enposDbName: e.target.value}))}
+                              placeholder="ENPOS"
+                              className="w-full px-3 py-3 md:py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              👤 ENPOS Kullanıcı
+                            </label>
+                            <input
+                              type="text"
+                              value={formData.enposDbUser || ''}
+                              onChange={(e) => setFormData(prev => ({...prev, enposDbUser: e.target.value}))}
+                              placeholder="sa"
+                              className="w-full px-3 py-3 md:py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-purple-700 mb-2">
+                              🔐 ENPOS Şifre
+                            </label>
+                            <input
+                              type="password"
+                              value={formData.enposDbPassword || ''}
+                              onChange={(e) => setFormData(prev => ({...prev, enposDbPassword: e.target.value}))}
+                              className="w-full px-3 py-3 md:py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                          <div className="flex items-start">
+                            <span className="text-purple-500 mr-2 mt-0.5">ℹ️</span>
+                            <div>
+                              <p className="text-sm font-medium text-purple-800">ENPOS Özel Ayarları</p>
+                              <p className="text-xs text-purple-600 mt-1">
+                                Bu ayarlar sadece ENPOS POS sistemi entegrasyonu olan müşteriler için görünür. 
+                                Ciro raporları bu veritabanından çekilecektir.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
               </div>
             )}
 
@@ -950,58 +1145,13 @@ export default function Settings() {
             {/* Sistem Tab */}
             {activeTab === 'system' && userRole === 'admin' && (
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Sistem Ayarları</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Sistem Bilgileri</h3>
                 <div className="space-y-6">
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">BT Service Ayarları</h4>
+                    <h4 className="font-medium text-gray-900 mb-2">Sistem Durumu</h4>
                     <p className="text-gray-600 text-sm mb-3">
-                      Service bağlantı konfigürasyonu
+                      Sistem bileşenlerinin anlık durumu
                     </p>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Dış IP Adresi
-                          </label>
-                          <input
-                            type="text"
-                            name="externalIP"
-                            value={formData.externalIP}
-                            onChange={handleInputChange}
-                            placeholder="192.168.1.100"
-                            className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Sabit dış IP adresi</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Service Port
-                          </label>
-                          <input
-                            type="number"
-                            name="servicePort"
-                            value={formData.servicePort}
-                            onChange={handleInputChange}
-                            className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-3">
-                                                  <button 
-                            onClick={handleSystemSave}
-                            className="w-full md:w-auto bg-red-600 text-white px-4 py-3 md:py-2 rounded-lg hover:bg-red-700 transition-colors"
-                          >
-                          Ayarları Kaydet
-                        </button>
-                        <button className="w-full md:w-auto bg-gray-600 text-white px-4 py-3 md:py-2 rounded-lg hover:bg-gray-700 transition-colors">
-                          Service'i Yeniden Başlat
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Sistem Bilgisi</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="text-gray-600">Versiyon:</span>
@@ -1018,6 +1168,17 @@ export default function Settings() {
                       <div>
                         <span className="text-gray-600">Database:</span>
                         <span className="ml-2 font-medium text-green-600">Bağlı</span>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-3">
+                        <button className="w-full md:w-auto bg-gray-600 text-white px-4 py-3 md:py-2 rounded-lg hover:bg-gray-700 transition-colors">
+                          Service'i Yeniden Başlat
+                        </button>
+                        <button className="w-full md:w-auto bg-blue-600 text-white px-4 py-3 md:py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                          Sistem Loglarını Görüntüle
+                        </button>
                       </div>
                     </div>
                   </div>

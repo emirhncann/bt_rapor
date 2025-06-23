@@ -52,17 +52,97 @@ export default function CBakiye() {
     
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:45678/sql', {
+      // Önce localStorage'dan connection bilgilerini kontrol et
+      let connectionInfo = null;
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      
+      if (cachedConnectionInfo) {
+        try {
+          connectionInfo = JSON.parse(cachedConnectionInfo);
+          console.log('✅ Connection bilgileri localStorage\'dan alındı:', connectionInfo);
+        } catch (e) {
+          console.log('⚠️ localStorage\'daki connection bilgileri parse edilemedi, API\'den alınacak');
+        }
+      }
+      
+      // Eğer localStorage'da yoksa API'den al
+      if (!connectionInfo) {
+        const companyRef = localStorage.getItem('companyRef');
+        if (!companyRef) {
+          console.error('Company ref bulunamadı');
+          alert('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+          setLoading(false);
+          return;
+        }
+
+        console.log('🔄 Connection bilgileri API\'den alınıyor...');
+        const connectionResponse = await fetch(`http://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const connectionData = await connectionResponse.json();
+
+        console.log('📡 Connection Response:', connectionData);
+
+        if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
+          console.error('Connection bilgileri alınamadı:', connectionData);
+          alert('Veritabanı bağlantı bilgileri alınamadı. Lütfen sistem yöneticisi ile iletişime geçin.');
+          setLoading(false);
+          return;
+        }
+
+        connectionInfo = connectionData.data;
+        // API'den alınan bilgileri localStorage'a kaydet
+        localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+        console.log('💾 Connection bilgileri localStorage\'a kaydedildi');
+      }
+      
+      // public_ip'den dış IP ve portu ayır
+      let externalIP = 'localhost';
+      let servicePort = '45678';
+      
+      if (connectionInfo.public_ip) {
+        const [ip, port] = connectionInfo.public_ip.split(':');
+        externalIP = ip || 'localhost';
+        servicePort = port || '45678';
+      }
+
+      // Connection string'i oluştur
+      const connectionString = `Server=${connectionInfo.first_server_name || ''};Database=${connectionInfo.first_db_name || ''};User Id=${connectionInfo.first_username || ''};Password=${connectionInfo.first_password || ''};`;
+      
+      // Firma no ve dönem no'yu al
+      const firmaNo = connectionInfo.first_firma_no || '009'; // Varsayılan 009
+      const donemNo = connectionInfo.first_donem_no || '01';  // Varsayılan 01
+      
+      console.log('🔗 Oluşturulan Connection String:', connectionString);
+      console.log('🏢 Firma No:', firmaNo);
+      console.log('📅 Dönem No:', donemNo);
+      console.log('🌐 Hedef Service:', `http://${externalIP}:${servicePort}/sql`);
+
+      // Dinamik SQL sorgusu oluştur
+      const sqlQuery = `
+      SELECT CLCARD.LOGICALREF, CLCARD.CODE AS KODU, CLCARD.DEFINITION_ AS ÜNVANI, 
+             SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) AS BORÇ, 
+             SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS ALACAK, 
+             CAST(SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) - SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS DECIMAL(18,2)) AS BAKIYE 
+      FROM LG_${firmaNo}_${donemNo}_CLFLINE CLFLINE 
+      RIGHT JOIN LG_${firmaNo}_CLCARD CLCARD ON CLFLINE.CLIENTREF = CLCARD.LOGICALREF 
+      WHERE CLFLINE.CANCELLED = 0 AND CLFLINE.TRCURR = 0 
+      GROUP BY CLCARD.LOGICALREF, CLCARD.CODE, CLCARD.DEFINITION_, CLCARD.ACTIVE 
+      HAVING CLCARD.CODE LIKE '%' AND CLCARD.DEFINITION_ LIKE '%' AND CLCARD.ACTIVE = 0 
+      ORDER BY CLCARD.DEFINITION_`;
+
+      console.log('📝 Dinamik SQL Sorgusu:', sqlQuery);
+
+      // SQL sorgusunu proxy üzerinden çalıştır
+      const response = await fetch('http://btrapor.boluteknoloji.tr/proxy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          connectionString: "Server=192.168.1.101;Database=LOGODB;User Id=sa;Password=Ozt129103;",
-         // connectionString: "Server=192.168.2.100;Database=GOWINGS;User Id=sa;Password=Ozt129103;",
-          query: `
-      SELECT CLCARD.LOGICALREF, CLCARD.CODE AS KODU, CLCARD.DEFINITION_ AS ÜNVANI, SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) AS BORÇ, SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS ALACAK, CAST(SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) - SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS DECIMAL(18,2)) AS BAKIYE FROM LG_009_01_CLFLINE CLFLINE RIGHT JOIN LG_009_CLCARD CLCARD ON CLFLINE.CLIENTREF = CLCARD.LOGICALREF WHERE CLFLINE.CANCELLED = 0 AND CLFLINE.TRCURR = 0 GROUP BY CLCARD.LOGICALREF, CLCARD.CODE, CLCARD.DEFINITION_, CLCARD.ACTIVE HAVING CLCARD.CODE LIKE '%' AND CLCARD.DEFINITION_ LIKE '%' AND CLCARD.ACTIVE = 0 ORDER BY CLCARD.DEFINITION_
-    `
+          target_url: `http://${externalIP}:${servicePort}/sql`,
+          payload: {
+            connectionString,
+            query: sqlQuery
+          }
         })
       });
       const jsonData = await response.json();
