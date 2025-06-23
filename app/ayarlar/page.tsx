@@ -125,8 +125,7 @@ export default function Settings() {
         return;
       }
 
-      console.log('🔄 Database ayarları yükleniyor...');
-      console.log('📋 URL:', `https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+      
 
       const response = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
       const data = await response.json();

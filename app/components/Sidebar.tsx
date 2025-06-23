@@ -10,6 +10,7 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [reportsOpen, setReportsOpen] = useState(false);
 
   useEffect(() => {
     const name = localStorage.getItem('userName');
@@ -34,24 +35,6 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       active: true
     },
     {
-      name: 'Cari Bakiye',
-      icon: (
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-      ),
-      href: '/c-bakiye'
-    },
-    {
-      name: 'Enpos Ciro Raporu',
-      icon: (
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-        </svg>
-      ),
-      href: '/ciro'
-    },
-    {
       name: 'Cari Hesaplar',
       icon: (
         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,7 +50,28 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
       ),
-      href: '/raporlar'
+      href: '#',
+      dropdown: true,
+      subItems: [
+        {
+          name: 'Cari Bakiye',
+          icon: (
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          ),
+          href: '/c-bakiye'
+        },
+        {
+          name: 'Enpos Ciro Raporu',
+          icon: (
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+            </svg>
+          ),
+          href: '/enpos-ciro'
+        }
+      ]
     },
     {
       name: 'Ayarlar',
@@ -120,20 +124,57 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         {/* Navigation Menu */}
         <nav className="flex-1 px-4 py-6 space-y-2">
           {menuItems.map((item) => (
-            <a
-              key={item.name}
-              href={item.href}
-              className={`
-                flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200
-                ${item.active
-                  ? 'bg-red-50 text-red-700 border-r-2 border-red-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }
-              `}
-            >
-              {item.icon}
-              <span className="ml-3">{item.name}</span>
-            </a>
+            <div key={item.name}>
+              {item.dropdown ? (
+                <div>
+                  <button
+                    onClick={() => setReportsOpen(!reportsOpen)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  >
+                    <div className="flex items-center">
+                      {item.icon}
+                      <span className="ml-3">{item.name}</span>
+                    </div>
+                    <svg 
+                      className={`h-4 w-4 transition-transform duration-200 ${reportsOpen ? 'rotate-180' : ''}`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {/* Dropdown Menü */}
+                  <div className={`ml-6 mt-1 space-y-1 transition-all duration-200 ${reportsOpen ? 'block' : 'hidden'}`}>
+                    {item.subItems?.map((subItem) => (
+                      <a
+                        key={subItem.name}
+                        href={subItem.href}
+                        className="flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      >
+                        {subItem.icon}
+                        <span className="ml-3">{subItem.name}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <a
+                  href={item.href}
+                  className={`
+                    flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200
+                    ${item.active
+                      ? 'bg-red-50 text-red-700 border-r-2 border-red-600'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }
+                  `}
+                >
+                  {item.icon}
+                  <span className="ml-3">{item.name}</span>
+                </a>
+              )}
+            </div>
           ))}
         </nav>
 
