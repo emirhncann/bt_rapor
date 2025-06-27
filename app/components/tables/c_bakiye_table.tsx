@@ -32,10 +32,12 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Sayısal sütunlar
+  // Sayısal sütunlar - Multi-currency PIVOT desteği ile
   const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 
-    key === 'BORÇ' || key === 'ALACAK' || key === 'BAKİYE' || key === 'BAKIYE' || 
-    key.includes('BAKIYE') || key.includes('BAKİYE')
+    key === 'BORÇ' || key === 'ALACAK' || key === 'BAKİYE' || key === 'BAKIYE' || key === 'Borç' || key === 'Alacak' || key === 'Bakiye' ||
+    key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('Bakiye') ||
+    key.includes('_Borç') || key.includes('_Alacak') || key.includes('_Bakiye') ||
+    key.includes('CUR_') || key.endsWith('_Borç') || key.endsWith('_Alacak') || key.endsWith('_Bakiye')
   ) : ['BORÇ', 'ALACAK', 'BAKİYE'];
 
   // Güvenli sayı parse fonksiyonu
@@ -52,34 +54,46 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
       const exportData = filteredData.map(row => {
         const newRow: any = {};
         Object.keys(row).forEach(key => {
-          if (key !== 'LOGICALREF') {
-            if (key === 'BORÇ' || key === 'ALACAK') {
-              // Para formatında TL işaretiyle
-              const value = safeParseFloat(row[key]);
-              newRow[key] = value.toLocaleString('tr-TR', { 
-                style: 'currency', 
-                currency: 'TRY',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              });
-            } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
-              // Bakiye formatında TL + (A)/(B) gösterimi
-              const value = safeParseFloat(row[key]);
-              const formattedCurrency = Math.abs(value).toLocaleString('tr-TR', { 
-                style: 'currency', 
-                currency: 'TRY',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              });
-              
-              if (value === 0) {
-                newRow[key] = formattedCurrency;
+          if (key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo') {
+            if (key === 'BORÇ' || key === 'ALACAK' || key.includes('_Borç') || key.includes('_Alacak') || key === 'Borç' || key === 'Alacak') {
+              // Multi-currency para formatı
+              if (typeof row[key] === 'string' && (row[key].includes('.') || row[key].includes(',') || row[key].includes(' '))) {
+                // Zaten formatlanmış değer
+                newRow[key] = row[key];
               } else {
-                const indicator = value < 0 ? '(A)' : '(B)';
-                newRow[key] = `${formattedCurrency} ${indicator}`;
+                // Formatlanmamış değer
+                const value = safeParseFloat(row[key]);
+                newRow[key] = value.toLocaleString('tr-TR', { 
+                  style: 'currency', 
+                  currency: 'TRY',
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                });
+              }
+            } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('_Bakiye') || key === 'Bakiye') {
+              // Multi-currency bakiye formatı
+              if (typeof row[key] === 'string' && (row[key].includes('(A)') || row[key].includes('(B)') || row[key] === '0')) {
+                // Zaten formatlanmış değer
+                newRow[key] = row[key];
+              } else {
+                // Formatlanmamış değer
+                const value = safeParseFloat(row[key]);
+                const formattedCurrency = Math.abs(value).toLocaleString('tr-TR', { 
+                  style: 'currency', 
+                  currency: 'TRY',
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                });
+                
+                if (value === 0) {
+                  newRow[key] = formattedCurrency;
+                } else {
+                  const indicator = value < 0 ? '(A)' : '(B)';
+                  newRow[key] = `${formattedCurrency} ${indicator}`;
+                }
               }
             } else {
-              newRow[key] = row[key];
+              newRow[key] = row[key] || '';
             }
           }
         });
@@ -110,18 +124,68 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
 
   const exportToPDF = () => {
     try {
-      // Toplam hesaplamalar
-      const totals = filteredData.reduce((acc, item) => ({
-        toplamMusteri: acc.toplamMusteri + 1,
-        toplamBorc: acc.toplamBorc + safeParseFloat(item.BORÇ),
-        toplamAlacak: acc.toplamAlacak + safeParseFloat(item.ALACAK),
-        netBakiye: acc.netBakiye + safeParseFloat(item.BAKİYE || item.BAKIYE || Object.keys(item).find(key => key.includes('BAKIYE') || key.includes('BAKİYE')) ? item[Object.keys(item).find(key => key.includes('BAKIYE') || key.includes('BAKİYE')) || 'BAKIYE'] : 0)
-      }), {
-        toplamMusteri: 0,
-        toplamBorc: 0,
-        toplamAlacak: 0,
-        netBakiye: 0
-      });
+      // Basit toplam hesaplaması (tüm formatları destekler)
+      const totalCustomers = filteredData.length;
+      const isMultiCurrency = filteredData.length > 0 && Object.keys(filteredData[0]).some(key => key.includes('_Borç') || key.includes('_Alacak') || key.includes('_Bakiye'));
+      
+      // Multi-currency istatistikleri için
+      const currencyStats: any[] = [];
+      
+      if (isMultiCurrency) {
+        const currencyTotals: { [key: string]: { code: string, borc: number, alacak: number, bakiye: number } } = {};
+        
+        filteredData.forEach(row => {
+          Object.keys(row).forEach(key => {
+            const borcMatch = key.match(/^(.+)_Borç$/);
+            const alacakMatch = key.match(/^(.+)_Alacak$/);
+            const bakiyeMatch = key.match(/^(.+)_Bakiye$/);
+            
+            if (borcMatch) {
+              const currencyCode = borcMatch[1];
+              if (!currencyTotals[currencyCode]) {
+                currencyTotals[currencyCode] = { code: currencyCode, borc: 0, alacak: 0, bakiye: 0 };
+              }
+              let value = row[key];
+              if (typeof value === 'string') {
+                value = value.replace(/\./g, '').replace(',', '.');
+              }
+              currencyTotals[currencyCode].borc += safeParseFloat(value);
+            }
+            
+            if (alacakMatch) {
+              const currencyCode = alacakMatch[1];
+              if (!currencyTotals[currencyCode]) {
+                currencyTotals[currencyCode] = { code: currencyCode, borc: 0, alacak: 0, bakiye: 0 };
+              }
+              let value = row[key];
+              if (typeof value === 'string') {
+                value = value.replace(/\./g, '').replace(',', '.');
+              }
+              currencyTotals[currencyCode].alacak += safeParseFloat(value);
+            }
+            
+            if (bakiyeMatch) {
+              const currencyCode = bakiyeMatch[1];
+              if (!currencyTotals[currencyCode]) {
+                currencyTotals[currencyCode] = { code: currencyCode, borc: 0, alacak: 0, bakiye: 0 };
+              }
+              let value = row[key];
+              if (typeof value === 'string') {
+                if (value.includes('(A)')) {
+                  value = '-' + value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+                } else if (value.includes('(B)')) {
+                  value = value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+                } else {
+                  value = value.replace(/\./g, '').replace(',', '.');
+                }
+              }
+              currencyTotals[currencyCode].bakiye += safeParseFloat(value);
+            }
+          });
+        });
+        
+        currencyStats.push(...Object.values(currencyTotals));
+      }
 
       // Yazdırma için HTML oluştur (PDF'e optimize edilmiş)
       const printWindow = window.open('', '_blank');
@@ -198,29 +262,53 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
           </div>
           
           <!-- İstatistik Kutuları -->
-          <div class="stats-grid">
-            <div class="stat-box primary">
-              <div class="stat-title">Toplam Müşteri</div>
-              <div class="stat-value">${totals.toplamMusteri}</div>
+          <div style="margin-bottom: 20px;">
+            <div class="stats-grid">
+              <div class="stat-box primary">
+                <div class="stat-title">Toplam Müşteri</div>
+                <div class="stat-value">${totalCustomers}</div>
+              </div>
               
+              ${isMultiCurrency ? `
+              <div class="stat-box success">
+                <div class="stat-title">Aktif Kurlar</div>
+                <div class="stat-value">${currencyStats.length}</div>
+              </div>
+              ` : `
+              <div class="stat-box success">
+                <div class="stat-title">Rapor Formatı</div>
+                <div class="stat-value">Tekli Kur</div>
+              </div>
+              `}
             </div>
             
-            <div class="stat-box success">
-              <div class="stat-title">Toplam Alacak</div>
-              <div class="stat-value">${totals.toplamAlacak.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</div>
-             
+            ${isMultiCurrency ? `
+            <h3 style="color: #991b1b; font-size: 14px; margin: 15px 0 10px 0;">💰 Kur Bazlı Toplamlar</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+              ${currencyStats.map(currency => `
+              <div class="stat-box" style="border-left: 4px solid #991b1b;">
+                <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
+                  <strong style="font-size: 16px; color: #991b1b;">💱 ${currency.code}</strong>
+                </div>
+                <div style="font-size: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>💸 Borç:</span>
+                  <strong style="color: #dc2626; text-align: right;">${currency.borc.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                </div>
+                <div style="font-size: 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>💰 Alacak:</span>
+                  <strong style="color: #059669; text-align: right;">${currency.alacak.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                </div>
+                <div style="font-size: 10px; border-top: 1px solid #e5e7eb; padding-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>⚖️ Bakiye:</span>
+                  <strong style="color: ${currency.bakiye < 0 ? '#dc2626' : currency.bakiye > 0 ? '#059669' : '#1f2937'}; text-align: right;">
+                    ${Math.abs(currency.bakiye).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${currency.bakiye !== 0 ? (currency.bakiye < 0 ? ' (A)' : ' (B)') : ''}
+                  </strong>
+                </div>
+              </div>
+              `).join('')}
             </div>
-            
-            <div class="stat-box warning">
-              <div class="stat-title">Toplam Borç</div>
-              <div class="stat-value">${totals.toplamBorc.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</div>
-              
-            </div>
-            
-            <div class="stat-box ${totals.netBakiye < 0 ? 'danger' : totals.netBakiye > 0 ? 'success' : 'primary'}">
-              <div class="stat-title">Net Bakiye</div>
-              <div class="stat-value">${Math.abs(totals.netBakiye).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺ ${totals.netBakiye === 0 ? '' : totals.netBakiye < 0 ? '(A)' : '(B)'}</div>
-            </div>
+            ` : ''}
           </div>
           
           <h3 style="color: #991b1b; margin: 20px 0 10px 0; font-size: 14px; border-bottom: 2px solid #991b1b; padding-bottom: 5px;">DETAYLI CARİ HESAP LİSTESİ</h3>
@@ -229,7 +317,7 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
             <thead>
               <tr>
                 ${Object.keys(filteredData[0] || {})
-                  .filter(key => key !== 'LOGICALREF')
+                  .filter(key => key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo')
                   .map(header => `<th>${header}</th>`)
                   .join('')}
               </tr>
@@ -238,15 +326,34 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
               ${filteredData.map(row => `
                 <tr>
                   ${Object.keys(row)
-                    .filter(key => key !== 'LOGICALREF')
+                    .filter(key => key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo')
                     .map(key => {
                       const value = row[key];
-                      if (key === 'BORÇ' || key === 'ALACAK') {
-                        return `<td class="number currency">${safeParseFloat(value).toLocaleString('tr-TR', { 
+                      
+                      // Multi-currency borç/alacak sütunları
+                      if (key === 'BORÇ' || key === 'ALACAK' || key === 'Borç' || key === 'Alacak' || 
+                          key.includes('_Borç') || key.includes('_Alacak')) {
+                        // Eğer değer zaten formatlanmışsa (SQL'den geliyorsa) olduğu gibi kullan
+                        if (typeof value === 'string' && (value.includes('.') || value.includes(',') || value.includes(' '))) {
+                          return `<td class="number currency">${String(value)}</td>`;
+                        }
+                        // Formatlanmamış değer ise formatla
+                        const numValue = safeParseFloat(value);
+                        return `<td class="number currency">${numValue.toLocaleString('tr-TR', { 
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2 
                         })}</td>`;
-                      } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
+                      } 
+                      
+                      // Multi-currency bakiye sütunları
+                      else if (key === 'BAKİYE' || key === 'BAKIYE' || key === 'Bakiye' || 
+                               key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('_Bakiye')) {
+                        // Eğer değer zaten formatlanmışsa (SQL'den geliyorsa) olduğu gibi kullan
+                        if (typeof value === 'string' && (value.includes('(A)') || value.includes('(B)') || value === '0' || value === '0,00')) {
+                          const colorClass = value.includes('(A)') ? 'negative' : value.includes('(B)') ? 'positive' : '';
+                          return `<td class="number currency ${colorClass}">${String(value)}</td>`;
+                        }
+                        // Formatlanmamış değer ise formatla
                         const numValue = safeParseFloat(value);
                         const formatted = Math.abs(numValue).toLocaleString('tr-TR', { 
                           minimumFractionDigits: 2,
@@ -256,7 +363,9 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
                         const indicator = numValue === 0 ? '' : numValue < 0 ? ' (A)' : ' (B)';
                         return `<td class="number currency ${colorClass}">${formatted}${indicator}</td>`;
                       }
-                      return `<td>${value || ''}</td>`;
+                      
+                      // Diğer sütunlar - String'e çevir ve [object Object] sorununu önle
+                      return `<td>${String(value || '')}</td>`;
                     }).join('')}
                 </tr>
               `).join('')}
@@ -352,7 +461,7 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
             <thead>
               <tr>
                 ${Object.keys(filteredData[0] || {})
-                  .filter(key => key !== 'LOGICALREF')
+                  .filter(key => key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo')
                   .map(header => `<th>${header}</th>`)
                   .join('')}
               </tr>
@@ -361,15 +470,34 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
               ${filteredData.map(row => `
                 <tr>
                   ${Object.keys(row)
-                    .filter(key => key !== 'LOGICALREF')
+                    .filter(key => key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo')
                     .map(key => {
                       const value = row[key];
-                      if (key === 'BORÇ' || key === 'ALACAK') {
-                        return `<td class="number currency">${safeParseFloat(value).toLocaleString('tr-TR', { 
+                      
+                      // Multi-currency borç/alacak sütunları
+                      if (key === 'BORÇ' || key === 'ALACAK' || key === 'Borç' || key === 'Alacak' || 
+                          key.includes('_Borç') || key.includes('_Alacak')) {
+                        // Eğer değer zaten formatlanmışsa (SQL'den geliyorsa) olduğu gibi kullan
+                        if (typeof value === 'string' && (value.includes('.') || value.includes(',') || value.includes(' '))) {
+                          return `<td class="number currency">${String(value)}</td>`;
+                        }
+                        // Formatlanmamış değer ise formatla
+                        const numValue = safeParseFloat(value);
+                        return `<td class="number currency">${numValue.toLocaleString('tr-TR', { 
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2 
                         })}</td>`;
-                      } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
+                      } 
+                      
+                      // Multi-currency bakiye sütunları
+                      else if (key === 'BAKİYE' || key === 'BAKIYE' || key === 'Bakiye' || 
+                               key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('_Bakiye')) {
+                        // Eğer değer zaten formatlanmışsa (SQL'den geliyorsa) olduğu gibi kullan
+                        if (typeof value === 'string' && (value.includes('(A)') || value.includes('(B)') || value === '0' || value === '0,00')) {
+                          const colorClass = value.includes('(A)') ? 'negative' : value.includes('(B)') ? 'positive' : '';
+                          return `<td class="number currency ${colorClass}">${String(value)}</td>`;
+                        }
+                        // Formatlanmamış değer ise formatla
                         const numValue = safeParseFloat(value);
                         const formatted = Math.abs(numValue).toLocaleString('tr-TR', { 
                           minimumFractionDigits: 2,
@@ -379,7 +507,9 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
                         const indicator = numValue === 0 ? '' : numValue < 0 ? ' (A)' : ' (B)';
                         return `<td class="number currency ${colorClass}">${formatted}${indicator}</td>`;
                       }
-                      return `<td>${value || ''}</td>`;
+                      
+                      // Diğer sütunlar - String'e çevir ve [object Object] sorununu önle
+                      return `<td>${String(value || '')}</td>`;
                     }).join('')}
                 </tr>
               `).join('')}
@@ -756,7 +886,7 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
                 </th>
                 {data.length > 0 &&
                   Object.keys(data[0])
-                    .filter(header => header !== 'LOGICALREF')
+                    .filter(header => header !== 'LOGICALREF' && header !== 'CLIENTREF' && header !== 'CurrencyNo')
                     .map((header) => (
                       <th
                         key={header}
@@ -818,19 +948,31 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
                   </button>
                 </td>
                 {Object.entries(row)
-                  .filter(([key]) => key !== 'LOGICALREF')
+                  .filter(([key]) => key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo')
                   .map(([key, value], cellIndex) => (
                     <td
                       key={cellIndex}
                       className={`py-4 whitespace-nowrap text-sm border-b border-gray-200 ${
-                        key === 'BORÇ' || key === 'ALACAK'
+                        key === 'BORÇ' || key === 'ALACAK' || key.includes('_Borç') || key.includes('_Alacak') || key === 'Borç' || key === 'Alacak'
                           ? 'text-right font-bold text-red-800'
-                          : (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE'))
-                          ? `text-right font-bold ${safeParseFloat(value) < 0 ? 'text-red-600' : 'text-green-600'}`
-                          : key === 'KODU'
+                          : (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('_Bakiye') || key === 'Bakiye')
+                          ? (() => {
+                              // Multi-currency bakiye renklendirme
+                              if (typeof value === 'string') {
+                                if (value.includes('(A)')) return 'text-right font-bold text-red-600';
+                                if (value.includes('(B)')) return 'text-right font-bold text-green-600';
+                                // 0 değeri için siyah renk (gray-900)
+                                if (value === '0' || value === '0,00' || !value.includes('(')) return 'text-right font-bold text-gray-900';
+                              }
+                              const numValue = safeParseFloat(value);
+                              return `text-right font-bold ${numValue < 0 ? 'text-red-600' : numValue > 0 ? 'text-green-600' : 'text-gray-900'}`;
+                            })()
+                          : key === 'KODU' || key === 'Cari Kodu'
                           ? 'text-red-700 font-semibold'
-                          : key === 'ÜNVANI'
+                          : key === 'ÜNVANI' || key === 'Cari Ünvanı'
                           ? 'text-gray-700 font-medium'
+                          : key === 'Para Birimi'
+                          ? 'text-blue-700 font-semibold text-center'
                           : 'text-gray-800 font-medium'
                       }`}
                       style={{
@@ -841,26 +983,36 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
                     >
                       <div className="px-6 overflow-hidden text-ellipsis">
                     {(() => {
-                      // BAKİYE özel formatı
-                      if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
+                      // Multi-currency BAKİYE formatı
+                      if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('_Bakiye') || key === 'Bakiye') {
+                        // Eğer değer zaten formatlanmışsa (SQL'den geliyorsa) olduğu gibi döndür
+                        if (typeof value === 'string' && (value.includes('(A)') || value.includes('(B)') || value === '0')) {
+                          return value;
+                        }
+                        
                         const parsedValue = safeParseFloat(value);
                         const formattedCurrency = formatCurrency(Math.abs(parsedValue));
                         
                         if (parsedValue === 0) {
-                          return formattedCurrency; // Sadece para formatı, (A) veya (B) yok
+                          return formattedCurrency;
                         }
                         
                         const indicator = parsedValue < 0 ? '(A)' : '(B)';
                         return `${formattedCurrency} ${indicator}`;
                       }
                       
-                      // Diğer para formatları
-                      if (key === 'BORÇ' || key === 'ALACAK') {
+                      // Multi-currency BORÇ/ALACAK formatı
+                      if (key === 'BORÇ' || key === 'ALACAK' || key.includes('_Borç') || key.includes('_Alacak') || key === 'Borç' || key === 'Alacak') {
+                        // Eğer değer zaten formatlanmışsa (SQL'den geliyorsa) olduğu gibi döndür
+                        if (typeof value === 'string' && (value.includes('.') || value.includes(',') || value.includes(' '))) {
+                          return value;
+                        }
+                        
                         const parsedValue = safeParseFloat(value);
                         return formatCurrency(parsedValue);
                       }
                       
-                      return String(value);
+                      return String(value || '');
                     })()}
                       </div>
                   </td>

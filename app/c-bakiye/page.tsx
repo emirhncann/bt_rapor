@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import CBakiyeTable from '../components/tables/c_bakiye_table';
 import DashboardLayout from '../components/DashboardLayout';
+import CurrencySelector from '../components/CurrencySelector';
+import { getCurrencyByNo, getCurrencyByCode } from '../../types/currency';
 
 export default function CBakiye() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [selectedCurrencies, setSelectedCurrencies] = useState<number[]>([53]); // Varsayılan: TRY (No: 53)
+  const [showCurrencySelector, setShowCurrencySelector] = useState(false);
   const router = useRouter();
   
   // Animation data'yı yükleyelim
@@ -90,6 +94,122 @@ export default function CBakiye() {
     return isNaN(parsed) ? 0 : parsed;
   };
 
+  // Multi-currency istatistikleri hesapla
+  const calculateMultiCurrencyStats = () => {
+    if (!Array.isArray(data) || data.length === 0) {
+      return { currencies: [], totalCustomers: 0 };
+    }
+
+    // Seçili kurlar için istatistik toplama
+    const currencyStats: { [key: string]: { code: string, borc: number, alacak: number, bakiye: number } } = {};
+    
+    // Veri satırlarını işle
+    data.forEach(row => {
+      Object.keys(row).forEach(key => {
+        // Kur kodlarını çıkar
+        const borcMatch = key.match(/^(.+)_Borç$/);
+        const alacakMatch = key.match(/^(.+)_Alacak$/);
+        const bakiyeMatch = key.match(/^(.+)_Bakiye$/);
+        
+        if (borcMatch) {
+          const currencyCode = borcMatch[1];
+          if (!currencyStats[currencyCode]) {
+            currencyStats[currencyCode] = { code: currencyCode, borc: 0, alacak: 0, bakiye: 0 };
+          }
+          
+          // String ise sayıyı parse et (1.234,56 formatından)
+          let value = row[key];
+          if (typeof value === 'string') {
+            value = value.replace(/\./g, '').replace(',', '.');
+          }
+          currencyStats[currencyCode].borc += safeParseFloat(value);
+        }
+        
+        if (alacakMatch) {
+          const currencyCode = alacakMatch[1];
+          if (!currencyStats[currencyCode]) {
+            currencyStats[currencyCode] = { code: currencyCode, borc: 0, alacak: 0, bakiye: 0 };
+          }
+          
+          let value = row[key];
+          if (typeof value === 'string') {
+            value = value.replace(/\./g, '').replace(',', '.');
+          }
+          currencyStats[currencyCode].alacak += safeParseFloat(value);
+        }
+        
+        if (bakiyeMatch) {
+          const currencyCode = bakiyeMatch[1];
+          if (!currencyStats[currencyCode]) {
+            currencyStats[currencyCode] = { code: currencyCode, borc: 0, alacak: 0, bakiye: 0 };
+          }
+          
+          // Bakiye için özel parse - (A) ve (B) kontrolü
+          let value = row[key];
+          if (typeof value === 'string') {
+            if (value.includes('(A)')) {
+              value = '-' + value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+            } else if (value.includes('(B)')) {
+              value = value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+            } else {
+              value = value.replace(/\./g, '').replace(',', '.');
+            }
+          }
+          currencyStats[currencyCode].bakiye += safeParseFloat(value);
+        }
+      });
+    });
+
+    // Eski format desteği (tek kur)
+    if (Object.keys(currencyStats).length === 0) {
+      // BORÇ, ALACAK, BAKİYE sütunları için
+      const legacyStats = { code: 'TRY', borc: 0, alacak: 0, bakiye: 0 };
+      
+      data.forEach(row => {
+        if (row.BORÇ !== undefined) {
+          let value = row.BORÇ;
+          if (typeof value === 'string') {
+            value = value.replace(/\./g, '').replace(',', '.');
+          }
+          legacyStats.borc += safeParseFloat(value);
+        }
+        
+        if (row.ALACAK !== undefined) {
+          let value = row.ALACAK;
+          if (typeof value === 'string') {
+            value = value.replace(/\./g, '').replace(',', '.');
+          }
+          legacyStats.alacak += safeParseFloat(value);
+        }
+        
+        if (row.BAKİYE !== undefined || row.BAKIYE !== undefined) {
+          let value = row.BAKİYE || row.BAKIYE;
+          if (typeof value === 'string') {
+            if (value.includes('(A)')) {
+              value = '-' + value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+            } else if (value.includes('(B)')) {
+              value = value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+            } else {
+              value = value.replace(/\./g, '').replace(',', '.');
+            }
+          }
+          legacyStats.bakiye += safeParseFloat(value);
+        }
+      });
+      
+      if (legacyStats.borc > 0 || legacyStats.alacak > 0) {
+        currencyStats.TRY = legacyStats;
+      }
+    }
+
+    return {
+      currencies: Object.values(currencyStats),
+      totalCustomers: data.length
+    };
+  };
+
+  const multiCurrencyStats = calculateMultiCurrencyStats();
+
   const fetchSqlData = async () => {
     if (!isAuthenticated) return;
     
@@ -165,18 +285,95 @@ export default function CBakiye() {
       console.log('📅 Dönem No:', donemNo);
       console.log('🌐 Hedef Service:', `http://${externalIP}:${servicePort}/sql`);
 
-      // Dinamik SQL sorgusu oluştur
-      const sqlQuery = `
-      SELECT CLCARD.LOGICALREF, CLCARD.CODE AS KODU, CLCARD.DEFINITION_ AS ÜNVANI, 
-             SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) AS BORÇ, 
-             SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS ALACAK, 
-             CAST(SUM((1 - CLFLINE.SIGN) * CLFLINE.AMOUNT) - SUM(CLFLINE.SIGN * CLFLINE.AMOUNT) AS DECIMAL(18,2)) AS BAKIYE 
-      FROM LG_${firmaNo}_${donemNo}_CLFLINE CLFLINE 
-      RIGHT JOIN LG_${firmaNo}_CLCARD CLCARD ON CLFLINE.CLIENTREF = CLCARD.LOGICALREF 
-      WHERE CLFLINE.CANCELLED = 0 AND CLFLINE.TRCURR = 0 
-      GROUP BY CLCARD.LOGICALREF, CLCARD.CODE, CLCARD.DEFINITION_, CLCARD.ACTIVE 
-      HAVING CLCARD.CODE LIKE '%' AND CLCARD.DEFINITION_ LIKE '%' AND CLCARD.ACTIVE = 0 
-      ORDER BY CLCARD.DEFINITION_`;
+      // Dinamik SQL sorgusu oluştur - Multi-Currency PIVOT desteği ile
+      let sqlQuery = '';
+      
+      if (selectedCurrencies.length === 1 && selectedCurrencies.includes(53)) {
+        // Sadece TRY seçiliyse eski sorguyu kullan
+        sqlQuery = `
+        SELECT CLCARD.LOGICALREF, CLCARD.CODE AS [Cari Kodu], CLCARD.DEFINITION_ AS [Cari Ünvanı], 
+               FORMAT(SUM((1 - CLFLINE.SIGN) * CLFLINE.TRNET), 'N', 'tr-TR') AS [Borç], 
+               FORMAT(SUM(CLFLINE.SIGN * CLFLINE.TRNET), 'N', 'tr-TR') AS [Alacak], 
+               CASE 
+                 WHEN SUM((1 - CLFLINE.SIGN) * CLFLINE.TRNET) - SUM(CLFLINE.SIGN * CLFLINE.TRNET) > 0 
+                   THEN FORMAT(SUM((1 - CLFLINE.SIGN) * CLFLINE.TRNET) - SUM(CLFLINE.SIGN * CLFLINE.TRNET), 'N', 'tr-TR') + ' (B)'
+                 WHEN SUM((1 - CLFLINE.SIGN) * CLFLINE.TRNET) - SUM(CLFLINE.SIGN * CLFLINE.TRNET) < 0 
+                   THEN FORMAT(ABS(SUM((1 - CLFLINE.SIGN) * CLFLINE.TRNET) - SUM(CLFLINE.SIGN * CLFLINE.TRNET)), 'N', 'tr-TR') + ' (A)'
+                 ELSE FORMAT(0, 'N', 'tr-TR')
+               END AS [Bakiye]
+        FROM LG_${firmaNo}_${donemNo}_CLFLINE CLFLINE 
+        RIGHT JOIN LG_${firmaNo}_CLCARD CLCARD ON CLFLINE.CLIENTREF = CLCARD.LOGICALREF 
+        WHERE CLFLINE.CANCELLED = 0 AND CLFLINE.TRCURR = 0 AND CLCARD.ACTIVE = 0
+        GROUP BY CLCARD.LOGICALREF, CLCARD.CODE, CLCARD.DEFINITION_
+        HAVING SUM((1 - CLFLINE.SIGN) * CLFLINE.TRNET) > 0 OR SUM(CLFLINE.SIGN * CLFLINE.TRNET) > 0
+        ORDER BY CLCARD.DEFINITION_`;
+      } else {
+        // Multi-currency dinamik PIVOT yaklaşımı
+        const currencyNos = selectedCurrencies.map(no => no === 53 ? '0' : no.toString());
+        
+        // 1. PIVOT sütunları oluştur: [CUR_0_Borç], [CUR_0_Alacak]
+        const pivotCols = currencyNos.map(currNo => 
+          `[CUR_${currNo}_Borç], [CUR_${currNo}_Alacak]`
+        ).join(', ');
+        
+        // 2. Bakiye hesaplama sütunları oluştur
+        const bakiyeCols = currencyNos.map(currNo => {
+          const currency = getCurrencyByNo(currNo === '0' ? 53 : parseInt(currNo));
+          const currencyCode = currency ? currency.Kodu : `CUR${currNo}`;
+          
+          return `
+    FORMAT(ISNULL([CUR_${currNo}_Borç],0),'N','tr-TR') AS [${currencyCode}_Borç],
+    FORMAT(ISNULL([CUR_${currNo}_Alacak],0),'N','tr-TR') AS [${currencyCode}_Alacak],
+    CASE 
+      WHEN [CUR_${currNo}_Borç] IS NULL AND [CUR_${currNo}_Alacak] IS NULL THEN NULL
+      WHEN ISNULL([CUR_${currNo}_Borç],0) - ISNULL([CUR_${currNo}_Alacak],0) > 0 
+        THEN FORMAT(ISNULL([CUR_${currNo}_Borç],0) - ISNULL([CUR_${currNo}_Alacak],0),'N','tr-TR') + ' (B)'
+      WHEN ISNULL([CUR_${currNo}_Borç],0) - ISNULL([CUR_${currNo}_Alacak],0) < 0 
+        THEN FORMAT(ABS(ISNULL([CUR_${currNo}_Borç],0) - ISNULL([CUR_${currNo}_Alacak],0)),'N','tr-TR') + ' (A)'
+      ELSE FORMAT(0,'N','tr-TR')
+    END AS [${currencyCode}_Bakiye]`;
+        }).join(',');
+        
+        // 3. Dinamik sorguyu birleştir
+        sqlQuery = `
+        WITH hareket AS (
+          SELECT 
+            C.CLIENTREF,
+            CLC.CODE AS [Cari Kodu],
+            CLC.DEFINITION_ AS [Cari Ünvanı],
+            'CUR_' + CAST(C.TRCURR AS VARCHAR) AS CURR_CODE,
+            C.SIGN,
+            C.TRNET
+          FROM LG_${firmaNo}_${donemNo}_CLFLINE C
+          INNER JOIN LG_${firmaNo}_CLCARD CLC ON CLC.LOGICALREF = C.CLIENTREF
+          WHERE C.CANCELLED = 0 AND CLC.ACTIVE = 0 AND C.TRCURR IN (${currencyNos.join(',')})
+        ),
+        pivot_data AS (
+          SELECT 
+            CLIENTREF,
+            [Cari Kodu],
+            [Cari Ünvanı],
+            CURR_CODE + CASE SIGN WHEN 0 THEN '_Borç' ELSE '_Alacak' END AS colname,
+            SUM(TRNET) AS TUTAR
+          FROM hareket
+          GROUP BY CLIENTREF, [Cari Kodu], [Cari Ünvanı], CURR_CODE, SIGN
+        ),
+        pivoted AS (
+          SELECT *
+          FROM pivot_data
+          PIVOT (
+            SUM(TUTAR)
+            FOR colname IN (${pivotCols})
+          ) p
+        )
+        SELECT 
+          CLIENTREF,
+          [Cari Kodu],
+          [Cari Ünvanı],${bakiyeCols}
+        FROM pivoted
+        WHERE ${currencyNos.map(currNo => `([CUR_${currNo}_Borç] > 0 OR [CUR_${currNo}_Alacak] > 0)`).join(' OR ')}
+        ORDER BY [Cari Ünvanı]`;
+      }
 
       console.log('📝 Dinamik SQL Sorgusu:', sqlQuery);
 
@@ -336,120 +533,180 @@ export default function CBakiye() {
               />
               <div>
                 <h2 className="text-2xl lg:text-3xl font-bold mb-2">Cari Bakiye Raporu</h2>
+                <p className="text-red-100 text-sm">
+                  Seçili Kurlar: {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).join(', ')}
+                </p>
               </div>
             </div>
-            <div className="mt-4 lg:mt-0 lg:hidden xl:block">
+            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
               <div className="text-left lg:text-right">
                 <p className="text-red-100 text-sm">Bugün</p>
                 <p className="text-lg lg:text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setShowCurrencySelector(!showCurrencySelector)}
+                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium"
+                >
+                  💱 Kur Seçimi
+                </button>
+                <button
+                  onClick={fetchSqlData}
+                  disabled={loading || selectedCurrencies.length === 0}
+                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  📊 Raporu Getir
+                </button>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Currency Selector */}
+        {showCurrencySelector && (
+          <CurrencySelector
+            selectedCurrencies={selectedCurrencies}
+            onCurrencyChange={setSelectedCurrencies}
+            className="mb-4"
+          />
+        )}
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
+        <div className="space-y-6">
+          {/* Genel İstatistikler */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Toplam Müşteri</p>
+                  <p className="text-2xl font-semibold text-gray-900">{multiCurrencyStats.totalCustomers}</p>
                 </div>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Müşteri</p>
-                <p className="text-2xl font-semibold text-gray-900">{Array.isArray(data) ? data.length : 0}</p>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Seçili Kurlar</p>
+                  <p className="text-2xl font-semibold text-gray-900">{selectedCurrencies.length}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).slice(0, 3).join(', ')}
+                    {selectedCurrencies.length > 3 ? '...' : ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Rapor Durumu</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {Array.isArray(data) && data.length > 0 ? 'Hazır' : loading ? 'Yükleniyor...' : 'Bekliyor'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {Array.isArray(data) && data.length > 0 ? `${data.length} kayıt` : 'Raporu getirmek için butona tıklayın'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-purple-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Aktif Kurlar</p>
+                  <p className="text-2xl font-semibold text-gray-900">{multiCurrencyStats.currencies.length}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {multiCurrencyStats.currencies.length > 1 ? 'Multi-currency' : 'Tek kur'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Alacak</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {Array.isArray(data) ? data.reduce((sum, item) => sum + safeParseFloat(item.ALACAK), 0).toLocaleString('tr-TR', { 
-                    style: 'currency', 
-                    currency: 'TRY',
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  }) : '₺0,00'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Borç</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {Array.isArray(data) ? data.reduce((sum, item) => sum + safeParseFloat(item.BORÇ), 0).toLocaleString('tr-TR', { 
-                    style: 'currency', 
-                    currency: 'TRY',
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  }) : '₺0,00'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Net Bakiye</p>
-                <p className={`text-2xl font-semibold ${
-                  (() => {
-                    if (!Array.isArray(data)) return 'text-gray-900';
-                    const netBakiye = data.reduce((sum, item) => sum + safeParseFloat(item[getBakiyeColumnName()]), 0);
-                    return netBakiye < 0 ? 'text-red-600' : netBakiye > 0 ? 'text-green-600' : 'text-gray-900';
-                  })()
-                }`}>
-                  {(() => {
-                    if (!Array.isArray(data)) return '₺0,00';
-                    const netBakiye = data.reduce((sum, item) => sum + safeParseFloat(item[getBakiyeColumnName()]), 0);
-                    const formattedAmount = Math.abs(netBakiye).toLocaleString('tr-TR', { 
-                      style: 'currency', 
-                      currency: 'TRY',
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    });
+          {/* Kur Bazlı İstatistikler */}
+          {multiCurrencyStats.currencies.length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">💰 Kur Bazlı Toplamlar</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {multiCurrencyStats.currencies.map((currency, index) => (
+                  <div key={currency.code} className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <span className="text-2xl">💱</span>
+                        {currency.code}
+                      </h4>
+                      <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                        {getCurrencyByCode(currency.code)?.Adı || currency.code}
+                      </span>
+                    </div>
                     
-                    if (netBakiye === 0) {
-                      return formattedAmount;
-                    }
-                    
-                    const indicator = netBakiye < 0 ? '(A)' : '(B)';
-                    return `${formattedAmount} ${indicator}`;
-                  })()}
-                </p>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">💸 Toplam Borç:</span>
+                        <span className="font-semibold text-red-600">
+                          {currency.borc.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">💰 Toplam Alacak:</span>
+                        <span className="font-semibold text-green-600">
+                          {currency.alacak.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      
+                      <div className="border-t pt-2 flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-900">⚖️ Net Bakiye:</span>
+                        <span className={`font-bold ${
+                          currency.bakiye < 0 ? 'text-red-600' : 
+                          currency.bakiye > 0 ? 'text-green-600' : 'text-gray-900'
+                        }`}>
+                          {Math.abs(currency.bakiye).toLocaleString('tr-TR', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}
+                          {currency.bakiye !== 0 && (
+                            <span className="ml-1">
+                              {currency.bakiye < 0 ? '(A)' : '(B)'}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Action Button */}
