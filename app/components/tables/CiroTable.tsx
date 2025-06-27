@@ -337,8 +337,8 @@ export default function EnposCiroTable({ data }: CiroTableProps) {
         )}
       </div>
 
-      {/* Tablo */}
-      <div className="overflow-x-auto">
+      {/* Desktop Tablo Görünümü */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
@@ -401,14 +401,99 @@ export default function EnposCiroTable({ data }: CiroTableProps) {
         </table>
       </div>
 
+      {/* Mobil Card Görünümü */}
+      <div className="md:hidden space-y-4 bg-gray-50 rounded-lg p-4">
+        {paginatedData.map((row, index) => (
+          <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-red-700 mb-1">
+                  Şube {Math.round(safeParseFloat(row['Sube_No']))}
+                </h3>
+                <p className="text-gray-700 text-sm">
+                  {(() => {
+                    const fullName = String(row['NAME'] || '');
+                    const dashIndex = fullName.indexOf('-');
+                    return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
+                  })()}
+                </p>
+              </div>
+            </div>
+            
+            {/* Satış Bilgileri */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-green-50 rounded-md p-3">
+                <p className="text-xs text-gray-600 mb-1">NAKİT SATIŞ</p>
+                <p className="text-green-600 font-bold text-sm">
+                  {formatCurrency(safeParseFloat(row['NAKİT SATIŞ']))}
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 rounded-md p-3">
+                <p className="text-xs text-gray-600 mb-1">KREDİ KARTI SATIŞ</p>
+                <p className="text-green-600 font-bold text-sm">
+                  {formatCurrency(safeParseFloat(row['KREDİ KARTI İLE SATIŞ']))}
+                </p>
+              </div>
+              
+              <div className="bg-orange-50 rounded-md p-3">
+                <p className="text-xs text-gray-600 mb-1">YEMEK KARTI</p>
+                <p className="text-green-600 font-bold text-sm">
+                  {formatCurrency(safeParseFloat(row['YEMEK KARTI']))}
+                </p>
+              </div>
+              
+              <div className="bg-red-50 rounded-md p-3">
+                <p className="text-xs text-gray-600 mb-1">TOPLAM İADE</p>
+                <p className="text-red-600 font-bold text-sm">
+                  {formatCurrency(safeParseFloat(row['NAKİT İADE']) + safeParseFloat(row['KREDİ KARTI İADE']))}
+                </p>
+              </div>
+            </div>
+            
+            {/* İade Detayları */}
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <div className="text-xs">
+                <span className="text-gray-500">Nakit İade:</span>
+                <span className="text-red-600 font-medium ml-1">
+                  {formatCurrency(safeParseFloat(row['NAKİT İADE']))}
+                </span>
+              </div>
+              <div className="text-xs">
+                <span className="text-gray-500">KK İade:</span>
+                <span className="text-red-600 font-medium ml-1">
+                  {formatCurrency(safeParseFloat(row['KREDİ KARTI İADE']))}
+                </span>
+              </div>
+            </div>
+            
+            {/* Net Toplam */}
+            <div className="pt-3 border-t border-gray-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-600">NET CİRO:</span>
+                <span className={`font-bold text-lg ${
+                  safeParseFloat(row['TOPLAM']) < 0 
+                    ? 'text-red-600' 
+                    : safeParseFloat(row['TOPLAM']) > 0 
+                    ? 'text-green-600' 
+                    : 'text-gray-900'
+                }`}>
+                  {formatCurrency(safeParseFloat(row['TOPLAM']))}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Sayfalama */}
-      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-        <div className="flex items-center justify-between">
+      <div className="px-4 lg:px-6 py-3 bg-gray-50 border-t border-gray-200">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="text-sm text-gray-700">
             Toplam {filteredData.length} kayıttan {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filteredData.length)} arası gösteriliyor
           </div>
           
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => setCurrentPage(1)}
               disabled={currentPage === 1}
@@ -425,7 +510,7 @@ export default function EnposCiroTable({ data }: CiroTableProps) {
               Önceki
             </button>
             
-            <div className="flex space-x-1">
+            <div className="flex gap-1">
               {getPageNumbers().map(page => (
                 <button
                   key={page}

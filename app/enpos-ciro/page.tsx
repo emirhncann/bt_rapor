@@ -54,6 +54,53 @@ export default function EnposCiro() {
     }
   }, [isAuthenticated]);
 
+  // Connection bilgilerini önceden getir
+  useEffect(() => {
+    const preloadConnectionInfo = async () => {
+      if (!isAuthenticated) return;
+      
+      // Önce localStorage'dan kontrol et
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      if (cachedConnectionInfo) {
+        try {
+          JSON.parse(cachedConnectionInfo);
+          console.log('✅ Connection bilgileri zaten mevcut (Ciro)');
+          return;
+        } catch (e) {
+          console.log('⚠️ localStorage\'daki connection bilgileri geçersiz, yeniden alınacak');
+        }
+      }
+      
+      // localStorage'da yoksa API'den al
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        console.log('⚠️ CompanyRef bulunamadı');
+        return;
+      }
+
+      try {
+        console.log('🔄 Connection bilgileri önceden yükleniyor (Ciro)...');
+        const apiUrl = process.env.NODE_ENV === 'development' 
+          ? `/api/btrapor/connection-info/${companyRef}`
+          : `https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`;
+        
+        const connectionResponse = await fetch(apiUrl);
+        const connectionData = await connectionResponse.json();
+
+        if (connectionResponse.ok && connectionData.status === 'success' && connectionData.data) {
+          localStorage.setItem('connectionInfo', JSON.stringify(connectionData.data));
+          console.log('💾 Connection bilgileri önceden yüklendi ve kaydedildi (Ciro)');
+        } else {
+          console.log('⚠️ Connection bilgileri önceden yüklenirken hata:', connectionData);
+        }
+      } catch (error) {
+        console.log('⚠️ Connection bilgileri önceden yüklenirken hata:', error);
+      }
+    };
+
+    preloadConnectionInfo();
+  }, [isAuthenticated]);
+
   // YYMMDD formatında tarih oluştur (arka plan için)
   const formatToYYMMDD = (date: Date) => {
     const yy = String(date.getFullYear()).slice(-2);
@@ -187,6 +234,12 @@ export default function EnposCiro() {
       showErrorMessage('Lütfen tarih aralığı seçiniz');
       return;
     }
+
+    // Eğer zaten loading ise, duplicate tıklamayı engelle
+    if (loading) {
+      console.log('⚠️ Zaten rapor yükleniyokur, duplicate tıklama engellendi');
+      return;
+    }
     
     // Display formatından YYMMDD formatına çevir
     const startYYMMDD = convertDisplayToYYMMDD(startDate);
@@ -217,7 +270,10 @@ export default function EnposCiro() {
         }
 
         console.log('🔄 Connection bilgileri API\'den alınıyor (Ciro)...');
-        const connectionResponse = await fetch(`http://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const apiUrl = process.env.NODE_ENV === 'development' 
+          ? `/api/btrapor/connection-info/${companyRef}`
+          : `https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`;
+        const connectionResponse = await fetch(apiUrl);
         const connectionData = await connectionResponse.json();
 
         if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
@@ -276,27 +332,72 @@ export default function EnposCiro() {
 
       console.log('📝 Dinamik SQL Sorgusu (Ciro):', sqlQuery);
 
-      const response = await fetch('http://btrapor.boluteknoloji.tr/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          target_url: `http://${externalIP}:${servicePort}/sql`,
-          payload: {
-            connectionString,
-            query: sqlQuery
+      const proxyUrl = process.env.NODE_ENV === 'development' 
+        ? '/api/btrapor/proxy'
+        : 'https://btrapor.boluteknoloji.tr/proxy';
+      
+      // Retry logic - bazen ilk deneme başarısız oluyor
+      let response;
+      let lastError;
+      const maxRetries = 2;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries}...`);
+          response = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              target_url: `http://${externalIP}:${servicePort}/sql`,
+              payload: {
+                connectionString,
+                query: sqlQuery
+              }
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`✅ Proxy çağrısı ${attempt}. denemede başarılı`);
+            break; // Başarılı, döngüden çık
+          } else if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status}`);
+          } else {
+            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek...`);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
           }
-        })
-      });
+        } catch (error) {
+          lastError = error;
+          if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız:`, error);
+            throw error;
+          } else {
+            console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek:`, error);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+          }
+        }
+      }
+
+      // HTTP Status kontrolü
+      if (!response || !response.ok) {
+        const status = response?.status || 'Bilinmeyen';
+        const statusText = response?.statusText || 'Bağlantı hatası';
+        console.error('HTTP hatası:', status, statusText);
+        showErrorMessage(`Bağlantı hatası: ${status} - ${statusText}`);
+        setData([]);
+        return;
+      }
+
       const jsonData = await response.json();
       
       console.log('Gelen ciro data:', jsonData);
       
-      // Error kontrolü
-      if (jsonData.status === 'error') {
-        console.error('Server hatası:', jsonData.message);
-        showErrorMessage(`Veritabanı hatası: ${jsonData.message}`);
+      // Error kontrolü - çeşitli hata formatlarını kontrol et
+      if (jsonData.status === 'error' || jsonData.error || jsonData.curl_error) {
+        const errorMsg = jsonData.message || jsonData.error || jsonData.curl_error || 'Bilinmeyen hata';
+        console.error('Server hatası:', errorMsg);
+        showErrorMessage(`Veritabanı bağlantı hatası: ${errorMsg}`);
         setData([]);
         return;
       }
@@ -312,6 +413,7 @@ export default function EnposCiro() {
         setData(jsonData.recordset);
       } else {
         console.error('Beklenmeyen data formatı:', jsonData);
+        showErrorMessage('Beklenmeyen veri formatı alındı. Lütfen sistem yöneticisi ile iletişime geçin.');
         setData([]);
       }
     } catch (error) {
@@ -448,23 +550,23 @@ export default function EnposCiro() {
       
       <div className="space-y-6">
         {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-8 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
+        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-4 lg:p-8 text-white">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col lg:flex-row lg:items-center">
               <img 
                 src="/img/btRapor.png" 
                 alt="btRapor Logo" 
-                className="h-16 w-auto mr-6 bg-white rounded-lg p-2"
+                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
               />
               <div>
-                <h2 className="text-3xl font-bold mb-2">Enpos Ciro Raporu</h2>
-                <p className="text-red-100 text-lg">BT Rapor - Şube Bazlı Enpos Ciro Analiz Sistemi</p>
+                <h2 className="text-2xl lg:text-3xl font-bold mb-2">Enpos Ciro Raporu</h2>
+                <p className="text-red-100 text-base lg:text-lg">BT Rapor - Şube Bazlı Enpos Ciro Analiz Sistemi</p>
               </div>
             </div>
-            <div className="hidden md:block">
-              <div className="text-right">
+            <div className="mt-4 lg:mt-0 lg:hidden xl:block">
+              <div className="text-left lg:text-right">
                 <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+                <p className="text-lg lg:text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
               </div>
             </div>
           </div>

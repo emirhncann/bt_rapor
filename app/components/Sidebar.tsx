@@ -87,10 +87,10 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
   return (
     <>
-      {/* Overlay - sadece mobilde görünür */}
+      {/* Overlay - mobilde ve masaüstünde sidebar açıkken göster */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -102,12 +102,12 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         w-64 flex flex-col
       `}>
         {/* Logo Area */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 lg:p-6 border-b border-gray-200">
           <div className="flex items-center">
             <img 
               src="/img/btRapor.png" 
               alt="btRapor Logo" 
-              className="h-10 w-auto"
+              className="h-8 lg:h-10 w-auto"
             />
            
           </div>
@@ -122,14 +122,14 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 px-4 py-6 space-y-2">
+        <nav className="flex-1 px-4 py-4 lg:py-6 space-y-2 overflow-y-auto">
           {menuItems.map((item) => (
             <div key={item.name}>
               {item.dropdown ? (
                 <div>
                   <button
                     onClick={() => setReportsOpen(!reportsOpen)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    className="w-full flex items-center justify-between px-3 lg:px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                   >
                     <div className="flex items-center">
                       {item.icon}
@@ -146,12 +146,13 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   </button>
                   
                   {/* Dropdown Menü */}
-                  <div className={`ml-6 mt-1 space-y-1 transition-all duration-200 ${reportsOpen ? 'block' : 'hidden'}`}>
+                  <div className={`ml-4 lg:ml-6 mt-1 space-y-1 transition-all duration-200 ${reportsOpen ? 'block' : 'hidden'}`}>
                     {item.subItems?.map((subItem) => (
                       <a
                         key={subItem.name}
                         href={subItem.href}
-                        className="flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                        onClick={() => setIsOpen(false)}
+                        className="flex items-center px-3 lg:px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       >
                         {subItem.icon}
                         <span className="ml-3">{subItem.name}</span>
@@ -162,8 +163,9 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               ) : (
                 <a
                   href={item.href}
+                  onClick={() => setIsOpen(false)}
                   className={`
-                    flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200
+                    flex items-center px-3 lg:px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200
                     ${item.active
                       ? 'bg-red-50 text-red-700 border-r-2 border-red-600'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -186,11 +188,11 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 {userName ? userName.charAt(0).toUpperCase() : (userEmail ? userEmail.charAt(0).toUpperCase() : 'U')}
               </span>
             </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-700">
+            <div className="ml-3 min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-700 truncate">
                 {userName || (userEmail ? userEmail.split('@')[0] : 'Kullanıcı')}
               </p>
-              <p className="text-xs text-gray-500">{userEmail || 'user@example.com'}</p>
+              <p className="text-xs text-gray-500 truncate">{userEmail || 'user@example.com'}</p>
             </div>
           </div>
         </div>

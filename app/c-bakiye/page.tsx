@@ -40,6 +40,49 @@ export default function CBakiye() {
     }
   }, [isAuthenticated]);
 
+  // Connection bilgilerini önceden getir
+  useEffect(() => {
+    const preloadConnectionInfo = async () => {
+      if (!isAuthenticated) return;
+      
+      // Önce localStorage'dan kontrol et
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      if (cachedConnectionInfo) {
+        try {
+          JSON.parse(cachedConnectionInfo);
+          console.log('✅ Connection bilgileri zaten mevcut (C-Bakiye)');
+          return;
+        } catch (e) {
+          console.log('⚠️ localStorage\'daki connection bilgileri geçersiz, yeniden alınacak');
+        }
+      }
+      
+      // localStorage'da yoksa API'den al
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        console.log('⚠️ CompanyRef bulunamadı');
+        return;
+      }
+
+      try {
+        console.log('🔄 Connection bilgileri önceden yükleniyor (C-Bakiye)...');
+        const connectionResponse = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const connectionData = await connectionResponse.json();
+
+        if (connectionResponse.ok && connectionData.status === 'success' && connectionData.data) {
+          localStorage.setItem('connectionInfo', JSON.stringify(connectionData.data));
+          console.log('💾 Connection bilgileri önceden yüklendi ve kaydedildi (C-Bakiye)');
+        } else {
+          console.log('⚠️ Connection bilgileri önceden yüklenirken hata:', connectionData);
+        }
+      } catch (error) {
+        console.log('⚠️ Connection bilgileri önceden yüklenirken hata:', error);
+      }
+    };
+
+    preloadConnectionInfo();
+  }, [isAuthenticated]);
+
   // Güvenli sayı parse fonksiyonu
   const safeParseFloat = (value: any): number => {
     if (value === null || value === undefined || value === '') return 0;
@@ -49,6 +92,12 @@ export default function CBakiye() {
 
   const fetchSqlData = async () => {
     if (!isAuthenticated) return;
+    
+    // Eğer zaten loading ise, duplicate tıklamayı engelle
+    if (loading) {
+      console.log('⚠️ Zaten rapor yükleniyor, duplicate tıklama engellendi');
+      return;
+    }
     
     setLoading(true);
     try {
@@ -76,7 +125,7 @@ export default function CBakiye() {
         }
 
         console.log('🔄 Connection bilgileri API\'den alınıyor...');
-        const connectionResponse = await fetch(`http://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const connectionResponse = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
         const connectionData = await connectionResponse.json();
 
         console.log('📡 Connection Response:', connectionData);
@@ -131,29 +180,67 @@ export default function CBakiye() {
 
       console.log('📝 Dinamik SQL Sorgusu:', sqlQuery);
 
-      // SQL sorgusunu proxy üzerinden çalıştır
-      const response = await fetch('http://btrapor.boluteknoloji.tr/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          target_url: `http://${externalIP}:${servicePort}/sql`,
-          payload: {
-            connectionString,
-            query: sqlQuery
+      // SQL sorgusunu proxy üzerinden çalıştır - Retry logic ile
+      let response: Response | undefined;
+      const maxRetries = 2;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries} (C-Bakiye)...`);
+          response = await fetch('https://btrapor.boluteknoloji.tr/proxy', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              target_url: `http://${externalIP}:${servicePort}/sql`,
+              payload: {
+                connectionString,
+                query: sqlQuery
+              }
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`✅ Proxy çağrısı ${attempt}. denemede başarılı (C-Bakiye)`);
+            break; // Başarılı, döngüden çık
+          } else if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status} (C-Bakiye)`);
+          } else {
+            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek... (C-Bakiye)`);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
           }
-        })
-      });
+        } catch (error) {
+          if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız (C-Bakiye):`, error);
+            throw error;
+          } else {
+            console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek (C-Bakiye):`, error);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+          }
+        }
+      }
+
+      // HTTP Status kontrolü
+      if (!response || !response.ok) {
+        const status = response?.status || 'Bilinmeyen';
+        const statusText = response?.statusText || 'Bağlantı hatası';
+        console.error('HTTP hatası:', status, statusText);
+        alert(`Bağlantı hatası: ${status} - ${statusText}`);
+        setData([]);
+        return;
+      }
+
       const jsonData = await response.json();
       
       // localhost:45678'den gelen data formatını kontrol et
       console.log('Gelen data:', jsonData);
       
-      // Error kontrolü
-      if (jsonData.status === 'error') {
-        console.error('Server hatası:', jsonData.message);
-        alert(`Veritabanı hatası: ${jsonData.message}`);
+      // Error kontrolü - çeşitli hata formatlarını kontrol et
+      if (jsonData.status === 'error' || jsonData.error || jsonData.curl_error) {
+        const errorMsg = jsonData.message || jsonData.error || jsonData.curl_error || 'Bilinmeyen hata';
+        console.error('Server hatası:', errorMsg);
+        alert(`Veritabanı bağlantı hatası: ${errorMsg}`);
         setData([]);
         return;
       }
@@ -167,6 +254,7 @@ export default function CBakiye() {
         setData(jsonData.recordset);
       } else {
         console.error('Beklenmeyen data formatı:', jsonData);
+        alert('Beklenmeyen veri formatı alındı. Lütfen sistem yöneticisi ile iletişime geçin.');
         setData([]);
       }
     } catch (error) {
@@ -238,23 +326,22 @@ export default function CBakiye() {
       
       <div className="space-y-6">
         {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-8 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
+        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-4 lg:p-8 text-white">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col lg:flex-row lg:items-center">
               <img 
                 src="/img/btRapor.png" 
                 alt="btRapor Logo" 
-                className="h-16 w-auto mr-6 bg-white rounded-lg p-2"
+                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
               />
               <div>
-                <h2 className="text-3xl font-bold mb-2">Hoş Geldiniz!</h2>
-                <p className="text-red-100 text-lg">BT Rapor - Cari Bakiye Analiz Sistemi</p>
+                <h2 className="text-2xl lg:text-3xl font-bold mb-2">Cari Bakiye Raporu</h2>
               </div>
             </div>
-            <div className="hidden md:block">
-              <div className="text-right">
+            <div className="mt-4 lg:mt-0 lg:hidden xl:block">
+              <div className="text-left lg:text-right">
                 <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+                <p className="text-lg lg:text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
               </div>
             </div>
           </div>

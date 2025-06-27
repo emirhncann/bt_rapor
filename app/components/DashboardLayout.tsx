@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
@@ -10,7 +10,23 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children, title }: DashboardLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Resize olayını dinle - sadece responsive davranış için
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) { // lg breakpoint altında
+        setSidebarOpen(false); // Mobilde her zaman kapalı
+      }
+      // Masaüstünde kullanıcı tercihi korunur
+    };
+
+    // Resize olayını dinle
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   return (
     <div className="h-screen flex overflow-hidden bg-gray-50">
@@ -18,9 +34,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
       <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
       {/* Main content area */}
-      <div className={`flex flex-col flex-1 overflow-hidden transition-all duration-300 ease-in-out ${
-        sidebarOpen ? 'ml-64' : 'ml-0'
-      }`}>
+      <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
         <Header 
           sidebarOpen={sidebarOpen} 
@@ -29,7 +43,7 @@ export default function DashboardLayout({ children, title }: DashboardLayoutProp
         />
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-4 lg:p-6">
           <div className="max-w-full">
             {children}
           </div>

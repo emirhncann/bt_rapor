@@ -36,7 +36,7 @@ export default function Login() {
 
     try {
       // Doğrudan backend'e login isteği gönder (static export için)
-      const response = await fetch('http://btrapor.boluteknoloji.tr/login', {
+      const response = await fetch('https://btrapor.boluteknoloji.tr/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
