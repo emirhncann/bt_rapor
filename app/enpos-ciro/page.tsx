@@ -665,91 +665,85 @@ export default function EnposCiro() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Şube</p>
-                <p className="text-2xl font-semibold text-gray-900">{Array.isArray(data) ? data.length : 0}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Nakit Satış</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {formatCurrency(totals.nakitSatis)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Kredi Kartı Satış</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {formatCurrency(totals.krediKartiSatis)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-purple-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Net Ciro</p>
-                <p className={`text-2xl font-semibold ${
-                  totals.toplam < 0 ? 'text-red-600' : totals.toplam > 0 ? 'text-green-600' : 'text-gray-900'
-                }`}>
-                  {formatCurrency(totals.toplam)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Detailed Stats Cards - Only show when data exists */}
         {data.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Toplam Şube */}
             <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Yemek Kartı Satış</p>
-                  <p className="text-2xl font-semibold text-orange-600">
-                    {formatCurrency(totals.yemekKarti)}
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Toplam Şube</p>
+                  <p className="text-2xl font-semibold text-gray-900">{Array.isArray(data) ? data.length : 0}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Nakit Satış */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Nakit Satış</p>
+                  <p className="text-2xl font-semibold text-green-600">
+                    {formatCurrency(totals.nakitSatis)}
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Kredi Kartı Satış */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Kredi Kartı Satış</p>
+                  <p className="text-2xl font-semibold text-blue-600">
+                    {formatCurrency(totals.krediKartiSatis)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Net Ciro */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-purple-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Net Ciro</p>
+                  <p className="text-2xl font-semibold text-purple-600">
+                    {formatCurrency(totals.toplam)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Yemek Kartı Satış */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-orange-100 rounded-md flex items-center justify-center">
                     <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -757,22 +751,18 @@ export default function EnposCiro() {
                     </svg>
                   </div>
                 </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm text-gray-500">
-                  <span>Yemek kartı ile yapılan satışlar</span>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Yemek Kartı Satış</p>
+                  <p className="text-2xl font-semibold text-orange-600">
+                    {formatCurrency(totals.yemekKarti)}
+                  </p>
                 </div>
               </div>
             </div>
 
+            {/* Toplam İade */}
             <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Toplam İade</p>
-                  <p className="text-2xl font-semibold text-red-600">
-                    {formatCurrency(totals.nakitIade + totals.krediKartiIade)}
-                  </p>
-                </div>
+              <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
                     <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -780,38 +770,43 @@ export default function EnposCiro() {
                     </svg>
                   </div>
                 </div>
-              </div>
-              <div className="mt-4 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Nakit İade:</span>
-                  <span className="text-gray-900">{formatCurrency(totals.nakitIade)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">KK İade:</span>
-                  <span className="text-gray-900">{formatCurrency(totals.krediKartiIade)}</span>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Toplam İade</p>
+                  <p className="text-2xl font-semibold text-red-600">
+                    {formatCurrency(totals.nakitIade + totals.krediKartiIade)}
+                  </p>
+                  <div className="mt-1 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Nakit İade:</span>
+                      <span className="text-gray-600">{formatCurrency(totals.nakitIade)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">KK İade:</span>
+                      <span className="text-gray-600">{formatCurrency(totals.krediKartiIade)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Ortalama Şube Cirosu */}
             <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Ortalama Şube Cirosu</p>
-                  <p className="text-2xl font-semibold text-blue-600">
-                    {formatCurrency(data.length > 0 ? totals.toplam / data.length : 0)}
-                  </p>
-                </div>
+              <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
                 </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm text-gray-500">
-                  <span>Şube başına ortalama performans</span>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Ortalama Şube Cirosu</p>
+                  <p className="text-2xl font-semibold text-indigo-600">
+                    {formatCurrency(data.length > 0 ? totals.toplam / data.length : 0)}
+                  </p>
+                  <div className="mt-1">
+                    <span className="text-xs text-gray-500">Şube başına ortalama performans</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -821,7 +816,7 @@ export default function EnposCiro() {
         {/* Table Section */}
         {data.length > 0 ? (
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <EnposCiroTable data={data} />
+            <EnposCiroTable data={data} startDate={startDate} endDate={endDate} />
           </div>
         ) : (
           !loading && (

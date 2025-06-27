@@ -1,6 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+
+// jsPDF türleri için extend
+declare module 'jspdf' {
+  interface jsPDF {
+    autoTable: (options: any) => jsPDF;
+  }
+}
 
 interface CBakiyeTableProps {
   data: any[];
@@ -33,6 +43,370 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
     if (value === null || value === undefined || value === '') return 0;
     const parsed = parseFloat(String(value));
     return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Export fonksiyonları
+  const exportToExcel = () => {
+    try {
+      // Filtered data'yı kullan
+      const exportData = filteredData.map(row => {
+        const newRow: any = {};
+        Object.keys(row).forEach(key => {
+          if (key !== 'LOGICALREF') {
+            if (key === 'BORÇ' || key === 'ALACAK') {
+              // Para formatında TL işaretiyle
+              const value = safeParseFloat(row[key]);
+              newRow[key] = value.toLocaleString('tr-TR', { 
+                style: 'currency', 
+                currency: 'TRY',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              });
+            } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
+              // Bakiye formatında TL + (A)/(B) gösterimi
+              const value = safeParseFloat(row[key]);
+              const formattedCurrency = Math.abs(value).toLocaleString('tr-TR', { 
+                style: 'currency', 
+                currency: 'TRY',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              });
+              
+              if (value === 0) {
+                newRow[key] = formattedCurrency;
+              } else {
+                const indicator = value < 0 ? '(A)' : '(B)';
+                newRow[key] = `${formattedCurrency} ${indicator}`;
+              }
+            } else {
+              newRow[key] = row[key];
+            }
+          }
+        });
+        return newRow;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Cari Bakiye');
+
+      // Sütun genişliklerini ayarla
+      const columnWidths = Object.keys(exportData[0] || {}).map(key => {
+        if (key === 'ÜNVANI') return { wch: 30 };
+        if (key === 'KODU') return { wch: 15 };
+        if (key === 'BORÇ' || key === 'ALACAK' || key === 'BAKİYE' || key === 'BAKIYE') return { wch: 15 };
+        return { wch: 12 };
+      });
+      worksheet['!cols'] = columnWidths;
+
+      // Dosyayı indir
+      const fileName = `Cari_Bakiye_${new Date().toLocaleDateString('tr-TR').replace(/\//g, '_')}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+    } catch (error) {
+      console.error('Excel export hatası:', error);
+      alert('Excel dosyası oluşturulurken hata oluştu.');
+    }
+  };
+
+  const exportToPDF = () => {
+    try {
+      // Toplam hesaplamalar
+      const totals = filteredData.reduce((acc, item) => ({
+        toplamMusteri: acc.toplamMusteri + 1,
+        toplamBorc: acc.toplamBorc + safeParseFloat(item.BORÇ),
+        toplamAlacak: acc.toplamAlacak + safeParseFloat(item.ALACAK),
+        netBakiye: acc.netBakiye + safeParseFloat(item.BAKİYE || item.BAKIYE || Object.keys(item).find(key => key.includes('BAKIYE') || key.includes('BAKİYE')) ? item[Object.keys(item).find(key => key.includes('BAKIYE') || key.includes('BAKİYE')) || 'BAKIYE'] : 0)
+      }), {
+        toplamMusteri: 0,
+        toplamBorc: 0,
+        toplamAlacak: 0,
+        netBakiye: 0
+      });
+
+      // Yazdırma için HTML oluştur (PDF'e optimize edilmiş)
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Pop-up engelleyici nedeniyle PDF yazdırma penceresi açılamıyor.');
+        return;
+      }
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Cari Bakiye Raporu - PDF</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
+            .header { margin-bottom: 30px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+            .header-top { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
+            .logo { width: 100px; height: auto; flex-shrink: 0; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .header-content { flex: 1; }
+            .header h1 { color: white; margin: 0 0 8px 0; font-size: 22px; text-align: left; font-weight: bold; letter-spacing: 0.5px; }
+            .header p { margin: 3px 0; color: rgba(255,255,255,0.9); font-size: 12px; text-align: left; }
+            .pdf-info { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 10px; margin-bottom: 25px; border-radius: 4px; }
+            .pdf-info strong { color: #92400e; }
+            
+            /* İstatistik Kutuları */
+            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+            .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
+            .stat-box.primary { border-color: #991b1b; background-color: #fef2f2; }
+            .stat-box.success { border-color: #059669; background-color: #ecfdf5; }
+            .stat-box.warning { border-color: #d97706; background-color: #fffbeb; }
+            .stat-box.danger { border-color: #dc2626; background-color: #fef2f2; }
+            .stat-title { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
+            .stat-value { font-size: 14px; font-weight: bold; color: #1f2937; }
+            .stat-subtitle { font-size: 8px; color: #9ca3af; margin-top: 2px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .number { text-align: right; }
+            .currency { font-weight: bold; }
+            .positive { color: #059669; }
+            .negative { color: #dc2626; }
+            @media print {
+              body { margin: 0; font-size: 10px; }
+              .pdf-info { display: none; }
+              .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
+              .stat-box { padding: 8px; }
+              table { font-size: 8px; }
+              th, td { padding: 3px; }
+              .header { margin-bottom: 20px; padding: 15px; }
+              .header-top { gap: 15px; margin-bottom: 10px; }
+              .logo { width: 75px; }
+              .header h1 { font-size: 16px; margin: 0 0 3px 0; }
+              .header p { font-size: 9px; margin: 1px 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+              <div class="header-content">
+                <h1>CARİ BAKİYE RAPORU</h1>
+                <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR')}</p>
+                <p><strong>Toplam Müşteri:</strong> ${filteredData.length} adet</p>
+                <p><strong>Rapor Türü:</strong> Detaylı Cari Hesap Bakiye Analizi</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="pdf-info">
+            <strong>📄 PDF Olarak Kaydetmek İçin:</strong><br>
+            Yazdırma diyaloğunda "Hedef" kısmından <strong>"PDF olarak kaydet"</strong> seçeneğini seçin.
+          </div>
+          
+          <!-- İstatistik Kutuları -->
+          <div class="stats-grid">
+            <div class="stat-box primary">
+              <div class="stat-title">Toplam Müşteri</div>
+              <div class="stat-value">${totals.toplamMusteri}</div>
+              
+            </div>
+            
+            <div class="stat-box success">
+              <div class="stat-title">Toplam Alacak</div>
+              <div class="stat-value">${totals.toplamAlacak.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</div>
+             
+            </div>
+            
+            <div class="stat-box warning">
+              <div class="stat-title">Toplam Borç</div>
+              <div class="stat-value">${totals.toplamBorc.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</div>
+              
+            </div>
+            
+            <div class="stat-box ${totals.netBakiye < 0 ? 'danger' : totals.netBakiye > 0 ? 'success' : 'primary'}">
+              <div class="stat-title">Net Bakiye</div>
+              <div class="stat-value">${Math.abs(totals.netBakiye).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺ ${totals.netBakiye === 0 ? '' : totals.netBakiye < 0 ? '(A)' : '(B)'}</div>
+            </div>
+          </div>
+          
+          <h3 style="color: #991b1b; margin: 20px 0 10px 0; font-size: 14px; border-bottom: 2px solid #991b1b; padding-bottom: 5px;">DETAYLI CARİ HESAP LİSTESİ</h3>
+          
+          <table>
+            <thead>
+              <tr>
+                ${Object.keys(filteredData[0] || {})
+                  .filter(key => key !== 'LOGICALREF')
+                  .map(header => `<th>${header}</th>`)
+                  .join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredData.map(row => `
+                <tr>
+                  ${Object.keys(row)
+                    .filter(key => key !== 'LOGICALREF')
+                    .map(key => {
+                      const value = row[key];
+                      if (key === 'BORÇ' || key === 'ALACAK') {
+                        return `<td class="number currency">${safeParseFloat(value).toLocaleString('tr-TR', { 
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2 
+                        })}</td>`;
+                      } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
+                        const numValue = safeParseFloat(value);
+                        const formatted = Math.abs(numValue).toLocaleString('tr-TR', { 
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2 
+                        });
+                        const colorClass = numValue < 0 ? 'negative' : numValue > 0 ? 'positive' : '';
+                        const indicator = numValue === 0 ? '' : numValue < 0 ? ' (A)' : ' (B)';
+                        return `<td class="number currency ${colorClass}">${formatted}${indicator}</td>`;
+                      }
+                      return `<td>${value || ''}</td>`;
+                    }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            Tüm tutarlar Türk Lirası (₺) cinsindendir. Bakiye gösterimi: (A) = Alacaklı, (B) = Borçlu.
+          </div>
+          
+          <script>
+            // Sayfa yüklendiğinde otomatik yazdırma diyaloğunu aç
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+            
+            // Yazdırma tamamlandığında veya iptal edildiğinde pencereyi kapat
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+    } catch (error) {
+      console.error('PDF yazdırma hatası:', error);
+      alert('PDF yazdırma işlemi sırasında hata oluştu.');
+    }
+  };
+
+  const handlePrint = () => {
+    try {
+      // Yazdırma için HTML oluştur
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Pop-up engelleyici nedeniyle yazdırma penceresi açılamıyor.');
+        return;
+      }
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Cari Bakiye Raporu</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            .header-top { display: flex; align-items: flex-start; gap: 15px; }
+            .logo { width: 60px; height: auto; flex-shrink: 0; }
+            .header-content { flex: 1; }
+            .header h1 { color: #991b1b; margin: 0 0 5px 0; font-size: 16px; text-align: left; }
+            .header p { margin: 2px 0; color: #666; font-size: 10px; text-align: left; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .number { text-align: right; }
+            .currency { font-weight: bold; }
+            .positive { color: #1f2937; }
+            .negative { color: #dc2626; }
+                         @media print {
+               body { margin: 0; font-size: 9px; }
+               .no-print { display: none; }
+               table { font-size: 8px; }
+               th, td { padding: 3px; }
+               .header { margin-bottom: 10px; }
+               .header-top { gap: 10px; }
+               .logo { width: 45px; }
+               .header h1 { font-size: 14px; margin: 0 0 3px 0; }
+               .header p { font-size: 8px; margin: 1px 0; }
+             }
+          </style>
+        </head>
+        <body>
+                     <div class="header">
+             <div class="header-top">
+               <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+               <div class="header-content">
+                 <h1>CARİ BAKİYE RAPORU</h1>
+                 <p>Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR')}</p>
+                 <p>Toplam Müşteri: ${filteredData.length} adet</p>
+               </div>
+             </div>
+           </div>
+          <table>
+            <thead>
+              <tr>
+                ${Object.keys(filteredData[0] || {})
+                  .filter(key => key !== 'LOGICALREF')
+                  .map(header => `<th>${header}</th>`)
+                  .join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredData.map(row => `
+                <tr>
+                  ${Object.keys(row)
+                    .filter(key => key !== 'LOGICALREF')
+                    .map(key => {
+                      const value = row[key];
+                      if (key === 'BORÇ' || key === 'ALACAK') {
+                        return `<td class="number currency">${safeParseFloat(value).toLocaleString('tr-TR', { 
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2 
+                        })}</td>`;
+                      } else if (key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')) {
+                        const numValue = safeParseFloat(value);
+                        const formatted = Math.abs(numValue).toLocaleString('tr-TR', { 
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2 
+                        });
+                        const colorClass = numValue < 0 ? 'negative' : numValue > 0 ? 'positive' : '';
+                        const indicator = numValue === 0 ? '' : numValue < 0 ? ' (A)' : ' (B)';
+                        return `<td class="number currency ${colorClass}">${formatted}${indicator}</td>`;
+                      }
+                      return `<td>${value || ''}</td>`;
+                    }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            Tüm tutarlar Türk Lirası (₺) cinsindendir. Bakiye gösterimi: (A) = Alacaklı, (B) = Borçlu.
+          </div>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      
+      // Yazdırma diyalogunu aç
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    } catch (error) {
+      console.error('Yazdırma hatası:', error);
+      alert('Yazdırma işlemi sırasında hata oluştu.');
+    }
   };
 
   // Arama fonksiyonu
@@ -208,12 +582,39 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="p-4 border-b border-gray-200">
         {/* Başlık ve İstatistikler */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-4">
           <h3 className="text-lg font-semibold text-gray-800">Cari Hesap Listesi</h3>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="text-sm text-gray-500">
               {filteredData.length} / {data.length} kayıt
             </div>
+            
+            {/* Export Butonları */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportToExcel}
+                className="px-3 py-2 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors flex items-center gap-2"
+                title="Excel olarak indir"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h10v2H7v-2z"/>
+                  <path d="M9 9h6v6H9V9zm1 1v4h4v-4h-4z"/>
+                </svg>
+                <span className="hidden sm:inline">Excel</span>
+              </button>
+              
+              <button
+                onClick={exportToPDF}
+                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-2"
+                title="PDF olarak yazdır"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <span className="hidden sm:inline">PDF</span>
+              </button>
+            </div>
+            
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="px-3 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors flex items-center gap-2"
