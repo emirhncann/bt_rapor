@@ -82,7 +82,7 @@ export default function EnposCiro() {
         console.log('🔄 Connection bilgileri önceden yükleniyor (Ciro)...');
         const apiUrl = process.env.NODE_ENV === 'development' 
           ? `/api/btrapor/connection-info/${companyRef}`
-          : `https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`;
+          : `https://api.btrapor.com/connection-info/${companyRef}`;
         
         const connectionResponse = await fetch(apiUrl);
         const connectionData = await connectionResponse.json();
@@ -272,7 +272,7 @@ export default function EnposCiro() {
         console.log('🔄 Connection bilgileri API\'den alınıyor (Ciro)...');
         const apiUrl = process.env.NODE_ENV === 'development' 
           ? `/api/btrapor/connection-info/${companyRef}`
-          : `https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`;
+          : `https://api.btrapor.com/connection-info/${companyRef}`;
         const connectionResponse = await fetch(apiUrl);
         const connectionData = await connectionResponse.json();
 
@@ -336,7 +336,7 @@ GROUP BY B.Sube_No,D.NAME
 
       const proxyUrl = process.env.NODE_ENV === 'development' 
         ? '/api/btrapor/proxy'
-        : 'https://btrapor.boluteknoloji.tr/proxy';
+        : 'https://api.btrapor.com/proxy';
       
       // Retry logic - bazen ilk deneme başarısız oluyor
       let response;

@@ -48,7 +48,7 @@ export default function Dashboard() {
 
       console.log('🔄 Ana sayfada connection bilgileri localStorage\'a kaydediliyor...');
       
-              const response = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+              const response = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
       const data = await response.json();
 
       if (response.ok && data.status === 'success' && data.data) {

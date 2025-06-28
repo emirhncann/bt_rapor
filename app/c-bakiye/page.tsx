@@ -82,7 +82,7 @@ export default function CBakiye() {
 
       try {
         console.log('🔄 Connection bilgileri önceden yükleniyor (C-Bakiye)...');
-        const connectionResponse = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const connectionResponse = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
         const connectionData = await connectionResponse.json();
 
         if (connectionResponse.ok && connectionData.status === 'success' && connectionData.data) {
@@ -227,7 +227,7 @@ export default function CBakiye() {
             await new Promise(resolve => setTimeout(resolve, delay));
           }
           
-          response = await fetch('https://btrapor.boluteknoloji.tr/proxy', {
+          response = await fetch('https://api.btrapor.com/proxy', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -572,7 +572,7 @@ export default function CBakiye() {
         }
 
         console.log('🔄 Connection bilgileri API\'den alınıyor...');
-        const connectionResponse = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+        const connectionResponse = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
         const connectionData = await connectionResponse.json();
 
         console.log('📡 Connection Response:', connectionData);
@@ -711,7 +711,7 @@ export default function CBakiye() {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries} (C-Bakiye)...`);
-          response = await fetch('https://btrapor.boluteknoloji.tr/proxy', {
+          response = await fetch('https://api.btrapor.com/proxy', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

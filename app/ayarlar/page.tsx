@@ -106,7 +106,7 @@ export default function Settings() {
         return;
       }
 
-      const response = await fetch(`https://btrapor.boluteknoloji.tr/users-by-company/${companyRef}`);
+      const response = await fetch(`https://api.btrapor.com/users-by-company/${companyRef}`);
       const data = await response.json();
 
       console.log('API Response:', data); // Debug için
@@ -134,7 +134,7 @@ export default function Settings() {
 
       
 
-              const response = await fetch(`https://btrapor.boluteknoloji.tr/connection-info/${companyRef}`);
+              const response = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
       const data = await response.json();
 
       console.log('📦 Database Settings Response:', data);
@@ -226,11 +226,11 @@ export default function Settings() {
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
 
-    console.log('Silme API URL:', `https://btrapor.boluteknoloji.tr/delete-sub-user/${userToDelete.id}`); // Debug için
+    console.log('Silme API URL:', `https://api.btrapor.com/delete-sub-user/${userToDelete.id}`); // Debug için
 
     setIsDeletingUser(true);
     try {
-      const response = await fetch(`https://btrapor.boluteknoloji.tr/delete-sub-user/${userToDelete.id}`, {
+      const response = await fetch(`https://api.btrapor.com/delete-sub-user/${userToDelete.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -332,7 +332,7 @@ export default function Settings() {
         return;
       }
 
-              const response = await fetch('https://btrapor.boluteknoloji.tr/change-password', {
+              const response = await fetch('https://api.btrapor.com/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -436,11 +436,11 @@ export default function Settings() {
       };
 
       console.log('🚀 API İsteği Gönderiliyor:');
-      console.log('📋 URL:', 'https://btrapor.boluteknoloji.tr/save-connections');
+      console.log('📋 URL:', 'https://api.btrapor.com/save-connections');
       console.log('📦 Gönderilen Data:', connectionData);
       console.log('💾 JSON String:', JSON.stringify(connectionData, null, 2));
 
-      const response = await fetch('https://btrapor.boluteknoloji.tr/save-connections', {
+      const response = await fetch('https://api.btrapor.com/save-connections', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -514,7 +514,7 @@ export default function Settings() {
         role: 'user' // Sabit user rolü
       };
 
-              const response = await fetch('https://btrapor.boluteknoloji.tr/add-sub-user', {
+              const response = await fetch('https://api.btrapor.com/add-sub-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
