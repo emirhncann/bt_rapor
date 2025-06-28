@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import CBakiyeTable from '../components/tables/c_bakiye_table';
@@ -15,7 +15,19 @@ export default function CBakiye() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [selectedCurrencies, setSelectedCurrencies] = useState<number[]>([53]); // Varsayılan: TRY (No: 53)
   const [showCurrencySelector, setShowCurrencySelector] = useState(false);
+  const [preloadedDetails, setPreloadedDetails] = useState<{[key: string]: any[]}>({});
+  const [isPreloading, setIsPreloading] = useState(false);
   const router = useRouter();
+  
+  // Preload throttling için ref
+  const lastPreloadTime = useRef<number>(0);
+  const preloadTimeout = useRef<NodeJS.Timeout | null>(null);
+  const preloadedDetailsRef = useRef(preloadedDetails);
+  
+  // preloadedDetails ref'ini güncel tut
+  useEffect(() => {
+    preloadedDetailsRef.current = preloadedDetails;
+  }, [preloadedDetails]);
   
   // Animation data'yı yükleyelim
   const [animationData, setAnimationData] = useState(null);
@@ -93,6 +105,321 @@ export default function CBakiye() {
     const parsed = parseFloat(String(value));
     return isNaN(parsed) ? 0 : parsed;
   };
+
+  // Birden fazla müşteri için hareket detaylarını çek (IN operatörü ile)
+  const fetchMultipleClientDetails = async (clientRefs: string[], connectionInfo: any): Promise<{[key: string]: any[]}> => {
+    try {
+      if (!Array.isArray(clientRefs) || clientRefs.length === 0) {
+        return {};
+      }
+      
+      // public_ip'den dış IP ve portu ayır
+      let externalIP = 'localhost';
+      let servicePort = '45678';
+      
+      if (connectionInfo.public_ip) {
+        const [ip, port] = connectionInfo.public_ip.split(':');
+        externalIP = ip || 'localhost';
+        servicePort = port || '45678';
+      }
+
+      // Connection string'i oluştur
+      const connectionString = `Server=${connectionInfo.first_server_name || ''};Database=${connectionInfo.first_db_name || ''};User Id=${connectionInfo.first_username || ''};Password=${connectionInfo.first_password || ''};`;
+      
+      // Firma no ve dönem no'yu al
+      const firmaNo = connectionInfo.first_firma_no || '009';
+      const donemNo = connectionInfo.first_donem_no || '01';
+      
+      // ClientRef'leri IN sorgusu için hazırla
+      const clientRefList = clientRefs.map(ref => `'${ref}'`).join(', ');
+      
+      // SQL sorgusu - IN operatörü ile birden fazla müşteri
+      const detailQuery = `
+        SELECT 
+          CLIENTREF,
+          DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) AS [Tarih],
+          TRANNO AS [Fiş No],
+          CASE MODULENR
+            WHEN 4 THEN
+              CASE TRCODE
+                WHEN 31 THEN 'Satınalma Faturası'
+                WHEN 32 THEN 'Perakende Satış İade Faturası'
+                WHEN 33 THEN 'Toptan Satış İade Faturası'
+                WHEN 34 THEN 'Alınan Hizmet Faturası'
+                WHEN 36 THEN 'Satınalma İade Faturası'
+                WHEN 37 THEN 'Perakende Satış Faturası'
+                WHEN 38 THEN 'Toptan Satış Faturası'
+                WHEN 39 THEN 'Verilen Hizmet Faturası'
+                WHEN 43 THEN 'Satınalma Fiyat Farkı Faturası'
+                WHEN 44 THEN 'Satış Fiyat Farkı Faturası'
+                WHEN 56 THEN 'Müstahsil Makbuzu'
+              END
+            WHEN 5 THEN
+              CASE TRCODE
+                WHEN 1  THEN 'Nakit Tahsilat'
+                WHEN 2  THEN 'Nakit Ödeme'
+                WHEN 3  THEN 'Borç Dekontu'
+                WHEN 4  THEN 'Alacak Dekontu'
+                WHEN 5  THEN 'Virman Fişi'
+                WHEN 6  THEN 'Kur Farkı İşlemi'
+                WHEN 12 THEN 'Özel Fiş'
+                WHEN 14 THEN 'Açılış Fişi'
+                WHEN 41 THEN 'Verilen Vade Farkı Faturası'
+                WHEN 42 THEN 'Alınan Vade Farkı Faturası'
+                WHEN 45 THEN 'Verilen Serbest Meslek Makbuzu'
+                WHEN 46 THEN 'Alınan Serbest Meslek Makbuzu'
+                WHEN 70 THEN 'Kredi Kartı Fişi'
+                WHEN 71 THEN 'Kredi Kartı İade Fişi'
+                WHEN 72 THEN 'Firma Kredi Kartı Fişi'
+                WHEN 73 THEN 'Firma Kredi Kartı İade Fişi'
+              END
+            WHEN 6 THEN
+              CASE TRCODE
+                WHEN 61 THEN 'Çek Girişi'
+                WHEN 62 THEN 'Senet Girişi'
+                WHEN 63 THEN 'Çek Çıkışı(Cari Hesaba)'
+                WHEN 64 THEN 'Senet Çıkışı(Cari Hesaba)'
+                WHEN 65 THEN 'İşyerleri Arası İşlem Bordrosu(Müşteri Çeki)'
+                WHEN 66 THEN 'İşyerleri Arası İşlem Bordrosu(Müşteri Seneti)'
+              END
+            WHEN 7 THEN
+              CASE TRCODE
+                WHEN 20 THEN 'Gelen Havale/EFT'
+                WHEN 21 THEN 'Gönderilen Havale/EFT'
+                WHEN 24 THEN 'Döviz Alış Belgesi'
+                WHEN 28 THEN 'Alınan Hizmet Faturası'
+                WHEN 29 THEN 'Verilen Hizmet Faturası'
+                WHEN 30 THEN 'Müstahsil Makbuzu'
+              END
+            WHEN 10 THEN
+              CASE TRCODE
+                WHEN 1 THEN 'Nakit Tahsilat'
+                WHEN 2 THEN 'Nakit Ödeme'
+              END
+            ELSE 'Diğer'
+          END AS [Fiş Türü],
+          LINEEXP AS [Açıklama],
+          FORMAT(DEBIT, 'N', 'tr-TR') AS [Borç],
+          FORMAT(CREDIT, 'N', 'tr-TR') AS [Alacak],
+          CASE TRCURR
+            WHEN 0 THEN 'TL'
+            WHEN 1 THEN 'USD'
+            WHEN 20 THEN 'EURO'
+          END AS [Döviz],
+          CASE CANCELLED
+            WHEN 0 THEN 'İptal Edilmemiş'
+            WHEN 1 THEN 'İptal Edilmiş'
+          END AS [İptal Durumu]
+        FROM LV_${firmaNo}_${donemNo}_CLEKSTRE 
+        WHERE CLIENTREF IN (${clientRefList})
+        ORDER BY CLIENTREF, DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) ASC
+      `;
+
+      // Proxy üzerinden istek gönder - Geliştirilmiş retry logic ile
+      let response: Response | undefined;
+      const maxRetries = 4; // Proxy sorunları için 4 deneme
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // Exponential backoff: 1. deneme hemen, 2. deneme 300ms, 3. deneme 600ms, 4. deneme 1200ms
+          if (attempt > 1) {
+            const delay = Math.min(300 * Math.pow(2, attempt - 2), 1200);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+          
+          response = await fetch('https://btrapor.boluteknoloji.tr/proxy', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              target_url: `http://${externalIP}:${servicePort}/sql`,
+              payload: {
+                connectionString,
+                query: detailQuery
+              }
+            })
+          });
+          
+          if (response.ok) {
+            break; // Başarılı, döngüden çık
+          } else if (response.status === 502 && attempt < maxRetries) {
+            console.log(`⚠️ Çoklu müşteri sorgusu deneme ${attempt}: 502 Bad Gateway - Tekrar deneniyor...`);
+            continue;
+          } else if (attempt === maxRetries) {
+            console.warn(`⚠️ Çoklu müşteri sorgusu için detay çekilemedi - Tüm denemeler başarısız: HTTP ${response.status}`);
+            return {};
+          } else {
+            console.log(`⚠️ Çoklu müşteri sorgusu deneme ${attempt} başarısız (${response.status}), tekrar denenecek...`);
+          }
+        } catch (error) {
+          if (attempt === maxRetries) {
+            console.warn(`⚠️ Çoklu müşteri sorgusu için detay çekilirken hata:`, error);
+            return {};
+          } else {
+            console.log(`⚠️ Çoklu müşteri sorgusu deneme ${attempt} hata aldı, tekrar denenecek:`, error);
+          }
+        }
+      }
+
+      if (!response || !response.ok) {
+        console.warn(`⚠️ Çoklu müşteri sorgusu için detay çekilemedi: HTTP ${response?.status || 'Bilinmeyen'}`);
+        return {};
+      }
+
+      const jsonData = await response.json();
+      
+      // Error kontrolü
+      if (jsonData.status === 'error' || jsonData.error || jsonData.curl_error) {
+        const errorMsg = jsonData.message || jsonData.error || jsonData.curl_error || 'Bilinmeyen hata';
+        console.warn(`⚠️ Çoklu müşteri sorgusu için detay çekilemedi: ${errorMsg}`);
+        return {};
+      }
+      
+      // Veriyi parse et
+      let rawData: any[] = [];
+      if (Array.isArray(jsonData)) {
+        rawData = jsonData;
+      } else if (jsonData && Array.isArray(jsonData.data)) {
+        rawData = jsonData.data;
+      } else if (jsonData && Array.isArray(jsonData.recordset)) {
+        rawData = jsonData.recordset;
+      } else {
+        console.warn(`⚠️ Çoklu müşteri sorgusu için beklenmeyen veri formatı:`, {
+          type: typeof jsonData,
+          keys: jsonData ? Object.keys(jsonData) : 'null',
+          sample: jsonData
+        });
+        return {};
+      }
+      
+      // Verileri ClientRef'e göre grupla
+      const groupedData: {[key: string]: any[]} = {};
+      
+      // Her müşteri için boş array başlat
+      clientRefs.forEach(clientRef => {
+        groupedData[clientRef] = [];
+      });
+      
+      // Verileri grupla
+      rawData.forEach(row => {
+        const clientRef = row.CLIENTREF || row.clientref;
+        if (clientRef && groupedData.hasOwnProperty(clientRef)) {
+          groupedData[clientRef].push(row);
+        }
+      });
+      
+      // Log sonuçları
+      let totalRecords = 0;
+      Object.keys(groupedData).forEach(clientRef => {
+        const count = groupedData[clientRef].length;
+        totalRecords += count;
+        if (count > 0) {
+          console.log(`🟢 ClientRef ${clientRef}: ${count} hareket başarıyla yüklendi`);
+        } else {
+          console.log(`🟡 ClientRef ${clientRef}: Hareket bulunamadı (boş sonuç)`);
+        }
+      });
+      
+      console.log(`📊 Toplam ${rawData.length} kayıt ${Object.keys(groupedData).length} müşteriye dağıtıldı`);
+      
+      return groupedData;
+      
+    } catch (error) {
+      console.warn(`⚠️ Çoklu müşteri sorgusu için detay çekilirken hata:`, error);
+      return {};
+    }
+  };
+
+  // Throttled preload function
+  const throttledPreloadClientDetails = useCallback(async (clientRefs: string[]) => {
+    const now = Date.now();
+    const timeSinceLastCall = now - lastPreloadTime.current;
+    
+    // 3 saniye içinde tekrar çağrı yapılmasını engelle (tek sorgu kullandığımız için daha kısa)
+    if (timeSinceLastCall < 3000) {
+      console.log(`⏳ Throttling: Son çağrıdan bu yana ${Math.round(timeSinceLastCall/1000)}s geçti, 3s bekleniyor`);
+      return;
+    }
+    
+    lastPreloadTime.current = now;
+    
+    if (!Array.isArray(clientRefs) || clientRefs.length === 0) return;
+
+    // Sadece henüz yüklenmemiş client ref'leri filtrele
+    const missingRefs = clientRefs.filter(ref => !preloadedDetailsRef.current[ref]);
+    
+    if (missingRefs.length === 0) {
+      return; // Sessizce çık
+    }
+
+    console.log(`🔄 ${missingRefs.length} yeni müşteri için hareket detayları arka planda yükleniyor...`);
+    setIsPreloading(true);
+
+    try {
+      // Connection bilgilerini al
+      let connectionInfo = null;
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      
+      if (cachedConnectionInfo) {
+        try {
+          connectionInfo = JSON.parse(cachedConnectionInfo);
+        } catch (e) {
+          console.warn('⚠️ localStorage connection bilgileri parse edilemedi');
+          setIsPreloading(false);
+          return;
+        }
+      }
+
+      if (!connectionInfo) {
+        console.warn('⚠️ Connection bilgileri bulunamadı, hareket detayları yüklenemedi');
+        setIsPreloading(false);
+        return;
+      }
+
+      const newPreloadedData = { ...preloadedDetailsRef.current };
+      
+      // Artık tek sorguda tüm müşterilerin verilerini çekiyoruz (çok daha verimli!)
+      const groupedDetails = await fetchMultipleClientDetails(missingRefs, connectionInfo);
+      
+      // Sonuçları mevcut preloaded data'ya ekle
+      Object.keys(groupedDetails).forEach(clientRef => {
+        newPreloadedData[clientRef] = groupedDetails[clientRef];
+      });
+
+      setPreloadedDetails(newPreloadedData);
+      console.log(`✅ ${missingRefs.length} müşterinin hareket detayları arka planda hazırlandı`);
+      
+    } catch (error) {
+      console.error('❌ Hareket detayları yüklenirken hata:', error);
+    } finally {
+      setIsPreloading(false);
+    }
+  }, []);
+
+  // onPageChange callback'ini memoize et
+  const handlePageChange = useCallback((pageData: any[], currentPage: number, itemsPerPage: number) => {
+    console.log(`📄 Sayfa değişti: ${currentPage} (${itemsPerPage} kayıt/sayfa)`);
+    
+    // Sayfa değiştiğinde bellekteki tüm detayları temizle
+    setPreloadedDetails((prev) => {
+      console.log(`🧹 Bellekteki veriler temizleniyor (${Object.keys(prev).length} müşteri)`);
+      return {};
+    });
+    
+    // Mevcut sayfadaki müşteriler için hareket detaylarını yükle
+    const pageClientRefs = pageData
+      .map((row: any) => row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref)
+      .filter((ref: any) => ref && ref !== '');
+    
+    if (pageClientRefs.length > 0) {
+      console.log(`🔄 Yeni sayfa için ${pageClientRefs.length} müşteri detayı yüklenecek`);
+      // Küçük bir delay ile yükle (UI responsiv kalsın)
+      setTimeout(() => {
+        throttledPreloadClientDetails(pageClientRefs);
+      }, 300);
+    }
+  }, [throttledPreloadClientDetails]);
 
   // Multi-currency istatistikleri hesapla
   const calculateMultiCurrencyStats = () => {
@@ -405,7 +732,7 @@ export default function CBakiye() {
             console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status} (C-Bakiye)`);
           } else {
             console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek... (C-Bakiye)`);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms bekle
           }
         } catch (error) {
           if (attempt === maxRetries) {
@@ -413,7 +740,7 @@ export default function CBakiye() {
             throw error;
           } else {
             console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek (C-Bakiye):`, error);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms bekle
           }
         }
       }
@@ -443,16 +770,41 @@ export default function CBakiye() {
       }
       
       // Eğer data array değilse, uygun formata çevir
+      let finalData: any[] = [];
       if (Array.isArray(jsonData)) {
-        setData(jsonData);
+        finalData = jsonData;
       } else if (jsonData && Array.isArray(jsonData.data)) {
-        setData(jsonData.data);
+        finalData = jsonData.data;
       } else if (jsonData && Array.isArray(jsonData.recordset)) {
-        setData(jsonData.recordset);
+        finalData = jsonData.recordset;
       } else {
         console.error('Beklenmeyen data formatı:', jsonData);
         alert('Beklenmeyen veri formatı alındı. Lütfen sistem yöneticisi ile iletişime geçin.');
         setData([]);
+        return;
+      }
+
+      setData(finalData);
+      
+      // Ana rapor verisi geldikten sonra arka planda hareket detaylarını çek
+      if (finalData.length > 0) {
+        // Ana loading'i false yap, arka plan yükleme başlasın
+        setLoading(false);
+        
+        // İlk sayfa için hareket detaylarını arka planda çek (varsayılan 10 kayıt)
+        setTimeout(() => {
+          const defaultPageSize = 10;
+          const firstPageData = finalData.slice(0, defaultPageSize);
+          const firstPageClientRefs = firstPageData
+            .map(row => row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref)
+            .filter(ref => ref && ref !== '');
+          
+          if (firstPageClientRefs.length > 0) {
+            throttledPreloadClientDetails(firstPageClientRefs);
+          }
+        }, 500); // 500ms bekleyerek kullanıcının ana veriyi görmesini sağla
+        
+        return; // Burada return, aşağıdaki setLoading(false) çalışmasın
       }
     } catch (error) {
       console.error('Veri çekme hatası:', error);
@@ -652,6 +1004,8 @@ export default function CBakiye() {
             </div>
           </div>
 
+
+
           {/* Kur Bazlı İstatistikler */}
           {multiCurrencyStats.currencies.length > 0 && (
             <div>
@@ -753,7 +1107,11 @@ export default function CBakiye() {
             </div>
           </div>
       ) : Array.isArray(data) && data.length > 0 ? (
-        <CBakiyeTable data={data} />
+        <CBakiyeTable 
+          data={data} 
+          preloadedDetails={preloadedDetails}
+          onPageChange={handlePageChange}
+        />
       ) : (
           <div className="bg-white rounded-lg shadow p-12">
             <div className="text-center">

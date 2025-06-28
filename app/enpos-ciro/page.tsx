@@ -367,7 +367,7 @@ GROUP BY B.Sube_No,D.NAME
             console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status}`);
           } else {
             console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek...`);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms bekle
           }
         } catch (error) {
           lastError = error;
