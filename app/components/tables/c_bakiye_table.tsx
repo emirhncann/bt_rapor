@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import Lottie from 'lottie-react';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -31,6 +32,13 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Detay görüntüleme için yeni state'ler
+  const [selectedClientRef, setSelectedClientRef] = useState<string | null>(null);
+  const [clientDetails, setClientDetails] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [loadingAnimation, setLoadingAnimation] = useState(null);
 
   // Sayısal sütunlar - Multi-currency PIVOT desteği ile
   const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 
@@ -40,11 +48,206 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
     key.includes('CUR_') || key.endsWith('_Borç') || key.endsWith('_Alacak') || key.endsWith('_Bakiye')
   ) : ['BORÇ', 'ALACAK', 'BAKİYE'];
 
+  // Loading animasyonunu yükle
+  useEffect(() => {
+    fetch('/animations/loading.json')
+      .then(res => res.json())
+      .then(data => setLoadingAnimation(data))
+      .catch(err => console.log('Loading animasyonu yüklenemedi:', err));
+  }, []);
+
   // Güvenli sayı parse fonksiyonu
   const safeParseFloat = (value: any): number => {
     if (value === null || value === undefined || value === '') return 0;
     const parsed = parseFloat(String(value));
     return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Müşteri detaylarını getir
+  const fetchClientDetails = async (clientRef: string, clientName: string) => {
+    setLoadingDetails(true);
+    setSelectedClientRef(clientRef);
+    setShowDetails(true);
+    
+    try {
+      // Connection bilgilerini al
+      const connectionInfo = localStorage.getItem('connectionInfo');
+      if (!connectionInfo) {
+        alert('Bağlantı bilgileri bulunamadı. Lütfen sayfayı yenileyin.');
+        return;
+      }
+
+      const connData = JSON.parse(connectionInfo);
+      
+      // public_ip'den dış IP ve portu ayır
+      let externalIP = 'localhost';
+      let servicePort = '45678';
+      
+      if (connData.public_ip) {
+        const [ip, port] = connData.public_ip.split(':');
+        externalIP = ip || 'localhost';
+        servicePort = port || '45678';
+      }
+
+      // Connection string'i oluştur
+      const connectionString = `Server=${connData.first_server_name || ''};Database=${connData.first_db_name || ''};User Id=${connData.first_username || ''};Password=${connData.first_password || ''};`;
+      
+      // Firma no ve dönem no'yu al
+      const firmaNo = connData.first_firma_no || '009';
+      const donemNo = connData.first_donem_no || '01';
+      
+      console.log('🌐 Hedef Service:', `http://${externalIP}:${servicePort}/sql`);
+      
+      // SQL sorgusu - detay sorgusu
+      const detailQuery = `
+        SELECT 
+          DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) AS [Tarih],
+          TRANNO AS [Fiş No],
+          CASE MODULENR
+            WHEN 4 THEN
+              CASE TRCODE
+                WHEN 31 THEN 'Satınalma Faturası'
+                WHEN 32 THEN 'Perakende Satış İade Faturası'
+                WHEN 33 THEN 'Toptan Satış İade Faturası'
+                WHEN 34 THEN 'Alınan Hizmet Faturası'
+                WHEN 36 THEN 'Satınalma İade Faturası'
+                WHEN 37 THEN 'Perakende Satış Faturası'
+                WHEN 38 THEN 'Toptan Satış Faturası'
+                WHEN 39 THEN 'Verilen Hizmet Faturası'
+                WHEN 43 THEN 'Satınalma Fiyat Farkı Faturası'
+                WHEN 44 THEN 'Satış Fiyat Farkı Faturası'
+                WHEN 56 THEN 'Müstahsil Makbuzu'
+              END
+            WHEN 5 THEN
+              CASE TRCODE
+                WHEN 1  THEN 'Nakit Tahsilat'
+                WHEN 2  THEN 'Nakit Ödeme'
+                WHEN 3  THEN 'Borç Dekontu'
+                WHEN 4  THEN 'Alacak Dekontu'
+                WHEN 5  THEN 'Virman Fişi'
+                WHEN 6  THEN 'Kur Farkı İşlemi'
+                WHEN 12 THEN 'Özel Fiş'
+                WHEN 14 THEN 'Açılış Fişi'
+                WHEN 41 THEN 'Verilen Vade Farkı Faturası'
+                WHEN 42 THEN 'Alınan Vade Farkı Faturası'
+                WHEN 45 THEN 'Verilen Serbest Meslek Makbuzu'
+                WHEN 46 THEN 'Alınan Serbest Meslek Makbuzu'
+                WHEN 70 THEN 'Kredi Kartı Fişi'
+                WHEN 71 THEN 'Kredi Kartı İade Fişi'
+                WHEN 72 THEN 'Firma Kredi Kartı Fişi'
+                WHEN 73 THEN 'Firma Kredi Kartı İade Fişi'
+              END
+            WHEN 6 THEN
+              CASE TRCODE
+                WHEN 61 THEN 'Çek Girişi'
+                WHEN 62 THEN 'Senet Girişi'
+                WHEN 63 THEN 'Çek Çıkışı(Cari Hesaba)'
+                WHEN 64 THEN 'Senet Çıkışı(Cari Hesaba)'
+                WHEN 65 THEN 'İşyerleri Arası İşlem Bordrosu(Müşteri Çeki)'
+                WHEN 66 THEN 'İşyerleri Arası İşlem Bordrosu(Müşteri Seneti)'
+              END
+            WHEN 7 THEN
+              CASE TRCODE
+                WHEN 20 THEN 'Gelen Havale/EFT'
+                WHEN 21 THEN 'Gönderilen Havale/EFT'
+                WHEN 24 THEN 'Döviz Alış Belgesi'
+                WHEN 28 THEN 'Alınan Hizmet Faturası'
+                WHEN 29 THEN 'Verilen Hizmet Faturası'
+                WHEN 30 THEN 'Müstahsil Makbuzu'
+              END
+            WHEN 10 THEN
+              CASE TRCODE
+                WHEN 1 THEN 'Nakit Tahsilat'
+                WHEN 2 THEN 'Nakit Ödeme'
+              END
+            ELSE 'Diğer'
+          END AS [Fiş Türü],
+          LINEEXP AS [Açıklama],
+          FORMAT(DEBIT, 'N', 'tr-TR') AS [Borç],
+          FORMAT(CREDIT, 'N', 'tr-TR') AS [Alacak],
+          CASE TRCURR
+            WHEN 0 THEN 'TL'
+            WHEN 1 THEN 'USD'
+            WHEN 20 THEN 'EURO'
+          END AS [Döviz],
+          CASE CANCELLED
+            WHEN 0 THEN 'İptal Edilmemiş'
+            WHEN 1 THEN 'İptal Edilmiş'
+          END AS [İptal Durumu]
+        FROM LV_${firmaNo}_${donemNo}_CLEKSTRE 
+        WHERE CLIENTREF='${clientRef}'
+        ORDER BY DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) ASC
+      `;
+
+      // Proxy üzerinden istek gönder - Retry logic ile
+      let response: Response | undefined;
+      const maxRetries = 2;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`🔄 Müşteri detay çağrısı deneme ${attempt}/${maxRetries}...`);
+          response = await fetch('https://btrapor.boluteknoloji.tr/proxy', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              target_url: `http://${externalIP}:${servicePort}/sql`,
+              payload: {
+                connectionString,
+                query: detailQuery
+              }
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`✅ Müşteri detay çağrısı ${attempt}. denemede başarılı`);
+            break; // Başarılı, döngüden çık
+          } else if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status}`);
+          } else {
+            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek...`);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+          }
+        } catch (error) {
+          if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız:`, error);
+            throw error;
+          } else {
+            console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek:`, error);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+          }
+        }
+      }
+
+      if (!response) {
+        throw new Error('Response alınamadı');
+      }
+
+      const result = await response.json();
+
+      if (response.ok && (result.success || result.status === 'success')) {
+        setClientDetails(result.data || []);
+        console.log(`📋 ${result.data?.length || 0} adet müşteri hareketi yüklendi`);
+      } else {
+        console.error('Detay sorgusu hatası:', result);
+        alert('Müşteri detayları yüklenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'));
+        setClientDetails([]);
+      }
+    } catch (error) {
+      console.error('Detay fetch hatası:', error);
+      alert('Müşteri detayları yüklenirken hata oluştu.');
+      setClientDetails([]);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  // Detayları kapat
+  const closeDetails = () => {
+    setShowDetails(false);
+    setSelectedClientRef(null);
+    setClientDetails([]);
   };
 
   // Export fonksiyonları
@@ -581,16 +784,47 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
     
-    // Sayısal değerler için
-    if (sortColumn === 'BORÇ' || sortColumn === 'ALACAK' || sortColumn === 'BAKİYE' || sortColumn === 'BAKIYE' || sortColumn?.includes('BAKIYE') || sortColumn?.includes('BAKİYE')) {
-      const aNum = safeParseFloat(aValue);
-      const bNum = safeParseFloat(bValue);
+    // Sayısal değerler için - hem eski format hem de multi-currency format
+    const isNumericColumn = sortColumn === 'BORÇ' || sortColumn === 'ALACAK' || 
+                           sortColumn === 'BAKİYE' || sortColumn === 'BAKIYE' || 
+                           sortColumn?.includes('BAKIYE') || sortColumn?.includes('BAKİYE') ||
+                           sortColumn?.includes('_Borç') || sortColumn?.includes('_Alacak') || 
+                           sortColumn?.includes('_Bakiye') || sortColumn?.includes('Borç') || 
+                           sortColumn?.includes('Alacak') || sortColumn?.includes('Bakiye');
+    
+    if (isNumericColumn) {
+      // Özel parse fonksiyonu - (A) ve (B) ile birlikte gelen değerleri de işler
+      const parseNumericValue = (value: any): number => {
+        if (value === null || value === undefined || value === '') return 0;
+        
+        if (typeof value === 'string') {
+          // (A) ve (B) göstergeli bakiye değerleri için
+          if (value.includes('(A)')) {
+            // Alacaklı - negatif değer
+            const numStr = value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+            return -safeParseFloat(numStr);
+          } else if (value.includes('(B)')) {
+            // Borçlu - pozitif değer
+            const numStr = value.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+            return safeParseFloat(numStr);
+          } else {
+            // Normal sayısal değer
+            const numStr = value.replace(/\./g, '').replace(',', '.');
+            return safeParseFloat(numStr);
+          }
+        }
+        
+        return safeParseFloat(value);
+      };
+      
+      const aNum = parseNumericValue(aValue);
+      const bNum = parseNumericValue(bValue);
       return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
     }
     
     // String değerler için
-    const aStr = String(aValue).toLowerCase();
-    const bStr = String(bValue).toLowerCase();
+    const aStr = String(aValue || '').toLowerCase();
+    const bStr = String(bValue || '').toLowerCase();
     
     if (sortDirection === 'asc') {
       return aStr.localeCompare(bStr, 'tr');
@@ -935,8 +1169,17 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
                 >
                   <button
                     onClick={() => {
-                      // İleride detay modal açılacak
-                      console.log('Detay göster:', row);
+                      console.log('🔍 Row keys:', Object.keys(row));
+                      console.log('🔍 Row data:', row);
+                      const clientRef = row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref || '';
+                      const clientName = row.ÜNVANI || row['Cari Ünvanı'] || row.unvani || 'Müşteri';
+                      console.log('🔍 ClientRef:', clientRef);
+                      console.log('🔍 ClientName:', clientName);
+                      if (clientRef) {
+                        fetchClientDetails(clientRef, clientName);
+                      } else {
+                        alert('Müşteri referansı bulunamadı!');
+                      }
                     }}
                     className="text-gray-600 hover:text-red-800 transition-colors"
                     title="Detayları görüntüle"
@@ -1039,8 +1282,17 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
               </div>
               <button
                 onClick={() => {
-                  // İleride detay modal açılacak
-                  console.log('Detay göster:', row);
+                  console.log('🔍 Row keys:', Object.keys(row));
+                  console.log('🔍 Row data:', row);
+                  const clientRef = row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref || '';
+                  const clientName = row.ÜNVANI || row['Cari Ünvanı'] || row.unvani || 'Müşteri';
+                  console.log('🔍 ClientRef:', clientRef);
+                  console.log('🔍 ClientName:', clientName);
+                  if (clientRef) {
+                    fetchClientDetails(clientRef, clientName);
+                  } else {
+                    alert('Müşteri referansı bulunamadı!');
+                  }
                 }}
                 className="text-gray-600 hover:text-red-800 transition-colors p-2"
                 title="Detayları görüntüle"
@@ -1151,6 +1403,147 @@ export default function CBakiyeTable({ data }: CBakiyeTableProps) {
           Sonraki
         </button>
       </div>
+
+      {/* Müşteri Detay Modal Pop-up */}
+      {showDetails && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={closeDetails}
+          ></div>
+          
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative w-full max-w-[95vw] bg-white rounded-lg shadow-xl">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-red-800 to-red-900 text-white p-6 rounded-t-lg">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold">📋 Müşteri Hesap Hareketleri</h3>
+                    <p className="text-red-100 text-sm mt-2">
+                      Müşteri Kodu: {selectedClientRef} {clientDetails.length > 0 && `• ${clientDetails.length} hareket bulundu`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeDetails}
+                    className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700"
+                    title="Detayları kapat"
+                  >
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 max-h-[70vh] overflow-y-auto">
+                {loadingDetails ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    {loadingAnimation && (
+                      <Lottie 
+                        animationData={loadingAnimation} 
+                        style={{ width: 120, height: 120 }}
+                        loop={true}
+                      />
+                    )}
+                    <span className="text-gray-700 font-medium text-xl mt-4">Müşteri hareketleri yükleniyor...</span>
+                    <span className="text-gray-500 text-sm mt-2">Lütfen bekleyin, veriler getiriliyor</span>
+                  </div>
+                ) : clientDetails.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarih</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fiş No</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fiş Türü</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Açıklama</th>
+                          <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Borç</th>
+                          <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Alacak</th>
+                          <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Döviz</th>
+                          <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">İptal Durumu</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {clientDetails.map((detail, index) => (
+                          <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-red-50 transition-colors`}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                              {detail.Tarih ? new Date(detail.Tarih).toLocaleDateString('tr-TR') : ''}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700 font-semibold">
+                              {detail['Fiş No']}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-700">
+                              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
+                                {detail['Fiş Türü']}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600 max-w-xs">
+                              <div className="truncate" title={detail.Açıklama}>
+                                {detail.Açıklama || '-'}
+                              </div>
+                            </td>
+                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-gray-900">
+                               {detail.Borç && detail.Borç !== '0,00' ? detail.Borç : '-'}
+                             </td>
+                             <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-gray-900">
+                               {detail.Alacak && detail.Alacak !== '0,00' ? detail.Alacak : '-'}
+                             </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                detail.Döviz === 'TL' ? 'bg-red-100 text-red-800' :
+                                detail.Döviz === 'USD' ? 'bg-green-100 text-green-800' :
+                                detail.Döviz === 'EURO' ? 'bg-blue-100 text-blue-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {detail.Döviz}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                detail['İptal Durumu'] === 'İptal Edilmiş' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                              }`}>
+                                {detail['İptal Durumu'] === 'İptal Edilmiş' ? '❌ İptal' : '✅ Aktif'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-20">
+                    <svg className="mx-auto h-20 w-20 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 className="mt-6 text-xl font-medium text-gray-900">Hareket bulunamadı</h3>
+                    <p className="mt-3 text-base text-gray-500">Bu müşteri için herhangi bir hesap hareketi bulunmuyor.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-gray-50 px-6 py-4 rounded-b-lg">
+                <div className="flex justify-between items-center">
+                  <div className="text-sm text-gray-600">
+                    {clientDetails.length > 0 && (
+                      <span>Toplam {clientDetails.length} hareket • En eski tarihten en yeniye sıralı</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={closeDetails}
+                    className="px-6 py-2 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium"
+                  >
+                    Kapat
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

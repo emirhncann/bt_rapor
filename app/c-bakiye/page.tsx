@@ -338,7 +338,7 @@ export default function CBakiye() {
         sqlQuery = `
         WITH hareket AS (
           SELECT 
-            C.CLIENTREF,
+            C.CLIENTREF AS LOGICALREF,
             CLC.CODE AS [Cari Kodu],
             CLC.DEFINITION_ AS [Cari Ünvanı],
             'CUR_' + CAST(C.TRCURR AS VARCHAR) AS CURR_CODE,
@@ -350,13 +350,13 @@ export default function CBakiye() {
         ),
         pivot_data AS (
           SELECT 
-            CLIENTREF,
+            LOGICALREF,
             [Cari Kodu],
             [Cari Ünvanı],
             CURR_CODE + CASE SIGN WHEN 0 THEN '_Borç' ELSE '_Alacak' END AS colname,
             SUM(TRNET) AS TUTAR
           FROM hareket
-          GROUP BY CLIENTREF, [Cari Kodu], [Cari Ünvanı], CURR_CODE, SIGN
+          GROUP BY LOGICALREF, [Cari Kodu], [Cari Ünvanı], CURR_CODE, SIGN
         ),
         pivoted AS (
           SELECT *
@@ -367,7 +367,7 @@ export default function CBakiye() {
           ) p
         )
         SELECT 
-          CLIENTREF,
+          LOGICALREF,
           [Cari Kodu],
           [Cari Ünvanı],${bakiyeCols}
         FROM pivoted
