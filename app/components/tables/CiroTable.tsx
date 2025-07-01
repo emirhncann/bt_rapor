@@ -567,7 +567,12 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
 
   // Sütun genişliği ayarlama fonksiyonları
   const getColumnWidth = (column: string): number => {
-    return columnWidths[column] || 150;
+    if (columnWidths[column]) return columnWidths[column];
+    // Özel sütun genişlikleri
+    if (column === 'Sube_No') return 30;
+    if (column === 'NAME') return 250;
+    // Diğer sütunlar için varsayılan
+    return 150;
   };
 
   const handleMouseDown = (e: React.MouseEvent, column: string) => {
@@ -777,7 +782,7 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
                   onClick={() => handleSort(column)}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="truncate">{column}</span>
+                    <span className="truncate">{column === 'NAME' ? 'Şube' : column}</span>
                     {getSortIcon(column)}
                   </div>
                   
@@ -798,7 +803,9 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
                 {columns.map((column) => (
                   <td
                     key={column}
-                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                    className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${
+                      numericColumns.includes(column) ? 'text-right' : ''
+                    }`}
                     style={{ width: `${getColumnWidth(column)}px`, minWidth: `${getColumnWidth(column)}px` }}
                   >
                     <div className="truncate">
@@ -851,28 +858,28 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="bg-green-50 rounded-md p-3">
                 <p className="text-xs text-gray-600 mb-1">NAKİT SATIŞ</p>
-                <p className="text-green-600 font-bold text-sm">
+                <p className="text-green-600 font-bold text-sm text-right">
                   {formatCurrency(safeParseFloat(row['NAKİT SATIŞ']))}
                 </p>
               </div>
               
               <div className="bg-blue-50 rounded-md p-3">
                 <p className="text-xs text-gray-600 mb-1">KREDİ KARTI SATIŞ</p>
-                <p className="text-green-600 font-bold text-sm">
+                <p className="text-green-600 font-bold text-sm text-right">
                   {formatCurrency(safeParseFloat(row['KREDİ KARTI İLE SATIŞ']))}
                 </p>
               </div>
               
               <div className="bg-orange-50 rounded-md p-3">
                 <p className="text-xs text-gray-600 mb-1">YEMEK KARTI</p>
-                <p className="text-green-600 font-bold text-sm">
+                <p className="text-green-600 font-bold text-sm text-right">
                   {formatCurrency(safeParseFloat(row['YEMEK KARTI']))}
                 </p>
               </div>
               
               <div className="bg-red-50 rounded-md p-3">
                 <p className="text-xs text-gray-600 mb-1">TOPLAM İADE</p>
-                <p className="text-red-600 font-bold text-sm">
+                <p className="text-red-600 font-bold text-sm text-right">
                   {formatCurrency(safeParseFloat(row['NAKİT İADE']) + safeParseFloat(row['KREDİ KARTI İADE']))}
                 </p>
               </div>
@@ -880,15 +887,15 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
             
             {/* İade Detayları */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="text-xs">
+              <div className="text-xs flex justify-between">
                 <span className="text-gray-500">Nakit İade:</span>
-                <span className="text-red-600 font-medium ml-1">
+                <span className="text-red-600 font-medium">
                   {formatCurrency(safeParseFloat(row['NAKİT İADE']))}
                 </span>
               </div>
-              <div className="text-xs">
+              <div className="text-xs flex justify-between">
                 <span className="text-gray-500">KK İade:</span>
-                <span className="text-red-600 font-medium ml-1">
+                <span className="text-red-600 font-medium">
                   {formatCurrency(safeParseFloat(row['KREDİ KARTI İADE']))}
                 </span>
               </div>

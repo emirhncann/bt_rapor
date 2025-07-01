@@ -14,12 +14,14 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
   const [userEmail, setUserEmail] = useState('');
   const [name, setname] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [userPlan, setUserPlan] = useState('');
   const router = useRouter();
 
   useEffect(() => {
     const email = localStorage.getItem('userEmail');
     const fullName = localStorage.getItem('userName');
     const role = localStorage.getItem('userRole');
+    
     if (email) {
       setUserEmail(email);
     }
@@ -28,6 +30,13 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
     }
     if (role) {
       setUserRole(role);
+    }
+    
+    // Plan bilgisini yükle (geçici - normalde API'den gelecek)
+    if (role === 'admin') {
+      setUserPlan('Yönetici Erişimi');
+    } else {
+      setUserPlan('Standart Plan'); // Geçici değer
     }
   }, []);
 
@@ -61,16 +70,13 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
           )}
         </button>
         
-        {/* Logo ve Title - Mobilde kompakt */}
+        {/* Logo - Mobilde kompakt */}
         <div className="ml-2 lg:ml-4 flex items-center min-w-0 flex-1">
           <img 
             src="/img/btRapor.png" 
             alt="btRapor Logo" 
-            className="h-6 lg:h-8 w-auto mr-2 lg:mr-3 flex-shrink-0"
+            className="h-6 lg:h-8 w-auto flex-shrink-0"
           />
-          <h1 className="text-lg lg:text-2xl font-semibold text-gray-800 truncate">
-            {title}
-          </h1>
         </div>
       </div>
 
@@ -116,7 +122,7 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
                 {name || (userEmail ? userEmail.split('@')[0] : 'Kullanıcı')}
               </p>
               <p className="text-xs text-gray-500">
-                {userRole === 'admin' ? 'Yönetici' : userRole === 'user' ? 'Kullanıcı' : 'Kullanıcı'}
+                {userPlan}
               </p>
             </div>
             <svg className="h-4 w-4 text-gray-400 hidden lg:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -134,7 +140,10 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
                     {name || (userEmail ? userEmail.split('@')[0] : 'Kullanıcı')}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {userRole === 'admin' ? 'Yönetici' : userRole === 'user' ? 'Kullanıcı' : 'Kullanıcı'}
+                    {userPlan}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {userRole === 'admin' ? 'Yönetici' : 'Kullanıcı'}
                   </p>
                 </div>
                 

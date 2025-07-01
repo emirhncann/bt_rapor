@@ -7,12 +7,16 @@ import CBakiyeTable from '../components/tables/c_bakiye_table';
 import DashboardLayout from '../components/DashboardLayout';
 import CurrencySelector from '../components/CurrencySelector';
 import { getCurrencyByNo, getCurrencyByCode } from '../../types/currency';
+import { fetchUserReports, getCurrentUser, getAuthorizedReports } from '../utils/simple-permissions';
+import type { ReportWithAccess } from '../utils/simple-permissions';
 
 export default function CBakiye() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [hasAccess, setHasAccess] = useState<boolean>(false);
+  const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [selectedCurrencies, setSelectedCurrencies] = useState<number[]>([53]); // Varsayılan: TRY (No: 53)
   const [showCurrencySelector, setShowCurrencySelector] = useState(false);
   const [preloadedDetails, setPreloadedDetails] = useState<{[key: string]: any[]}>({});
@@ -46,6 +50,112 @@ export default function CBakiye() {
 
     checkAuth();
   }, [router]);
+
+  // Kullanıcının rapor erişim yetkilerini kontrol et
+  useEffect(() => {
+    const checkReportAccess = async () => {
+      try {
+        console.log('🔍 Cari Bakiye - Rapor erişim yetkisi kontrol ediliyor...');
+        setIsCheckingAccess(true);
+
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+          console.log('❌ Kullanıcı bilgisi bulunamadı');
+          setHasAccess(false);
+          setIsCheckingAccess(false);
+          return;
+        }
+
+        // Admin kontrolü
+        if (currentUser.role === 'admin') {
+          console.log('✅ Admin kullanıcı - Tüm raporlara erişim var');
+          setHasAccess(true);
+          setIsCheckingAccess(false);
+          return;
+        }
+
+        // LocalStorage'dan kullanıcı raporlarını kontrol et
+        const authorizedReportsJson = localStorage.getItem('userAuthorizedReports');
+        const lastUpdate = localStorage.getItem('userReportsLastUpdate');
+        
+        if (!authorizedReportsJson || !lastUpdate) {
+          console.log('❌ LocalStorage\'da rapor bilgisi bulunamadı - API\'den çekiliyor...');
+          // API'den çek
+          const companyRef = localStorage.getItem('companyRef');
+          if (!companyRef) {
+            setHasAccess(false);
+            setIsCheckingAccess(false);
+            return;
+          }
+
+          const allReports = await fetchUserReports(companyRef, currentUser.id);
+          const authorizedReports = getAuthorizedReports(allReports);
+          
+          // LocalStorage'a kaydet
+          localStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
+          localStorage.setItem('userReportsLastUpdate', Date.now().toString());
+          
+          // Erişim kontrolü
+          const hasCariBakiyeAccess = authorizedReports.some((report: ReportWithAccess) => 
+            report.report_name.toLowerCase().includes('cari') && 
+            report.report_name.toLowerCase().includes('bakiye')
+          );
+          
+          console.log('📊 API\'den çekilen Cari Bakiye erişimi:', hasCariBakiyeAccess);
+          setHasAccess(hasCariBakiyeAccess);
+        } else {
+          // LocalStorage'dan kontrol et
+          const authorizedReports = JSON.parse(authorizedReportsJson);
+          const updateTime = parseInt(lastUpdate);
+          
+          // 5 dakikadan eski mi? (Cache süresi)
+          const cacheExpiry = 5 * 60 * 1000; // 5 dakika
+          const isExpired = Date.now() - updateTime > cacheExpiry;
+          
+          if (isExpired) {
+            console.log('⏰ LocalStorage cache süresi dolmuş - yenileniyor...');
+            const companyRef = localStorage.getItem('companyRef');
+            if (!companyRef) {
+              setHasAccess(false);
+              setIsCheckingAccess(false);
+              return;
+            }
+
+            const allReports = await fetchUserReports(companyRef, currentUser.id);
+            const newAuthorizedReports = getAuthorizedReports(allReports);
+            
+            localStorage.setItem('userAuthorizedReports', JSON.stringify(newAuthorizedReports));
+            localStorage.setItem('userReportsLastUpdate', Date.now().toString());
+            
+            const hasCariBakiyeAccess = newAuthorizedReports.some((report: ReportWithAccess) => 
+              report.report_name.toLowerCase().includes('cari') && 
+              report.report_name.toLowerCase().includes('bakiye')
+            );
+            
+            console.log('🔄 Cache yenilendi - Cari Bakiye erişimi:', hasCariBakiyeAccess);
+            setHasAccess(hasCariBakiyeAccess);
+          } else {
+            // Cache geçerli - localStorage'dan kontrol et
+            const hasCariBakiyeAccess = authorizedReports.some((report: ReportWithAccess) => 
+              report.report_name.toLowerCase().includes('cari') && 
+              report.report_name.toLowerCase().includes('bakiye')
+            );
+            
+            console.log('💾 LocalStorage\'dan Cari Bakiye erişimi:', hasCariBakiyeAccess);
+            setHasAccess(hasCariBakiyeAccess);
+          }
+        }
+
+      } catch (error) {
+        console.error('❌ Cari Bakiye - Rapor erişimi kontrol edilirken hata:', error);
+        setHasAccess(false);
+      } finally {
+        setIsCheckingAccess(false);
+      }
+    };
+
+    checkReportAccess();
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -548,9 +658,34 @@ export default function CBakiye() {
     
     setLoading(true);
     try {
+      // Mobil debug için initial check
+      console.log('🔄 fetchSqlData başlatılıyor - Mobil Debug');
+      
+      // User Agent kontrolü (mobil debug için)
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      console.log('📱 Mobil cihaz tespit edildi:', isMobile);
+      
       // Önce localStorage'dan connection bilgilerini kontrol et
       let connectionInfo = null;
       const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      
+      // Mobil localStorage kontrolü
+      if (!cachedConnectionInfo) {
+        console.log('⚠️ MOBIL DEBUG: localStorage\'da connectionInfo bulunamadı');
+        // Mobil cihazlarda localStorage sorunları için alternatif kontrol
+        try {
+          localStorage.setItem('test', 'test');
+          localStorage.removeItem('test');
+          console.log('✅ MOBIL DEBUG: localStorage çalışıyor');
+        } catch (e) {
+          console.error('❌ MOBIL DEBUG: localStorage erişim sorunu:', e);
+          alert('Mobil cihazınızda localStorage sorunu tespit edildi. Lütfen gizli sekme kullanmayın ve çerezleri etkinleştirin.');
+          setLoading(false);
+          return;
+        }
+      } else {
+        console.log('✅ MOBIL DEBUG: localStorage\'da connectionInfo mevcut');
+      }
       
       if (cachedConnectionInfo) {
         try {
@@ -558,6 +693,10 @@ export default function CBakiye() {
           console.log('✅ Connection bilgileri localStorage\'dan alındı:', connectionInfo);
         } catch (e) {
           console.log('⚠️ localStorage\'daki connection bilgileri parse edilemedi, API\'den alınacak');
+          // Mobil debug için
+          if (isMobile) {
+            console.log('📱 MOBIL DEBUG: JSON parse hatası:', e);
+          }
         }
       }
       
@@ -572,22 +711,49 @@ export default function CBakiye() {
         }
 
         console.log('🔄 Connection bilgileri API\'den alınıyor...');
-        const connectionResponse = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
-        const connectionData = await connectionResponse.json();
+        
+        // Mobil cihazlar için timeout ekleyelim
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), isMobile ? 15000 : 10000); // Mobilde daha uzun timeout
+        
+        try {
+          const connectionResponse = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`, {
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache'
+            }
+          });
+          clearTimeout(timeoutId);
+          
+          const connectionData = await connectionResponse.json();
 
-        console.log('📡 Connection Response:', connectionData);
+          console.log('📡 Connection Response:', connectionData);
 
-        if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
-          console.error('Connection bilgileri alınamadı:', connectionData);
-          alert('Veritabanı bağlantı bilgileri alınamadı. Lütfen sistem yöneticisi ile iletişime geçin.');
-          setLoading(false);
-          return;
-        }
+          if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
+            console.error('Connection bilgileri alınamadı:', connectionData);
+            const errorMsg = connectionData.message || 'Veritabanı bağlantı bilgileri alınamadı';
+            alert(`${errorMsg}. Lütfen sistem yöneticisi ile iletişime geçin.`);
+            setLoading(false);
+            return;
+          }
 
-        connectionInfo = connectionData.data;
-        // API'den alınan bilgileri localStorage'a kaydet
-        localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
-        console.log('💾 Connection bilgileri localStorage\'a kaydedildi');
+          connectionInfo = connectionData.data;
+          // API'den alınan bilgileri localStorage'a kaydet
+          localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+          console.log('💾 Connection bilgileri localStorage\'a kaydedildi');
+                 } catch (error: any) {
+           clearTimeout(timeoutId);
+           if (error.name === 'AbortError') {
+             console.error('❌ Connection bilgileri timeout:', error);
+             alert('Bağlantı zaman aşımı. Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin.');
+           } else {
+             console.error('❌ Connection bilgileri alınırken hata:', error);
+             alert('Bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.');
+           }
+           setLoading(false);
+           return;
+         }
       }
       
       // public_ip'den dış IP ve portu ayır
@@ -599,6 +765,8 @@ export default function CBakiye() {
         externalIP = ip || 'localhost';
         servicePort = port || '45678';
       }
+
+      console.log('🔗 MOBIL DEBUG - Target Service:', `http://${externalIP}:${servicePort}/sql`);
 
       // Connection string'i oluştur
       const connectionString = `Server=${connectionInfo.first_server_name || ''};Database=${connectionInfo.first_db_name || ''};User Id=${connectionInfo.first_username || ''};Password=${connectionInfo.first_password || ''};`;
@@ -704,17 +872,23 @@ export default function CBakiye() {
 
       console.log('📝 Dinamik SQL Sorgusu:', sqlQuery);
 
-      // SQL sorgusunu proxy üzerinden çalıştır - Retry logic ile
+      // SQL sorgusunu proxy üzerinden çalıştır - Mobil için geliştirilmiş retry logic
       let response: Response | undefined;
-      const maxRetries = 2;
+      const maxRetries = isMobile ? 3 : 2; // Mobilde daha az deneme
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries} (C-Bakiye)...`);
+          console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries} (C-Bakiye${isMobile ? ' - Mobil' : ''})...`);
+          
+          // Mobil cihazlar için timeout kontrolü
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), isMobile ? 20000 : 15000); // Mobilde daha uzun timeout
+          
           response = await fetch('https://api.btrapor.com/proxy', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache'
             },
             body: JSON.stringify({
               target_url: `http://${externalIP}:${servicePort}/sql`,
@@ -722,27 +896,37 @@ export default function CBakiye() {
                 connectionString,
                 query: sqlQuery
               }
-            })
+            }),
+            signal: controller.signal
           });
           
+          clearTimeout(timeoutId);
+          
           if (response.ok) {
-            console.log(`✅ Proxy çağrısı ${attempt}. denemede başarılı (C-Bakiye)`);
+            console.log(`✅ Proxy çağrısı ${attempt}. denemede başarılı (C-Bakiye${isMobile ? ' - Mobil' : ''})`);
             break; // Başarılı, döngüden çık
           } else if (attempt === maxRetries) {
-            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status} (C-Bakiye)`);
+            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status} (C-Bakiye${isMobile ? ' - Mobil' : ''})`);
           } else {
-            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek... (C-Bakiye)`);
-            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms bekle
+            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek... (C-Bakiye${isMobile ? ' - Mobil' : ''})`);
+            await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100)); // Mobilde daha uzun bekleme
           }
-        } catch (error) {
-          if (attempt === maxRetries) {
-            console.error(`❌ Tüm denemeler başarısız (C-Bakiye):`, error);
-            throw error;
-          } else {
-            console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek (C-Bakiye):`, error);
-            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms bekle
-          }
-        }
+                 } catch (error: any) {
+           if (error.name === 'AbortError') {
+             console.error(`❌ Proxy çağrısı timeout (deneme ${attempt})`);
+             if (attempt === maxRetries) {
+               alert('İstek zaman aşımı. Lütfen internet bağlantınızı kontrol edin.');
+               setLoading(false);
+               return;
+             }
+           } else if (attempt === maxRetries) {
+             console.error(`❌ Tüm denemeler başarısız (C-Bakiye${isMobile ? ' - Mobil' : ''}):`, error);
+             throw error;
+           } else {
+             console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek (C-Bakiye${isMobile ? ' - Mobil' : ''}):`, error);
+             await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100)); // Mobilde daha uzun bekleme
+           }
+         }
       }
 
       // HTTP Status kontrolü
@@ -784,6 +968,7 @@ export default function CBakiye() {
         return;
       }
 
+      console.log(`✅ MOBIL DEBUG: ${finalData.length} kayıt başarıyla yüklendi`);
       setData(finalData);
       
       // Ana rapor verisi geldikten sonra arka planda hareket detaylarını çek
@@ -806,25 +991,67 @@ export default function CBakiye() {
         
         return; // Burada return, aşağıdaki setLoading(false) çalışmasın
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Veri çekme hatası:', error);
+      // Mobil debug için detaylı hata mesajı
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        alert(`Mobil cihazda veri yükleme hatası: ${error.message || 'Bilinmeyen hata'}`);
+      } else {
+        alert('Veri yüklenirken hata oluştu. Lütfen tekrar deneyin.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Authentication kontrolü devam ediyorsa loading göster
-  if (isCheckingAuth) {
+  // Loading ve erişim kontrolleri
+  if (isCheckingAuth || isCheckingAccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
+      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 border border-white/20">
           <div className="flex flex-col items-center justify-center">
-            <svg className="animate-spin h-12 w-12 text-red-800 mb-4" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-white/30 rounded-full animate-spin border-l-white"></div>
+              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent rounded-full animate-ping border-l-white/50"></div>
+            </div>
+            <p className="text-white font-medium text-lg mt-6">
+              {isCheckingAuth ? 'Giriş kontrolü yapılıyor...' : 'Rapor yetkileri kontrol ediliyor...'}
+            </p>
+            <p className="text-white/70 text-sm mt-2">Lütfen bekleyiniz</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
-            <p className="text-gray-700 font-medium text-lg mt-4">Yükleniyor...</p>
-            <p className="text-gray-500 text-sm mt-2">Lütfen bekleyiniz</p>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Erişim Reddedildi</h2>
+          <p className="text-gray-600 mb-4">
+            <strong>Cari Bakiye Raporu</strong>'na erişim yetkiniz bulunmamaktadır. 
+            <br />Lütfen yöneticiniz ile iletişime geçin.
+          </p>
+          <div className="space-y-2">
+            <button
+              onClick={() => router.push('/')}
+              className="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Anasayfaya Dön
+            </button>
+            <button
+              onClick={() => router.push('/ayarlar')}
+              className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Yetki Talebi
+            </button>
           </div>
         </div>
       </div>
@@ -926,7 +1153,7 @@ export default function CBakiye() {
         {/* Stats Cards */}
         <div className="space-y-6">
           {/* Genel İstatistikler */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
@@ -946,8 +1173,8 @@ export default function CBakiye() {
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
@@ -963,93 +1190,47 @@ export default function CBakiye() {
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Rapor Durumu</p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {Array.isArray(data) && data.length > 0 ? 'Hazır' : loading ? 'Yükleniyor...' : 'Bekliyor'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {Array.isArray(data) && data.length > 0 ? `${data.length} kayıt` : 'Raporu getirmek için butona tıklayın'}
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-purple-100 rounded-md flex items-center justify-center">
-                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Aktif Kurlar</p>
-                  <p className="text-2xl font-semibold text-gray-900">{multiCurrencyStats.currencies.length}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {multiCurrencyStats.currencies.length > 1 ? 'Multi-currency' : 'Tek kur'}
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
 
-
-
-          {/* Kur Bazlı İstatistikler */}
+          {/* Kur Bazlı İstatistikler - Basitleştirilmiş */}
           {multiCurrencyStats.currencies.length > 0 && (
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">💰 Kur Bazlı Toplamlar</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">💰 Kur Bazlı Özet</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {multiCurrencyStats.currencies.map((currency, index) => (
-                  <div key={currency.code} className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                        <span className="text-2xl">💱</span>
-                        {currency.code}
-                      </h4>
-                      <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                  <div key={currency.code} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-lg font-semibold text-gray-900">{currency.code}</h4>
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                         {getCurrencyByCode(currency.code)?.Adı || currency.code}
                       </span>
                     </div>
                     
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">💸 Toplam Borç:</span>
-                        <span className="font-semibold text-red-600">
-                          {currency.borc.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Borç:</span>
+                        <span className="font-medium text-red-600">
+                          {currency.borc.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
                       
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">💰 Toplam Alacak:</span>
-                        <span className="font-semibold text-green-600">
-                          {currency.alacak.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Alacak:</span>
+                        <span className="font-medium text-green-600">
+                          {currency.alacak.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
                       
-                      <div className="border-t pt-2 flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-900">⚖️ Net Bakiye:</span>
+                      <div className="border-t pt-2 flex justify-between">
+                        <span className="text-sm font-medium text-gray-900">Net Bakiye:</span>
                         <span className={`font-bold ${
                           currency.bakiye < 0 ? 'text-red-600' : 
                           currency.bakiye > 0 ? 'text-green-600' : 'text-gray-900'
                         }`}>
-                          {Math.abs(currency.bakiye).toLocaleString('tr-TR', { 
-                            minimumFractionDigits: 2, 
-                            maximumFractionDigits: 2 
-                          })}
+                          {Math.abs(currency.bakiye).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                           {currency.bakiye !== 0 && (
-                            <span className="ml-1">
+                            <span className="ml-1 text-xs">
                               {currency.bakiye < 0 ? '(A)' : '(B)'}
                             </span>
                           )}

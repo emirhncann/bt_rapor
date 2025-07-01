@@ -42,13 +42,36 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
   const [showDetails, setShowDetails] = useState(false);
   const [loadingAnimation, setLoadingAnimation] = useState(null);
 
-  // Sayısal sütunlar - Multi-currency PIVOT desteği ile
-  const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 
-    key === 'BORÇ' || key === 'ALACAK' || key === 'BAKİYE' || key === 'BAKIYE' || key === 'Borç' || key === 'Alacak' || key === 'Bakiye' ||
-    key.includes('BAKIYE') || key.includes('BAKİYE') || key.includes('Bakiye') ||
-    key.includes('_Borç') || key.includes('_Alacak') || key.includes('_Bakiye') ||
-    key.includes('CUR_') || key.endsWith('_Borç') || key.endsWith('_Alacak') || key.endsWith('_Bakiye')
-  ) : ['BORÇ', 'ALACAK', 'BAKİYE'];
+  // Basitleştirilmiş filtre kategorileri - sadece temel 3 seçenek
+  const filterCategories = ['Borç', 'Alacak', 'Bakiye'];
+  
+  // Hangi sütunları hangi kategoride araması gerektiğini belirle
+  const getColumnsByCategory = (category: string): string[] => {
+    if (!data.length) return [];
+    
+    const allColumns = Object.keys(data[0]);
+    
+    switch(category) {
+      case 'Borç':
+        return allColumns.filter(col => 
+          col === 'BORÇ' || col === 'Borç' || 
+          col.includes('_Borç') || col.endsWith('_Borç')
+        );
+      case 'Alacak':
+        return allColumns.filter(col => 
+          col === 'ALACAK' || col === 'Alacak' || 
+          col.includes('_Alacak') || col.endsWith('_Alacak')
+        );
+      case 'Bakiye':
+        return allColumns.filter(col => 
+          col === 'BAKİYE' || col === 'BAKIYE' || col === 'Bakiye' ||
+          col.includes('_Bakiye') || col.endsWith('_Bakiye') ||
+          col.includes('BAKIYE') || col.includes('BAKİYE')
+        );
+      default:
+        return [];
+    }
+  };
 
   // Loading animasyonunu yükle
   useEffect(() => {
@@ -58,15 +81,17 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       .catch(err => console.log('Loading animasyonu yüklenemedi:', err));
   }, []);
 
-  // Arama terimi değiştiğinde otomatik olarak 1. sayfaya git
+  // Arama terimi veya filtreler değiştiğinde otomatik olarak 1. sayfaya git
   useEffect(() => {
     setCurrentPage(1);
     if (searchTerm.trim() !== '') {
       console.log(`🔍 Arama yapıldı: "${searchTerm}" - 1. sayfaya dönüldü`);
+    } else if (filterColumn && (minValue || maxValue)) {
+      console.log(`📊 Sayısal filtre uygulandı: ${filterColumn} - 1. sayfaya dönüldü`);
     } else {
-      console.log('🧹 Arama temizlendi - 1. sayfaya dönüldü');
+      console.log('🧹 Filtreler temizlendi - 1. sayfaya dönüldü');
     }
-  }, [searchTerm]);
+  }, [searchTerm, filterColumn, minValue, maxValue]);
 
 
 
@@ -126,7 +151,11 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       // SQL sorgusu - detay sorgusu
       const detailQuery = `
         SELECT 
-          DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) AS [Tarih],
+          DATE_ + 
+        RIGHT('0' + CAST(CONVERT(INT, ROUND(FTIME / 16777216.0, 0)) AS VARCHAR), 2) + ':' +
+        RIGHT('0' + CAST(CONVERT(INT, ROUND((FTIME % 16777216) / 65536.0, 0)) AS VARCHAR), 2) + ':' +
+        RIGHT('0' + CAST(CONVERT(INT, ROUND(((FTIME % 65536) / 256.0), 0)) AS VARCHAR), 2)
+        AS [Tarih],
           TRANNO AS [Fiş No],
           CASE MODULENR
             WHEN 4 THEN
@@ -792,12 +821,81 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       return valueStr.includes(searchStr);
     })
   ).filter((item) => {
-    // Sayısal aralık filtresi
+    // Kategori bazlı sayısal aralık filtresi
     if (filterColumn && (minValue || maxValue)) {
-      const itemValue = safeParseFloat(item[filterColumn]);
-      const min = minValue ? parseFloat(minValue) : -Infinity;
-      const max = maxValue ? parseFloat(maxValue) : Infinity;
-      return itemValue >= min && itemValue <= max;
+      // Gelişmiş parse fonksiyonu - formatlanmış para değerleri ve (A)/(B) göstergeleri için
+      const parseFilterValue = (value: any): number => {
+        if (value === null || value === undefined || value === '') return 0;
+        
+        if (typeof value === 'string') {
+          let numStr = value;
+          
+          // (A) ve (B) göstergeli bakiye değerleri için
+          if (value.includes('(A)')) {
+            // Alacaklı - negatif değer olarak kabul et
+            numStr = value.replace(/[^\d.,]/g, '');
+            if (numStr) {
+              numStr = numStr.replace(/\./g, '').replace(',', '.');
+              return -safeParseFloat(numStr);
+            }
+            return 0;
+          } else if (value.includes('(B)')) {
+            // Borçlu - pozitif değer olarak kabul et
+            numStr = value.replace(/[^\d.,]/g, '');
+            if (numStr) {
+              numStr = numStr.replace(/\./g, '').replace(',', '.');
+              return safeParseFloat(numStr);
+            }
+            return 0;
+          }
+          
+          // Türkçe format: "1.234.567,89" -> 1234567.89
+          // Nokta binlik ayırıcı, virgül ondalık ayırıcı
+          if (numStr.includes('.') && numStr.includes(',')) {
+            // Hem nokta hem virgül var: "1.234,56"
+            numStr = numStr.replace(/\./g, '').replace(',', '.');
+          } else if (numStr.includes(',') && !numStr.includes('.')) {
+            // Sadece virgül var: "1234,56"
+            numStr = numStr.replace(',', '.');
+          } else if (numStr.includes('.') && !numStr.includes(',')) {
+            // Sadece nokta var - bu ondalık ayırıcı mı yoksa binlik ayırıcı mı?
+            const parts = numStr.split('.');
+            if (parts.length === 2 && parts[1].length <= 2) {
+              // Son kısım 2 haneli veya daha az: ondalık ayırıcı
+              // Hiçbir şey yapma
+            } else {
+              // Binlik ayırıcı olarak varsay
+              numStr = numStr.replace(/\./g, '');
+            }
+          }
+          
+          return safeParseFloat(numStr);
+        }
+        
+        return safeParseFloat(value);
+      };
+      
+      // Seçilen kategoriye ait tüm sütunları kontrol et
+      const categoryColumns = getColumnsByCategory(filterColumn);
+      
+      if (categoryColumns.length === 0) return true; // Kategori sütunu bulunamadıysa geçir
+      
+      // Bu satırda seçilen kategorinin herhangi bir sütununda filtreye uyan değer var mı?
+      const matchesFilter = categoryColumns.some(column => {
+        const columnValue = item[column];
+        if (columnValue === null || columnValue === undefined) return false;
+        
+        const itemValue = parseFilterValue(columnValue);
+        const min = minValue ? parseFloat(minValue) : -Infinity;
+        const max = maxValue ? parseFloat(maxValue) : Infinity;
+        
+        // NaN kontrolü
+        if (isNaN(itemValue)) return false;
+        
+        return itemValue >= min && itemValue <= max;
+      });
+      
+      return matchesFilter;
     }
     return true;
   });
@@ -987,6 +1085,41 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     setCurrentPage(1); // Sayfa sayısı değiştiğinde ilk sayfaya dön
   };
 
+  // Modern sayfa numaralarını oluştur
+  const generatePageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const showEllipsis = totalPages > 7;
+
+    if (!showEllipsis) {
+      // 7 sayfa veya daha az - hepsini göster
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // 7'den fazla sayfa - akıllı ellipsis sistemi
+      if (currentPage <= 4) {
+        // Başta: 1 2 3 4 5 ... 10
+        pages.push(1, 2, 3, 4, 5, '...', totalPages);
+      } else if (currentPage >= totalPages - 3) {
+        // Sonda: 1 ... 6 7 8 9 10
+        pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        // Ortada: 1 ... 4 5 6 ... 10
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Sayfa değiştirme fonksiyonu
+  const handlePageClick = (page: number) => {
+    if (page !== currentPage && page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      console.log(`🎯 Sayfa ${page}'e gidildi`);
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="p-4 border-b border-gray-200">
@@ -1075,7 +1208,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
         {/* Gelişmiş Filtreler */}
         {showFilters && (
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">Sayısal Filtreler</h4>
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">💰 Sayısal Filtreler</h4>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">
@@ -1083,14 +1216,33 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                 </label>
                 <select
                   value={filterColumn}
-                  onChange={(e) => setFilterColumn(e.target.value)}
+                  onChange={(e) => {
+                    setFilterColumn(e.target.value);
+                    // Kategori değiştiğinde min/max değerleri temizle
+                    if (e.target.value !== filterColumn) {
+                      setMinValue('');
+                      setMaxValue('');
+                    }
+                  }}
                   className="w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 text-sm"
                 >
-                  <option value="">Seçiniz</option>
-                  {numericColumns.map((col) => (
-                    <option key={col} value={col}>{col}</option>
-                  ))}
+                  <option value="">📊 Kategori seçiniz</option>
+                  {filterCategories.map((category) => {
+                    const categoryColumns = getColumnsByCategory(category);
+                    return (
+                      <option key={category} value={category} disabled={categoryColumns.length === 0}>
+                        {category === 'Borç' ? '🔴 ' : category === 'Alacak' ? '🟢 ' : '⚖️ '}
+                        {category}
+                        {categoryColumns.length > 0 ? ` (${categoryColumns.length} sütun)` : ' (yok)'}
+                      </option>
+                    );
+                  })}
                 </select>
+                {filterColumn && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    <strong>{filterColumn}</strong> kategorisinde {getColumnsByCategory(filterColumn).length} sütun var: {getColumnsByCategory(filterColumn).join(', ') || 'Hiçbiri'}
+                  </p>
+                )}
               </div>
               
               <div>
@@ -1099,11 +1251,16 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                 </label>
                 <input
                   type="number"
-                  placeholder="0"
+                  step="0.01"
+                  placeholder="Minimum..."
                   value={minValue}
                   onChange={(e) => setMinValue(e.target.value)}
-                  className="w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 text-sm"
+                  disabled={!filterColumn}
+                  className="w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  {filterColumn ? 'Negatif değer: (A) bakiye' : 'Önce sütun seçin'}
+                </p>
               </div>
               
               <div>
@@ -1112,32 +1269,56 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                 </label>
                 <input
                   type="number"
-                  placeholder="999999"
+                  step="0.01"
+                  placeholder="Maksimum..."
                   value={maxValue}
                   onChange={(e) => setMaxValue(e.target.value)}
-                  className="w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 text-sm"
+                  disabled={!filterColumn}
+                  className="w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  {filterColumn ? 'Pozitif değer: (B) bakiye' : 'Önce sütun seçin'}
+                </p>
               </div>
               
               <div className="flex items-end">
                 <button
                   onClick={clearFilters}
-                  className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors text-sm"
+                  className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors text-sm font-medium"
+                  title="Tüm filtreleri temizle"
                 >
-                  Temizle
+                  🧹 Temizle
                 </button>
               </div>
             </div>
             
+            {/* Gelişmiş Filtre Bilgisi */}
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700">
+              <p className="font-medium mb-1">ℹ️ Kategori Filtreleme İpuçları:</p>
+              <ul className="list-disc list-inside space-y-1 text-blue-600">
+                <li><strong>🔴 Borç:</strong> Tüm kur türlerindeki borç sütunlarını kapsar (TRY_Borç, USD_Borç, EUR_Borç vb.)</li>
+                <li><strong>🟢 Alacak:</strong> Tüm kur türlerindeki alacak sütunlarını kapsar (TRY_Alacak, USD_Alacak, EUR_Alacak vb.)</li>
+                <li><strong>⚖️ Bakiye:</strong> Tüm kur türlerindeki bakiye sütunlarını kapsar - Negatif: (A), Pozitif: (B)</li>
+                <li><strong>Para formatları:</strong> "1.234,56" ve "1234,56" formatları desteklenir</li>
+                <li><strong>Örnek Borç filtresi:</strong> Min: 1000 → Herhangi bir kurda 1000+ borcu olan müşteriler</li>
+                <li><strong>Örnek Bakiye filtresi:</strong> Min: -5000, Max: 0 → Alacaklı olan müşteriler</li>
+              </ul>
+            </div>
+            
             {/* Aktif Filtre Göstergesi */}
             {(filterColumn && (minValue || maxValue)) && (
-              <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-md">
-                <span className="text-sm text-red-700">
-                  <strong>Aktif Filtre:</strong> {filterColumn} 
-                  {minValue && ` ≥ ${parseFloat(minValue).toLocaleString('tr-TR')}`}
-                  {minValue && maxValue && ' ve '}
-                  {maxValue && ` ≤ ${parseFloat(maxValue).toLocaleString('tr-TR')}`}
-                </span>
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-red-700">
+                    <strong>🎯 Aktif Filtre:</strong> {filterColumn}
+                    {minValue && ` ≥ ${parseFloat(minValue).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    {minValue && maxValue && ' ve '}
+                    {maxValue && ` ≤ ${parseFloat(maxValue).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </span>
+                  <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">
+                    {filteredData.length} sonuç
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -1347,154 +1528,314 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
 
       {/* Mobil Card Görünümü */}
       <div className="md:hidden space-y-4 bg-gray-50 rounded-lg p-4">
-        {paginatedData.map((row, index) => (
-          <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-red-700 mb-1">
-                  {String(Object.entries(row).find(([key]) => key === 'KODU')?.[1] || '')}
-                </h3>
-                <p className="text-gray-700 text-sm">
-                  {String(Object.entries(row).find(([key]) => key === 'ÜNVANI')?.[1] || '')}
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-2">
-                <button
-                  onClick={() => {
-                    console.log('🔍 Row keys:', Object.keys(row));
-                    console.log('🔍 Row data:', row);
-                    const clientRef = row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref || '';
-                    const clientName = row.ÜNVANI || row['Cari Ünvanı'] || row.unvani || 'Müşteri';
-                    console.log('🔍 ClientRef:', clientRef);
-                    console.log('🔍 ClientName:', clientName);
-                    if (clientRef) {
-                      fetchClientDetails(clientRef, clientName);
-                    } else {
-                      alert('Müşteri referansı bulunamadı!');
+        {paginatedData.map((row, index) => {
+          // Multi-currency sütunları dinamik olarak bul
+          const borcColumns = Object.entries(row).filter(([key]) => 
+            key === 'BORÇ' || key === 'Borç' || key.includes('_Borç') || key.endsWith('_Borç')
+          );
+          const alacakColumns = Object.entries(row).filter(([key]) => 
+            key === 'ALACAK' || key === 'Alacak' || key.includes('_Alacak') || key.endsWith('_Alacak')
+          );
+          const bakiyeColumns = Object.entries(row).filter(([key]) => 
+            key === 'BAKİYE' || key === 'BAKIYE' || key === 'Bakiye' ||
+            key.includes('_Bakiye') || key.endsWith('_Bakiye') ||
+            key.includes('BAKIYE') || key.includes('BAKİYE')
+          );
+          
+          // Müşteri bilgileri
+          const clientCode = row['Cari Kodu'] || row.KODU || row.CODE || row.code || '';
+          const clientName = row['Cari Ünvanı'] || row.ÜNVANI || row.DEFINITION_ || row.definition || '';
+          
+          return (
+            <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              {/* Müşteri Başlığı */}
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-700 mb-1">
+                    {String(clientCode)}
+                  </h3>
+                  <p className="text-gray-700 text-sm leading-tight">
+                    {String(clientName)}
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-2 ml-2">
+                  <button
+                    onClick={() => {
+                      const clientRef = row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref || '';
+                      if (clientRef) {
+                        fetchClientDetails(clientRef, clientName);
+                      } else {
+                        alert('Müşteri referansı bulunamadı!');
+                      }
+                    }}
+                    className={`transition-colors p-2 rounded-lg ${
+                      preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref] 
+                        ? 'text-green-600 hover:text-green-800 bg-green-50' 
+                        : 'text-gray-600 hover:text-red-800 bg-gray-50'
+                    }`}
+                    title={
+                      preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref] 
+                        ? `Hazır! ${preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref]?.length || 0} hareket`
+                        : 'Detayları görüntüle'
                     }
-                  }}
-                  className={`transition-colors p-2 ${
-                    preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref] 
-                      ? 'text-green-600 hover:text-green-800' 
-                      : 'text-gray-600 hover:text-red-800'
-                  }`}
-                  title={
-                    preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref] 
-                      ? `Hazır! ${preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref]?.length || 0} hareket`
-                      : 'Detayları görüntüle (API çağrısı yapılacak)'
-                  }
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 616 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </button>
-                
-                {/* Hazır data göstergesi */}
-                {preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref] && (
-                  <div className="w-2 h-2 bg-green-500 rounded-full" title="Hareket detayları hazır"></div>
-                )}
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-red-50 rounded-md p-3">
-                <p className="text-xs text-gray-600 mb-1">BORÇ</p>
-                <p className="text-red-800 font-bold">
-                  {(() => {
-                    const borcValue = Object.entries(row).find(([key]) => key === 'BORÇ')?.[1];
-                    return formatCurrency(safeParseFloat(borcValue));
-                  })()}
-                </p>
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 616 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </button>
+                  
+                  {/* Hazır data göstergesi */}
+                  {preloadedDetails[row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref] && (
+                    <div className="w-2 h-2 bg-green-500 rounded-full" title="Hareket detayları hazır"></div>
+                  )}
+                </div>
               </div>
               
-              <div className="bg-green-50 rounded-md p-3">
-                <p className="text-xs text-gray-600 mb-1">ALACAK</p>
-                <p className="text-red-800 font-bold">
-                  {(() => {
-                    const alacakValue = Object.entries(row).find(([key]) => key === 'ALACAK')?.[1];
-                    return formatCurrency(safeParseFloat(alacakValue));
-                  })()}
-                </p>
-              </div>
+              {/* Multi-Currency Borç/Alacak Grid */}
+              {(borcColumns.length > 0 || alacakColumns.length > 0) && (
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {/* Borç Sütunları */}
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <h4 className="text-xs font-semibold text-red-700 mb-2">
+                      BORÇ
+                    </h4>
+                    {borcColumns.length > 0 ? (
+                      <div className="space-y-1">
+                        {borcColumns.map(([key, value]) => {
+                          const currencyCode = key.replace('_Borç', '').replace('Borç', '').replace('BORÇ', '') || 'TRY';
+                          return (
+                            <div key={key} className="flex justify-between items-center">
+                              <span className="text-xs text-red-600 font-medium">{currencyCode}:</span>
+                              <span className="text-sm font-bold text-red-800">
+                                {typeof value === 'string' && (value.includes('.') || value.includes(',')) ? 
+                                  value : formatCurrency(safeParseFloat(value))
+                                }
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">₺0,00</p>
+                    )}
+                  </div>
+                  
+                  {/* Alacak Sütunları */}
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <h4 className="text-xs font-semibold text-green-700 mb-2">
+                      ALACAK
+                    </h4>
+                    {alacakColumns.length > 0 ? (
+                      <div className="space-y-1">
+                        {alacakColumns.map(([key, value]) => {
+                          const currencyCode = key.replace('_Alacak', '').replace('Alacak', '').replace('ALACAK', '') || 'TRY';
+                          return (
+                            <div key={key} className="flex justify-between items-center">
+                              <span className="text-xs text-green-600 font-medium">{currencyCode}:</span>
+                              <span className="text-sm font-bold text-green-800">
+                                {typeof value === 'string' && (value.includes('.') || value.includes(',')) ? 
+                                  value : formatCurrency(safeParseFloat(value))
+                                }
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">₺0,00</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Multi-Currency Bakiye */}
+              {bakiyeColumns.length > 0 && (
+                <div className="pt-3 border-t border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    NET BAKİYE
+                  </h4>
+                  <div className="space-y-2">
+                    {bakiyeColumns.map(([key, value]) => {
+                      const currencyCode = key.replace('_Bakiye', '').replace('Bakiye', '').replace('BAKIYE', '').replace('BAKİYE', '') || 'TRY';
+                      
+                      // Bakiye değeri analizi
+                      let displayValue = '';
+                      let colorClass = 'text-gray-900';
+                      
+                      if (typeof value === 'string') {
+                        displayValue = value;
+                        if (value.includes('(A)')) {
+                          colorClass = 'text-red-600';
+                        } else if (value.includes('(B)')) {
+                          colorClass = 'text-green-600';
+                        }
+                      } else {
+                        const numValue = safeParseFloat(value);
+                        const formattedCurrency = formatCurrency(Math.abs(numValue));
+                        
+                        if (numValue === 0) {
+                          displayValue = formattedCurrency;
+                          colorClass = 'text-gray-900';
+                        } else {
+                          const indicator = numValue < 0 ? '(A)' : '(B)';
+                          displayValue = `${formattedCurrency} ${indicator}`;
+                          colorClass = numValue < 0 ? 'text-red-600' : 'text-green-600';
+                        }
+                      }
+                      
+                      return (
+                        <div key={key} className="flex justify-between items-center bg-gray-50 rounded-lg p-3">
+                          <span className="text-sm font-medium text-gray-700">{currencyCode}:</span>
+                          <span className={`font-bold text-base ${colorClass}`}>
+                            {displayValue}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              
+              {/* Fallback - Eğer hiç veri yoksa */}
+              {borcColumns.length === 0 && alacakColumns.length === 0 && bakiyeColumns.length === 0 && (
+                <div className="text-center py-4">
+                  <p className="text-gray-500 text-sm">Veri bulunamadı</p>
+                </div>
+              )}
             </div>
-            
-            <div className="mt-4 pt-3 border-t border-gray-200">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">BAKİYE:</span>
-                <span className={`font-bold text-lg ${
-                  (() => {
-                    const bakiyeEntry = Object.entries(row).find(([key]) => 
-                      key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')
-                    );
-                    const bakiyeValue = safeParseFloat(bakiyeEntry?.[1]);
-                    return bakiyeValue < 0 ? 'text-red-600' : bakiyeValue > 0 ? 'text-green-600' : 'text-gray-900';
-                  })()
-                }`}>
-                  {(() => {
-                    const bakiyeEntry = Object.entries(row).find(([key]) => 
-                      key === 'BAKİYE' || key === 'BAKIYE' || key.includes('BAKIYE') || key.includes('BAKİYE')
-                    );
-                    const bakiyeValue = safeParseFloat(bakiyeEntry?.[1]);
-                    const formattedCurrency = formatCurrency(Math.abs(bakiyeValue));
-                    
-                    if (bakiyeValue === 0) {
-                      return formattedCurrency;
-                    }
-                    
-                    const indicator = bakiyeValue < 0 ? '(A)' : '(B)';
-                    return `${formattedCurrency} ${indicator}`;
-                  })()}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-gray-200">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-5 py-2 text-sm font-medium text-white bg-red-800 rounded-lg hover:bg-red-900 disabled:opacity-40 disabled:cursor-not-allowed transition"
-          >
-            Önceki
-          </button>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Sayfa başına:</span>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={30}>30</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <span className="text-sm text-gray-600">kayıt</span>
+      {/* Modern Sayfalama */}
+      <div className="bg-white border-t border-gray-200 px-4 py-3 sm:px-6">
+        <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
+          {/* Sol: Sayfa Başına Kayıt */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700 font-medium">Göster:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                className="rounded-lg border-gray-300 py-1.5 pl-3 pr-8 text-sm focus:border-red-500 focus:ring-red-500 bg-white shadow-sm"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-700">kayıt</span>
+            </div>
+            
+            <div className="hidden sm:flex items-center text-sm text-gray-700">
+              <span className="font-medium">{sortedData.length}</span>
+              <span className="ml-1">sonuç bulundu</span>
+            </div>
+          </div>
+
+          {/* Orta: Modern Sayfa Numaraları */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              {/* İlk Sayfa */}
+              <button
+                onClick={() => handlePageClick(1)}
+                disabled={currentPage === 1}
+                className="inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="İlk sayfa"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+
+              {/* Önceki Sayfa */}
+              <button
+                onClick={() => handlePageClick(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border-t border-b border-gray-300 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Önceki sayfa"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+
+              {/* Sayfa Numaraları */}
+              {generatePageNumbers().map((page, index) => {
+                if (page === '...') {
+                  return (
+                    <span
+                      key={`ellipsis-${index}`}
+                      className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border-t border-b border-gray-300"
+                    >
+                      ...
+                    </span>
+                  );
+                }
+
+                const pageNum = page as number;
+                const isActive = pageNum === currentPage;
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageClick(pageNum)}
+                    className={`inline-flex items-center px-3 py-2 text-sm font-medium border-t border-b border-gray-300 transition-colors ${
+                      isActive
+                        ? 'z-10 bg-red-50 border-red-500 text-red-600 font-semibold'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                    title={`Sayfa ${pageNum}`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              {/* Sonraki Sayfa */}
+              <button
+                onClick={() => handlePageClick(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border-t border-b border-gray-300 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Sonraki sayfa"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              {/* Son Sayfa */}
+              <button
+                onClick={() => handlePageClick(totalPages)}
+                disabled={currentPage === totalPages}
+                className="inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Son sayfa"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Sağ: Sayfa Bilgisi */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 text-sm text-gray-700">
+            <div className="flex items-center gap-1">
+              <span>Sayfa</span>
+              <span className="font-semibold text-red-600">{currentPage}</span>
+              <span>/</span>
+              <span className="font-semibold">{totalPages}</span>
+            </div>
+            <div className="sm:hidden text-xs text-gray-500">
+              {sortedData.length} sonuç
+            </div>
           </div>
         </div>
-        
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-gray-700">
-            Sayfa {currentPage} / {totalPages}
-          </span>
-          <span className="text-sm text-gray-600">
-            ({sortedData.length} kayıt)
-          </span>
-        </div>
-        
-        <button
-          onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-          disabled={currentPage === totalPages}
-          className="px-5 py-2 text-sm font-medium text-white bg-red-800 rounded-lg hover:bg-red-900 disabled:opacity-40 disabled:cursor-not-allowed transition"
-        >
-          Sonraki
-        </button>
       </div>
 
       {/* Müşteri Detay Modal Pop-up */}

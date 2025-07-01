@@ -59,6 +59,7 @@ export default function Login() {
         localStorage.setItem('userPhone', data.user.phone || '');
         localStorage.setItem('userRole', data.user.role);
         localStorage.setItem('companyRef', data.user.company_ref || '');
+        localStorage.setItem('companyName', data.user.company_name || '');
         
         router.push('/');
       } else {
@@ -74,7 +75,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex">
+    <div className="min-h-screen bg-gradient-to-br from-white to-gray-100 flex">
       {/* Sol Taraf - Logo ve Animasyon (Desktop) */}
       <div className="hidden lg:flex lg:flex-1 lg:flex-col lg:justify-center lg:items-center lg:px-12 bg-gradient-to-br from-red-800 to-red-900 relative overflow-hidden">
         {/* Background Pattern */}
@@ -123,8 +124,18 @@ export default function Login() {
       </div>
 
       {/* Sağ Taraf - Login Form */}
-      <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-8 xl:px-12">
-        <div className="w-full max-w-md mx-auto">
+      <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-8 xl:px-12 relative overflow-hidden">
+        {/* Background Pattern - Sağ Taraf */}
+        <div className="absolute inset-0 opacity-15">
+          <div className="absolute top-16 right-12 w-16 h-16 border-2 border-red-600 rounded-full"></div>
+          <div className="absolute top-40 left-16 w-20 h-20 border-2 border-red-700 rounded-full"></div>
+          <div className="absolute bottom-32 right-16 w-12 h-12 border-2 border-red-600 rounded-full"></div>
+          <div className="absolute bottom-16 left-12 w-24 h-24 border-2 border-red-700 rounded-full"></div>
+          <div className="absolute top-20 left-1/2 w-14 h-14 border-2 border-red-500 rounded-full"></div>
+          <div className="absolute bottom-40 left-1/3 w-18 h-18 border-2 border-red-600 rounded-full"></div>
+        </div>
+        
+        <div className="w-full max-w-md mx-auto relative z-10">
           {/* Mobil Logo */}
           <div className="lg:hidden text-center mb-8">
             <img 

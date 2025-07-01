@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '../components/DashboardLayout';
 import Lottie from 'lottie-react';
+import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 
 export default function Settings() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -18,6 +19,12 @@ export default function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<{id: number, name: string} | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+  
+  // Rapor yetkilendirme states
+  const [companyReports, setCompanyReports] = useState<any[]>([]);
+  const [userReportPermissions, setUserReportPermissions] = useState<{[userId: number]: number[]}>({});
+  const [loadingReports, setLoadingReports] = useState(false);
+  
   const [formData, setFormData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -84,6 +91,7 @@ export default function Settings() {
         // Admin ise alt kullanıcıları yükle
         if (role === 'admin') {
           fetchSubUsers();
+          loadCompanyReports();
         }
         // Database ayarlarını yükle
         loadDatabaseSettings();
@@ -95,6 +103,96 @@ export default function Settings() {
 
     checkAuth();
   }, [router]);
+
+  // Şirket raporlarını yükle
+  const loadCompanyReports = async () => {
+    try {
+      setLoadingReports(true);
+      const companyRef = localStorage.getItem('companyRef');
+      
+      if (!companyRef) {
+        return;
+      }
+
+      const response = await fetch(`https://api.btrapor.com/reports-by-company/${companyRef}`);
+      const data = await response.json();
+
+      if (data.status === 'success' && data.data) {
+        setCompanyReports(data.data);
+        
+        // Mevcut kullanıcı izinlerini yükle
+        if (subUsers.length > 0) {
+          loadUserPermissions();
+        }
+      }
+    } catch (error) {
+      console.error('Raporlar yüklenirken hata:', error);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
+
+  // Kullanıcı izinlerini yükle
+  const loadUserPermissions = async () => {
+    const permissions: {[userId: number]: number[]} = {};
+    
+    for (const user of subUsers) {
+      try {
+        const response = await fetch(`https://api.btrapor.com/user-report-permissions/${user.id}`);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          permissions[user.id] = data.data.map((p: any) => p.report_id);
+        } else {
+          permissions[user.id] = [];
+        }
+      } catch (error) {
+        permissions[user.id] = [];
+      }
+    }
+    
+    setUserReportPermissions(permissions);
+  };
+
+  // Kullanıcı rapor izni değiştir
+  const toggleUserReportPermission = async (userId: number, reportId: number) => {
+    const currentPermissions = userReportPermissions[userId] || [];
+    const hasPermission = currentPermissions.includes(reportId);
+    
+    try {
+      const action = hasPermission ? 'remove' : 'add';
+      const response = await fetch(`https://api.btrapor.com/user-report-permissions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          report_id: reportId,
+          action: action
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        // Local state'i güncelle
+        setUserReportPermissions(prev => ({
+          ...prev,
+          [userId]: hasPermission 
+            ? currentPermissions.filter(id => id !== reportId)
+            : [...currentPermissions, reportId]
+        }));
+        
+        await loadAnimation('success', `Kullanıcı yetkileri güncellendi`);
+      } else {
+        await loadAnimation('failed', 'Yetki güncellenirken hata oluştu');
+      }
+    } catch (error) {
+      console.error('Yetki güncellenirken hata:', error);
+      await loadAnimation('failed', 'Yetki güncellenirken hata oluştu');
+    }
+  };
 
   // Alt kullanıcıları getir
   const fetchSubUsers = async () => {
@@ -114,6 +212,11 @@ export default function Settings() {
       if (response.ok && data.status === 'success') {
         console.log('Users data:', data.data); // Debug için
         setSubUsers(data.data || []);
+        
+        // Raporlar yüklenmişse izinleri de yükle
+        if (companyReports.length > 0) {
+          loadUserPermissions();
+        }
       }
     } catch (error) {
       // Sessizce hata yönet
@@ -548,7 +651,7 @@ export default function Settings() {
     { id: 'profile', name: 'Profil & Şifre', icon: '👤' },
     { id: 'database', name: 'Veritabanı', icon: '🗄️', adminOnly: true },
     { id: 'users', name: 'Kullanıcı Yönetimi', icon: '👥', adminOnly: true },
-    { id: 'permissions', name: 'Yetkiler', icon: '🔐', adminOnly: true },
+    { id: 'permissions', name: 'Rapor Yetkilendirme', icon: '📊', adminOnly: true },
     { id: 'system', name: 'Sistem', icon: '⚙️', adminOnly: true }
   ];
 
@@ -1092,53 +1195,179 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Yetkiler Tab */}
+
+
+            {/* Rapor Yetkilendirme Tab */}
             {activeTab === 'permissions' && userRole === 'admin' && (
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Kullanıcı Kısıtlamaları</h3>
-                <div className="space-y-4">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Rapor Erişimi</h4>
-                    <p className="text-gray-600 text-sm mb-3">
-                      Kullanıcıların hangi raporlara erişebileceğini belirleyin
-                    </p>
-                    <div className="space-y-2">
-                      <label className="flex items-center">
-                        <input type="checkbox" className="rounded mr-2" defaultChecked />
-                        <span className="text-sm">Cari Bakiye Raporu</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input type="checkbox" className="rounded mr-2" />
-                        <span className="text-sm">Satış Raporları</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input type="checkbox" className="rounded mr-2" />
-                        <span className="text-sm">Stok Raporları</span>
-                      </label>
-                    </div>
-                  </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Rapor Yetkilendirme</h3>
+                <p className="text-gray-600 text-sm mb-6">
+                  Kullanıcıların hangi raporlara erişebileceğini belirleyin. Admin kullanıcılar tüm raporlara erişebilir.
+                </p>
 
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Sistem Erişimi</h4>
-                    <p className="text-gray-600 text-sm mb-3">
-                      Kullanıcıların sistem özelliklerine erişimini kontrol edin
-                    </p>
-                    <div className="space-y-2">
-                      <label className="flex items-center">
-                        <input type="checkbox" className="rounded mr-2" />
-                        <span className="text-sm">Ayarlar Sayfası</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input type="checkbox" className="rounded mr-2" />
-                        <span className="text-sm">Kullanıcı Yönetimi</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input type="checkbox" className="rounded mr-2" />
-                        <span className="text-sm">Database Ayarları</span>
-                      </label>
-                    </div>
+                {loadingReports ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="ml-2 text-sm text-gray-500">Raporlar yükleniyor...</span>
                   </div>
-                </div>
+                ) : companyReports.length === 0 ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
+                    <p className="text-gray-500">Şirket raporları bulunamadı</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Rapor Listesi */}
+                    <div className="bg-white rounded-lg border border-gray-200">
+                      <div className="px-6 py-4 border-b border-gray-200">
+                        <h4 className="text-lg font-medium text-gray-900">Mevcut Raporlar</h4>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {companyReports.length} rapor bulundu
+                        </p>
+                      </div>
+
+                      <div className="p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {companyReports.map((report) => (
+                            <div key={report.id} className="border border-gray-200 rounded-lg p-4">
+                              <div className="flex items-start">
+                                <div className="flex-shrink-0">
+                                  <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                  </div>
+                                </div>
+                                <div className="ml-3 flex-1">
+                                  <h5 className="text-sm font-medium text-gray-900">
+                                    {report.report_name}
+                                  </h5>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {report.report_description}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Kullanıcı Yetkilendirme Tablosu */}
+                    {subUsers.length > 0 ? (
+                      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-200">
+                          <h4 className="text-lg font-medium text-gray-900">Kullanıcı Yetkilendirme</h4>
+                          <p className="text-sm text-gray-600 mt-1">
+                            Her kullanıcının rapor erişim yetkilerini yönetin
+                          </p>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="sticky left-0 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Kullanıcı
+                                </th>
+                                {companyReports.map((report) => (
+                                  <th key={report.id} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">
+                                    <div className="flex flex-col items-center">
+                                      <span className="truncate max-w-20" title={report.report_name}>
+                                        {report.report_name.split(' ')[0]}
+                                      </span>
+                                      <span className="text-gray-400 text-xs">
+                                        #{report.id}
+                                      </span>
+                                    </div>
+                                  </th>
+                                ))}
+                                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Toplam
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {subUsers.map((user) => {
+                                const userPermissions = userReportPermissions[user.id] || [];
+                                const permissionCount = userPermissions.length;
+                                
+                                return (
+                                  <tr key={user.id} className="hover:bg-gray-50">
+                                    <td className="sticky left-0 bg-white px-6 py-4 whitespace-nowrap">
+                                      <div className="flex items-center">
+                                        <div className="flex-shrink-0 h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
+                                          <span className="text-red-600 font-medium text-sm">
+                                            {user.name.charAt(0).toUpperCase()}
+                                          </span>
+                                        </div>
+                                        <div className="ml-3">
+                                          <div className="text-sm font-medium text-gray-900">
+                                            {user.name}
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            {user.role === 'admin' ? 'Admin' : 'Kullanıcı'}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    {companyReports.map((report) => {
+                                      const hasPermission = userPermissions.includes(report.id);
+                                      const isDisabled = user.role === 'admin'; // Admin her şeye erişebilir
+                                      
+                                      return (
+                                        <td key={report.id} className="px-3 py-4 text-center">
+                                          <div className="flex justify-center">
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={isDisabled || hasPermission}
+                                                disabled={isDisabled}
+                                                onChange={() => toggleUserReportPermission(user.id, report.id)}
+                                                className="sr-only"
+                                              />
+                                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                                isDisabled 
+                                                  ? 'bg-green-100 border-green-300 cursor-not-allowed'
+                                                  : hasPermission 
+                                                    ? 'bg-red-600 border-red-600 hover:bg-red-700' 
+                                                    : 'border-gray-300 hover:border-red-400'
+                                              }`}>
+                                                {(isDisabled || hasPermission) && (
+                                                  <svg className={`w-3 h-3 ${isDisabled ? 'text-green-600' : 'text-white'}`} fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                  </svg>
+                                                )}
+                                              </div>
+                                            </label>
+                                          </div>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="px-6 py-4 text-center">
+                                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                        user.role === 'admin' 
+                                          ? 'bg-green-100 text-green-800'
+                                          : permissionCount > 0 
+                                            ? 'bg-blue-100 text-blue-800'
+                                            : 'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {user.role === 'admin' ? 'Tümü' : `${permissionCount}/${companyReports.length}`}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-gray-50 rounded-lg">
+                        <p className="text-gray-500">Henüz kullanıcı bulunamadı</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
