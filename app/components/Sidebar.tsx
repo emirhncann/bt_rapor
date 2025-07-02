@@ -44,8 +44,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
       console.log('🔄 Kullanıcı raporları yükleniyor...');
       
-      // API'den kullanıcının raporlarını çek
-      const allReports = await fetchUserReports(companyRef, currentUser?.id);
+      // API'den kullanıcının raporlarını çek (yeni format)
+      const {reports: allReports} = await fetchUserReports(companyRef, currentUser?.id);
       console.log('📊 Çekilen raporlar:', allReports);
       
       // Sadece yetkili raporları al

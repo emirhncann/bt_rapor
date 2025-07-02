@@ -66,84 +66,43 @@ export default function CBakiye() {
           return;
         }
 
-        // Admin kontrolü
-        if (currentUser.role === 'admin') {
-          console.log('✅ Admin kullanıcı - Tüm raporlara erişim var');
-          setHasAccess(true);
+        // API'den şirketin tüm raporlarını çek
+        const companyRef = localStorage.getItem('companyRef');
+        if (!companyRef) {
+          console.log('❌ CompanyRef bulunamadı');
+          setHasAccess(false);
           setIsCheckingAccess(false);
           return;
         }
 
-        // LocalStorage'dan kullanıcı raporlarını kontrol et
-        const authorizedReportsJson = localStorage.getItem('userAuthorizedReports');
-        const lastUpdate = localStorage.getItem('userReportsLastUpdate');
+        const {reports: allReports} = await fetchUserReports(companyRef, currentUser.id);
         
-        if (!authorizedReportsJson || !lastUpdate) {
-          console.log('❌ LocalStorage\'da rapor bilgisi bulunamadı - API\'den çekiliyor...');
-          // API'den çek
-          const companyRef = localStorage.getItem('companyRef');
-          if (!companyRef) {
-            setHasAccess(false);
-            setIsCheckingAccess(false);
-            return;
-          }
+        // Cari Bakiye raporu şirketin paketinde var mı kontrol et
+        const cariBakiyeReport = allReports.find(report => 
+          report.report_name.toLowerCase().includes('cari') && 
+          report.report_name.toLowerCase().includes('bakiye')
+        );
+        
+        if (!cariBakiyeReport) {
+          console.log('❌ Cari Bakiye raporu şirketin paketinde bulunmuyor');
+          setHasAccess(false);
+          setIsCheckingAccess(false);
+          return;
+        }
 
-          const allReports = await fetchUserReports(companyRef, currentUser.id);
-          const authorizedReports = getAuthorizedReports(allReports);
-          
-          // LocalStorage'a kaydet
-          localStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
-          localStorage.setItem('userReportsLastUpdate', Date.now().toString());
-          
-          // Erişim kontrolü
-          const hasCariBakiyeAccess = authorizedReports.some((report: ReportWithAccess) => 
-            report.report_name.toLowerCase().includes('cari') && 
-            report.report_name.toLowerCase().includes('bakiye')
-          );
-          
-          console.log('📊 API\'den çekilen Cari Bakiye erişimi:', hasCariBakiyeAccess);
-          setHasAccess(hasCariBakiyeAccess);
-        } else {
-          // LocalStorage'dan kontrol et
-          const authorizedReports = JSON.parse(authorizedReportsJson);
-          const updateTime = parseInt(lastUpdate);
-          
-          // 5 dakikadan eski mi? (Cache süresi)
-          const cacheExpiry = 5 * 60 * 1000; // 5 dakika
-          const isExpired = Date.now() - updateTime > cacheExpiry;
-          
-          if (isExpired) {
-            console.log('⏰ LocalStorage cache süresi dolmuş - yenileniyor...');
-            const companyRef = localStorage.getItem('companyRef');
-            if (!companyRef) {
-              setHasAccess(false);
-              setIsCheckingAccess(false);
-              return;
-            }
-
-            const allReports = await fetchUserReports(companyRef, currentUser.id);
-            const newAuthorizedReports = getAuthorizedReports(allReports);
-            
-            localStorage.setItem('userAuthorizedReports', JSON.stringify(newAuthorizedReports));
-            localStorage.setItem('userReportsLastUpdate', Date.now().toString());
-            
-            const hasCariBakiyeAccess = newAuthorizedReports.some((report: ReportWithAccess) => 
-              report.report_name.toLowerCase().includes('cari') && 
-              report.report_name.toLowerCase().includes('bakiye')
-            );
-            
-            console.log('🔄 Cache yenilendi - Cari Bakiye erişimi:', hasCariBakiyeAccess);
-            setHasAccess(hasCariBakiyeAccess);
-          } else {
-            // Cache geçerli - localStorage'dan kontrol et
-            const hasCariBakiyeAccess = authorizedReports.some((report: ReportWithAccess) => 
-              report.report_name.toLowerCase().includes('cari') && 
-              report.report_name.toLowerCase().includes('bakiye')
-            );
-            
-            console.log('💾 LocalStorage\'dan Cari Bakiye erişimi:', hasCariBakiyeAccess);
-            setHasAccess(hasCariBakiyeAccess);
-          }
+        // API'den gelen yetki kontrolü (admin de dahil)
+        const hasCariBakiyeAccess = cariBakiyeReport.has_access;
+        
+        console.log('📊 Cari Bakiye raporu şirket paketinde:', !!cariBakiyeReport);
+        console.log('🔐 Cari Bakiye erişim yetkisi:', hasCariBakiyeAccess);
+        
+        setHasAccess(hasCariBakiyeAccess);
+        
+        // Eğer erişim yoksa kullanıcıyı dashboard'a yönlendir
+        if (!hasCariBakiyeAccess) {
+          console.log('❌ Cari Bakiye raporu erişimi reddedildi - dashboard\'a yönlendiriliyor');
+          router.push('/?error=access_denied&report=c-bakiye');
+          return;
         }
 
       } catch (error) {
@@ -720,8 +679,7 @@ export default function CBakiye() {
           const connectionResponse = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`, {
             signal: controller.signal,
             headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache'
+              'Content-Type': 'application/json'
             }
           });
           clearTimeout(timeoutId);
@@ -887,8 +845,7 @@ export default function CBakiye() {
           response = await fetch('https://api.btrapor.com/proxy', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache'
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({
               target_url: `http://${externalIP}:${servicePort}/sql`,

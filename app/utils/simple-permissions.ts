@@ -4,6 +4,14 @@ export interface CompanyReport {
   id: number;
   report_name: string;
   report_description: string;
+  has_access: boolean;
+}
+
+export interface CompanyReportsResponse {
+  status: string;
+  licence_end: string;
+  plan_name: string;
+  all_reports: CompanyReport[];
 }
 
 export interface ReportWithAccess extends CompanyReport {
@@ -48,40 +56,18 @@ const REPORT_CATEGORIES: {[key: string]: {name: string, icon: string, route: str
 };
 
 // Şirket raporlarını çek ve yetki bilgisi ekle
-export async function fetchUserReports(companyRef: string, userId?: number): Promise<ReportWithAccess[]> {
+export async function fetchUserReports(companyRef: string, userId?: number): Promise<{reports: ReportWithAccess[], planInfo: {planName: string, licenceEnd: string}}> {
   try {
     // Şirket raporlarını çek
     const response = await fetch(`https://api.btrapor.com/reports-by-company/${companyRef}`);
-    const data = await response.json();
+    const data: CompanyReportsResponse = await response.json();
     
-    if (data.status !== 'success' || !data.data) {
-      return [];
+    if (data.status !== 'success' || !data.all_reports) {
+      return {reports: [], planInfo: {planName: '', licenceEnd: ''}};
     }
 
-    // Kullanıcının yetkili olduğu raporları belirle
-    let authorizedReportIds: number[] = [];
-    
-    const userRole = localStorage.getItem('userRole');
-    if (userRole === 'admin') {
-      // Admin tüm raporlara erişebilir
-      authorizedReportIds = data.data.map((r: CompanyReport) => r.id);
-    } else if (userId) {
-      // Normal kullanıcı için API'den yetkileri çek
-      try {
-        const permResponse = await fetch(`https://api.btrapor.com/user-report-permissions/${userId}`);
-        const permData = await permResponse.json();
-        if (permData.status === 'success') {
-          authorizedReportIds = permData.data.map((p: any) => p.report_id);
-        }
-      } catch (error) {
-        console.log('Kullanıcı yetkileri API\'den alınamadı, varsayılan izinler kullanılıyor');
-        // Geçici: Sadece ilk rapora izin ver
-        authorizedReportIds = data.data.slice(0, 1).map((r: CompanyReport) => r.id);
-      }
-    }
-
-    // Raporları kategorilendir ve yetki bilgisi ekle
-    return data.data.map((report: CompanyReport) => {
+    // Raporları kategorilendir (yetki bilgisi API'den geliyor)
+    const reports = data.all_reports.map((report: CompanyReport) => {
       const category = REPORT_CATEGORIES[report.report_name] || {
         name: 'Diğer Raporlar',
         icon: 'folder',
@@ -92,14 +78,22 @@ export async function fetchUserReports(companyRef: string, userId?: number): Pro
         ...report,
         route_path: category.route,
         icon: category.icon,
-        category: category.name,
-        has_access: authorizedReportIds.includes(report.id)
+        category: category.name
+        // has_access zaten API'den geliyor, tekrar set etmeye gerek yok
       };
     });
 
+    return {
+      reports,
+      planInfo: {
+        planName: data.plan_name || '',
+        licenceEnd: data.licence_end || ''
+      }
+    };
+
   } catch (error) {
     console.error('Kullanıcı raporları yüklenirken hata:', error);
-    return [];
+    return {reports: [], planInfo: {planName: '', licenceEnd: ''}};
   }
 }
 

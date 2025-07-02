@@ -61,84 +61,43 @@ export default function EnposCiro() {
           return;
         }
 
-        // Admin kontrolü
-        if (currentUser.role === 'admin') {
-          console.log('✅ Admin kullanıcı - Tüm raporlara erişim var');
-          setHasAccess(true);
+        // API'den şirketin tüm raporlarını çek
+        const companyRef = localStorage.getItem('companyRef');
+        if (!companyRef) {
+          console.log('❌ CompanyRef bulunamadı');
+          setHasAccess(false);
           setIsCheckingAccess(false);
           return;
         }
 
-        // LocalStorage'dan kullanıcı raporlarını kontrol et
-        const authorizedReportsJson = localStorage.getItem('userAuthorizedReports');
-        const lastUpdate = localStorage.getItem('userReportsLastUpdate');
+        const {reports: allReports} = await fetchUserReports(companyRef, currentUser.id);
         
-        if (!authorizedReportsJson || !lastUpdate) {
-          console.log('❌ LocalStorage\'da rapor bilgisi bulunamadı - API\'den çekiliyor...');
-          // API'den çek
-          const companyRef = localStorage.getItem('companyRef');
-          if (!companyRef) {
-            setHasAccess(false);
-            setIsCheckingAccess(false);
-            return;
-          }
+        // Enpos Ciro raporu şirketin paketinde var mı kontrol et
+        const enposCiroReport = allReports.find(report => 
+          report.report_name.toLowerCase().includes('enpos') && 
+          report.report_name.toLowerCase().includes('ciro')
+        );
+        
+        if (!enposCiroReport) {
+          console.log('❌ Enpos Ciro raporu şirketin paketinde bulunmuyor');
+          setHasAccess(false);
+          setIsCheckingAccess(false);
+          return;
+        }
 
-          const allReports = await fetchUserReports(companyRef, currentUser.id);
-          const authorizedReports = getAuthorizedReports(allReports);
-          
-          // LocalStorage'a kaydet
-          localStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
-          localStorage.setItem('userReportsLastUpdate', Date.now().toString());
-          
-          // Erişim kontrolü
-          const hasEnposCiroAccess = authorizedReports.some(report => 
-            report.report_name.toLowerCase().includes('enpos') && 
-            report.report_name.toLowerCase().includes('ciro')
-          );
-          
-          console.log('📊 API\'den çekilen Enpos Ciro erişimi:', hasEnposCiroAccess);
-          setHasAccess(hasEnposCiroAccess);
-        } else {
-          // LocalStorage'dan kontrol et
-          const authorizedReports = JSON.parse(authorizedReportsJson);
-          const updateTime = parseInt(lastUpdate);
-          
-          // 5 dakikadan eski mi? (Cache süresi)
-          const cacheExpiry = 5 * 60 * 1000; // 5 dakika
-          const isExpired = Date.now() - updateTime > cacheExpiry;
-          
-          if (isExpired) {
-            console.log('⏰ LocalStorage cache süresi dolmuş - yenileniyor...');
-            const companyRef = localStorage.getItem('companyRef');
-            if (!companyRef) {
-              setHasAccess(false);
-              setIsCheckingAccess(false);
-              return;
-            }
-
-            const allReports = await fetchUserReports(companyRef, currentUser.id);
-            const newAuthorizedReports = getAuthorizedReports(allReports);
-            
-            localStorage.setItem('userAuthorizedReports', JSON.stringify(newAuthorizedReports));
-            localStorage.setItem('userReportsLastUpdate', Date.now().toString());
-            
-            const hasEnposCiroAccess = newAuthorizedReports.some(report => 
-              report.report_name.toLowerCase().includes('enpos') && 
-              report.report_name.toLowerCase().includes('ciro')
-            );
-            
-            console.log('🔄 Cache yenilendi - Enpos Ciro erişimi:', hasEnposCiroAccess);
-            setHasAccess(hasEnposCiroAccess);
-          } else {
-            // Cache geçerli - localStorage'dan kontrol et
-            const hasEnposCiroAccess = authorizedReports.some((report: any) => 
-              report.report_name.toLowerCase().includes('enpos') && 
-              report.report_name.toLowerCase().includes('ciro')
-            );
-            
-            console.log('💾 LocalStorage\'dan Enpos Ciro erişimi:', hasEnposCiroAccess);
-            setHasAccess(hasEnposCiroAccess);
-          }
+        // API'den gelen yetki kontrolü (admin de dahil)
+        const hasEnposCiroAccess = enposCiroReport.has_access;
+        
+        console.log('📊 Enpos Ciro raporu şirket paketinde:', !!enposCiroReport);
+        console.log('🔐 Enpos Ciro erişim yetkisi:', hasEnposCiroAccess);
+        
+        setHasAccess(hasEnposCiroAccess);
+        
+        // Eğer erişim yoksa kullanıcıyı dashboard'a yönlendir
+        if (!hasEnposCiroAccess) {
+          console.log('❌ Enpos Ciro raporu erişimi reddedildi - dashboard\'a yönlendiriliyor');
+          router.push('/?error=access_denied&report=enpos-ciro');
+          return;
         }
 
       } catch (error) {

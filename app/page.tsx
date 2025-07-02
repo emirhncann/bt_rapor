@@ -17,8 +17,10 @@ export default function Dashboard() {
   const [accessDeniedInfo, setAccessDeniedInfo] = useState<{show: boolean, report: string} | null>(null);
   const [userReports, setUserReports] = useState<ReportWithAccess[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
+  const [planInfo, setPlanInfo] = useState<{planName: string, licenceEnd: string}>({planName: '', licenceEnd: ''});
   const [stats, setStats] = useState({
     totalReports: 0,
+    accessibleReports: 0,
     activeUsers: 0,
     monthlyQueries: 0,
     systemStatus: 'Aktif'
@@ -40,12 +42,13 @@ export default function Dashboard() {
   useEffect(() => {
     if (isAuthenticated && !loadingReports) {
       const animateStats = () => {
+        const accessibleReports = userReports.filter(r => r.has_access).length;
         const targets = { 
           totalReports: userReports.length, 
-          activeUsers: 12, 
-          monthlyQueries: 3456 
+          accessibleReports: accessibleReports,
+          activeUsers: 12
         };
-        let currentStats = { totalReports: 0, activeUsers: 0, monthlyQueries: 0 };
+        let currentStats = { totalReports: 0, accessibleReports: 0, activeUsers: 0 };
         
         const duration = 2000;
         const stepTime = 50;
@@ -53,25 +56,26 @@ export default function Dashboard() {
         
         const increment = {
           totalReports: targets.totalReports / steps,
-          activeUsers: targets.activeUsers / steps,
-          monthlyQueries: targets.monthlyQueries / steps
+          accessibleReports: targets.accessibleReports / steps,
+          activeUsers: targets.activeUsers / steps
         };
         
         const timer = setInterval(() => {
           currentStats.totalReports = Math.min(currentStats.totalReports + increment.totalReports, targets.totalReports);
+          currentStats.accessibleReports = Math.min(currentStats.accessibleReports + increment.accessibleReports, targets.accessibleReports);
           currentStats.activeUsers = Math.min(currentStats.activeUsers + increment.activeUsers, targets.activeUsers);
-          currentStats.monthlyQueries = Math.min(currentStats.monthlyQueries + increment.monthlyQueries, targets.monthlyQueries);
           
           setStats({
             totalReports: Math.round(currentStats.totalReports),
+            accessibleReports: Math.round(currentStats.accessibleReports),
             activeUsers: Math.round(currentStats.activeUsers),
-            monthlyQueries: Math.round(currentStats.monthlyQueries),
+            monthlyQueries: 0, // Artık kullanılmıyor ama state'te var
             systemStatus: 'Aktif'
           });
           
           if (currentStats.totalReports >= targets.totalReports && 
-              currentStats.activeUsers >= targets.activeUsers && 
-              currentStats.monthlyQueries >= targets.monthlyQueries) {
+              currentStats.accessibleReports >= targets.accessibleReports &&
+              currentStats.activeUsers >= targets.activeUsers) {
             clearInterval(timer);
           }
         }, stepTime);
@@ -123,22 +127,21 @@ export default function Dashboard() {
 
       console.log('🔄 Dashboard - Kullanıcı raporları yükleniyor...');
       
-      // API'den kullanıcının raporlarını çek
-      const allReports = await fetchUserReports(companyRef, currentUser?.id);
+      // API'den tüm raporları çek (yetki bilgisi ile birlikte)
+      const {reports: allReports, planInfo: planData} = await fetchUserReports(companyRef, currentUser?.id);
       console.log('📊 Dashboard - Çekilen raporlar:', allReports);
+      console.log('📋 Dashboard - Plan bilgileri:', planData);
       
-      // Sadece yetkili raporları al
+      // State'e tüm raporları kaydet (kilitli olanlar dahil)
+      setUserReports(allReports);
+      setPlanInfo(planData);
+      
+      // LocalStorage'a sadece yetkili raporları kaydet (diğer sayfalar için)
       const authorizedReports = getAuthorizedReports(allReports);
-      console.log('✅ Dashboard - Yetkili raporlar:', authorizedReports);
-      
-      // State'e kaydet
-      setUserReports(authorizedReports);
-      
-      // LocalStorage'a kaydet (diğer sayfalar için)
       localStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
       localStorage.setItem('userReportsLastUpdate', Date.now().toString());
       
-      console.log('💾 Dashboard - Yetkili raporlar localStorage\'a kaydedildi');
+      console.log('💾 Dashboard - Tüm raporlar yüklendi, yetkili raporlar localStorage\'a kaydedildi');
       
     } catch (error) {
       console.error('❌ Dashboard - Raporlar yüklenirken hata:', error);
@@ -348,10 +351,10 @@ export default function Dashboard() {
                   <p className="text-blue-100 text-sm font-medium">Toplam Rapor</p>
                   <p className="text-3xl font-bold mt-2">{stats.totalReports}</p>
                   <div className="flex items-center mt-2 space-x-1">
-                    <svg className="w-4 h-4 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    <svg className="w-4 h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
-                    <span className="text-green-300 text-sm">+15% bu ay</span>
+                    <span className="text-yellow-300 text-sm">{stats.accessibleReports} erişilebilir</span>
                   </div>
                 </div>
                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
@@ -386,23 +389,27 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Aylık Sorgular */}
+          {/* Plan Bilgileri */}
           <div className="group">
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-orange-100 text-sm font-medium">Bu Ay Sorgu</p>
-                  <p className="text-3xl font-bold mt-2">{stats.monthlyQueries.toLocaleString('tr-TR')}</p>
+                  <p className="text-orange-100 text-sm font-medium">Aktif Plan</p>
+                  <p className="text-2xl font-bold mt-2">
+                    {planInfo.planName ? `${planInfo.planName} Paket` : 'Plan Yükleniyor...'}
+                  </p>
                   <div className="flex items-center mt-2 space-x-1">
                     <svg className="w-4 h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span className="text-yellow-300 text-sm">Yüksek performans</span>
+                    <span className="text-yellow-300 text-sm">
+                      {planInfo.licenceEnd ? formatLicenseDate(planInfo.licenceEnd) : 'Lisans bilgisi yükleniyor...'}
+                    </span>
                   </div>
                 </div>
                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
                 </div>
               </div>
@@ -462,28 +469,49 @@ export default function Dashboard() {
             ) : (
               // Gerçek rapor kartları
               userReports.slice(0, 3).map((report) => {
-                const colors = getReportCardColors(report.report_name);
+                const colors = getReportCardColors(report.report_name, report.has_access);
                 const route = getReportRoute(report.report_name);
                 
                 return (
                   <div key={report.id} className="group cursor-pointer" 
                        onClick={() => handleReportClick(report, route, router)}>
-                    <div className={`bg-gradient-to-br ${colors.bgGradient} rounded-xl p-6 border ${colors.border} hover:${colors.hoverBorder} transition-all duration-300 hover:shadow-lg hover:-translate-y-1`}>
+                    <div className={`bg-gradient-to-br ${colors.bgGradient} rounded-xl p-6 border ${colors.border} hover:${colors.hoverBorder} transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${colors.opacity} relative`}>
+                      {/* Kilitli rapor overlay'i */}
+                      {!report.has_access && (
+                        <div className="absolute top-3 right-3">
+                          <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
+                      
                       <div className="flex items-center justify-between mb-4">
                         <div className={`w-12 h-12 bg-gradient-to-br ${colors.iconBg} rounded-xl flex items-center justify-center text-white`}>
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={getReportIcon(report.report_name)} />
                           </svg>
                         </div>
-                        <svg className={`w-5 h-5 ${colors.arrowColor} group-hover:${colors.arrowHover} transition-colors`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
+                        {report.has_access ? (
+                          <svg className={`w-5 h-5 ${colors.arrowColor} group-hover:${colors.arrowHover} transition-colors`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                          </svg>
+                        ) : (
+                          <div className="text-gray-400 text-xs font-medium bg-gray-200 px-2 py-1 rounded-full">
+                            Kilitli
+                          </div>
+                        )}
                       </div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">{report.report_name}</h4>
-                      <p className="text-gray-600 text-sm mb-4">{report.report_description}</p>
+                      <h4 className={`text-lg font-semibold ${colors.textColor} mb-2`}>{report.report_name}</h4>
+                      <p className={`${colors.textColor} text-sm mb-4`}>{report.report_description}</p>
                       <div className="flex items-center space-x-2">
-                        <span className={`${colors.badgeBg} text-white text-xs px-2 py-1 rounded-full`}>Hazır</span>
-                        <span className="text-xs text-gray-500">Son güncelleme: Bugün</span>
+                        <span className={`${colors.badgeBg} text-white text-xs px-2 py-1 rounded-full`}>
+                          {report.has_access ? 'Hazır' : 'Premium'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {report.has_access ? 'Son güncelleme: Bugün' : 'Paket gerekli'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -728,7 +756,55 @@ export default function Dashboard() {
 }
 
 // Helper fonksiyonlar
-const getReportCardColors = (reportName: string) => {
+const formatLicenseDate = (dateString: string) => {
+  if (!dateString) return 'Tarih bilgisi yok';
+  
+  const targetDate = new Date(dateString);
+  const currentDate = new Date();
+  
+  // Türkçe ay isimleri (kısa)
+  const months = [
+    'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+    'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'
+  ];
+  
+  // Formatlanmış tarih (gg ay yyyy)
+  const day = targetDate.getDate();
+  const month = months[targetDate.getMonth()];
+  const year = targetDate.getFullYear();
+  
+  // Kalan gün hesaplama
+  const timeDiff = targetDate.getTime() - currentDate.getTime();
+  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+  
+  if (daysDiff < 0) {
+    return `${day} ${month} ${year} (Dolmuş)`;
+  } else if (daysDiff === 0) {
+    return `${day} ${month} ${year} (Bugün)`;
+  } else if (daysDiff <= 30) {
+    return `${day} ${month} ${year} (${daysDiff} gün)`;
+  } else {
+    const months = Math.floor(daysDiff / 30);
+    return `${day} ${month} ${year} (${months} ay)`;
+  }
+};
+
+const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
+  // Kilitli raporlar için gri tema
+  if (!hasAccess) {
+    return {
+      bgGradient: 'from-gray-50 to-gray-100',
+      border: 'border-gray-200',
+      hoverBorder: 'border-gray-300',
+      iconBg: 'from-gray-400 to-gray-500',
+      arrowColor: 'text-gray-400',
+      arrowHover: 'text-gray-500',
+      badgeBg: 'bg-gray-400',
+      textColor: 'text-gray-600',
+      opacity: 'opacity-60'
+    };
+  }
+
   if (reportName.toLowerCase().includes('cari') || reportName.toLowerCase().includes('bakiye')) {
     return {
       bgGradient: 'from-red-50 to-red-100',
@@ -737,7 +813,9 @@ const getReportCardColors = (reportName: string) => {
       iconBg: 'from-red-500 to-red-600',
       arrowColor: 'text-red-400',
       arrowHover: 'text-red-600',
-      badgeBg: 'bg-red-500'
+      badgeBg: 'bg-red-500',
+      textColor: 'text-gray-900',
+      opacity: 'opacity-100'
     };
   } else if (reportName.toLowerCase().includes('ciro') || reportName.toLowerCase().includes('satış')) {
     return {
@@ -747,7 +825,9 @@ const getReportCardColors = (reportName: string) => {
       iconBg: 'from-blue-500 to-blue-600',
       arrowColor: 'text-blue-400',
       arrowHover: 'text-blue-600',
-      badgeBg: 'bg-blue-500'
+      badgeBg: 'bg-blue-500',
+      textColor: 'text-gray-900',
+      opacity: 'opacity-100'
     };
   } else if (reportName.toLowerCase().includes('stok') || reportName.toLowerCase().includes('envanter')) {
     return {
@@ -757,7 +837,9 @@ const getReportCardColors = (reportName: string) => {
       iconBg: 'from-emerald-500 to-emerald-600',
       arrowColor: 'text-emerald-400',
       arrowHover: 'text-emerald-600',
-      badgeBg: 'bg-emerald-500'
+      badgeBg: 'bg-emerald-500',
+      textColor: 'text-gray-900',
+      opacity: 'opacity-100'
     };
   } else {
     return {
@@ -767,7 +849,9 @@ const getReportCardColors = (reportName: string) => {
       iconBg: 'from-purple-500 to-purple-600',
       arrowColor: 'text-purple-400',
       arrowHover: 'text-purple-600',
-      badgeBg: 'bg-purple-500'
+      badgeBg: 'bg-purple-500',
+      textColor: 'text-gray-900',
+      opacity: 'opacity-100'
     };
   }
 };
@@ -794,6 +878,12 @@ const getReportIcon = (reportName: string) => {
 };
 
 const handleReportClick = (report: ReportWithAccess, route: string | null, router: any) => {
+  // Erişim yetkisi kontrolü
+  if (!report.has_access) {
+    alert(`🔒 ${report.report_name} rapora erişim yetkiniz bulunmamaktadır.\n\nBu raporu kullanabilmek için paket yükseltmesi yapmanız gerekmektedir.\n\nPaket bilgileri için Ayarlar > Plan Yönetimi bölümünü ziyaret edebilirsiniz.`);
+    return;
+  }
+  
   if (!route) {
     alert(`${report.report_name} henüz hazır değil. Yakında erişilebilir olacak.`);
     return;
