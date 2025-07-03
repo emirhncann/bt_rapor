@@ -287,33 +287,32 @@ export default function Dashboard() {
           <div className="relative px-8 py-10">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-6">
-                <div className="relative">
-                  <img 
-                    src="/img/btRapor.png" 
-                    alt="btRapor Logo" 
-                    className="h-20 w-auto bg-white rounded-2xl p-3 border border-white/20"
-                  />
-                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                <div className="flex flex-col items-start w-full">
+                  <div className="bg-white rounded-xl sm:rounded-2xl shadow-md p-2 mb-2 max-w-[120px] sm:max-w-[160px] w-full flex items-center justify-center">
+                    <img
+                      src="/img/btRapor.png"
+                      alt="btRapor Logo"
+                      className="w-full h-auto rounded-lg sm:rounded-xl"
+                    />
                   </div>
-                </div>
-                <div>
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h1 className="text-4xl font-bold text-white">
-                      Merhaba, {userName}! 👋
-                    </h1>
-                  </div>
-                  <p className="text-xl text-red-100 font-medium mb-2">
-                    İş Dünyasına Dair Tüm Raporlar
-                  </p>
-                  {companyName && (
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                      <p className="text-red-200 text-lg">
-                        🏢 {companyName}
-                      </p>
+                  <div className="flex flex-col">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
+                        Merhaba, {userName}! 👋
+                      </h1>
                     </div>
-                  )}
+                    <p className="text-base sm:text-lg lg:text-xl text-red-100 font-medium mb-2">
+                      İş Dünyasına Dair Tüm Raporlar
+                    </p>
+                    {companyName && (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                        <p className="text-red-200 text-sm sm:text-base lg:text-lg">
+                          🏢 {companyName}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -321,13 +320,13 @@ export default function Dashboard() {
                 <div className="text-right space-y-2">
                   <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
                    
-                    <p className="text-2xl font-bold text-white">
+                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">
                       {currentTime.toLocaleTimeString('tr-TR', { 
                         hour: '2-digit', 
                         minute: '2-digit'
                       })}
                     </p>
-                    <p className="text-red-300 text-sm">
+                    <p className="text-red-300 text-xs sm:text-sm">
                       {currentTime.toLocaleDateString('tr-TR', { 
                         day: 'numeric',
                         month: 'long',
@@ -342,23 +341,23 @@ export default function Dashboard() {
         </div>
 
         {/* Modern Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {/* Toplam Rapor */}
           <div className="group">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-blue-100 text-sm font-medium">Toplam Rapor</p>
-                  <p className="text-3xl font-bold mt-2">{stats.totalReports}</p>
-                  <div className="flex items-center mt-2 space-x-1">
-                    <svg className="w-4 h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <p className="text-blue-100 text-xs sm:text-sm font-medium">Toplam Rapor</p>
+                  <p className="text-2xl sm:text-3xl font-bold mt-1 sm:mt-2">{stats.totalReports}</p>
+                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
-                    <span className="text-yellow-300 text-sm">{stats.accessibleReports} erişilebilir</span>
+                    <span className="text-yellow-300 text-xs sm:text-sm">{stats.accessibleReports} erişilebilir</span>
                   </div>
                 </div>
-                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </div>
@@ -368,20 +367,20 @@ export default function Dashboard() {
 
           {/* Aktif Kullanıcılar */}
           <div className="group">
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-emerald-100 text-sm font-medium">Aktif Kullanıcı</p>
-                  <p className="text-3xl font-bold mt-2">{stats.activeUsers}</p>
-                  <div className="flex items-center mt-2 space-x-1">
-                    <svg className="w-4 h-4 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <p className="text-emerald-100 text-xs sm:text-sm font-medium">Aktif Kullanıcı</p>
+                  <p className="text-2xl sm:text-3xl font-bold mt-1 sm:mt-2">{stats.activeUsers}</p>
+                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
-                    <span className="text-green-300 text-sm">+3 yeni kullanıcı</span>
+                    <span className="text-green-300 text-xs sm:text-sm">+3 yeni kullanıcı</span>
                   </div>
                 </div>
-                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
@@ -391,24 +390,24 @@ export default function Dashboard() {
 
           {/* Plan Bilgileri */}
           <div className="group">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-orange-100 text-sm font-medium">Aktif Plan</p>
-                  <p className="text-2xl font-bold mt-2">
+                  <p className="text-orange-100 text-xs sm:text-sm font-medium">Aktif Plan</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold mt-1 sm:mt-2">
                     {planInfo.planName ? `${planInfo.planName} Paket` : 'Plan Yükleniyor...'}
                   </p>
-                  <div className="flex items-center mt-2 space-x-1">
-                    <svg className="w-4 h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span className="text-yellow-300 text-sm">
+                    <span className="text-yellow-300 text-xs sm:text-sm">
                       {planInfo.licenceEnd ? formatLicenseDate(planInfo.licenceEnd) : 'Lisans bilgisi yükleniyor...'}
                     </span>
                   </div>
                 </div>
-                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
                 </div>
@@ -418,18 +417,18 @@ export default function Dashboard() {
 
           {/* Sistem Durumu */}
           <div className="group">
-            <div className="bg-gradient-to-br from-red-700 to-red-800 rounded-2xl p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
+            <div className="bg-gradient-to-br from-red-700 to-red-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-red-100 text-sm font-medium">Sistem Durumu</p>
-                  <p className="text-2xl font-bold mt-2 text-white">{stats.systemStatus}</p>
-                  <div className="flex items-center mt-2 space-x-1">
+                  <p className="text-red-100 text-xs sm:text-sm font-medium">Sistem Durumu</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold mt-1 sm:mt-2 text-white">{stats.systemStatus}</p>
+                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                    <span className="text-white text-sm">Tüm servisler çalışıyor</span>
+                    <span className="text-white text-xs sm:text-sm">Tüm servisler çalışıyor</span>
                   </div>
                 </div>
-                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 12l5 5L20 7" />
                   </svg>
                 </div>
@@ -439,30 +438,30 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Access Toolbar */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-bold text-gray-900">Hızlı Erişim</h3>
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Hızlı Erişim</h3>
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-gray-500">Tüm servisler hazır</span>
+              <span className="text-xs sm:text-sm text-gray-500">Tüm servisler hazır</span>
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             {/* Dinamik Rapor Kartları */}
             {loadingReports ? (
               // Loading kartları
               Array.from({length: 3}).map((_, index) => (
-                <div key={index} className="bg-gray-50 rounded-xl p-6 border border-gray-200 animate-pulse">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gray-300 rounded-xl"></div>
-                    <div className="w-5 h-5 bg-gray-300 rounded"></div>
+                <div key={index} className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-200 animate-pulse">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-xl"></div>
+                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-gray-300 rounded"></div>
                   </div>
-                  <div className="h-5 bg-gray-300 rounded mb-2"></div>
-                  <div className="h-4 bg-gray-300 rounded mb-4"></div>
+                  <div className="h-4 sm:h-5 bg-gray-300 rounded mb-2"></div>
+                  <div className="h-3 sm:h-4 bg-gray-300 rounded mb-3 sm:mb-4"></div>
                   <div className="flex items-center space-x-2">
-                    <div className="w-12 h-5 bg-gray-300 rounded-full"></div>
-                    <div className="w-20 h-3 bg-gray-300 rounded"></div>
+                    <div className="w-10 h-4 sm:w-12 sm:h-5 bg-gray-300 rounded-full"></div>
+                    <div className="w-16 h-3 sm:w-20 sm:h-3 bg-gray-300 rounded"></div>
                   </div>
                 </div>
               ))
@@ -475,26 +474,26 @@ export default function Dashboard() {
                 return (
                   <div key={report.id} className="group cursor-pointer" 
                        onClick={() => handleReportClick(report, route, router)}>
-                    <div className={`bg-gradient-to-br ${colors.bgGradient} rounded-xl p-6 border ${colors.border} hover:${colors.hoverBorder} transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${colors.opacity} relative`}>
+                    <div className={`bg-gradient-to-br ${colors.bgGradient} rounded-xl p-4 sm:p-6 border ${colors.border} hover:${colors.hoverBorder} transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${colors.opacity} relative`}>
                       {/* Kilitli rapor overlay'i */}
                       {!report.has_access && (
-                        <div className="absolute top-3 right-3">
-                          <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-600 rounded-lg flex items-center justify-center">
+                            <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
                           </div>
                         </div>
                       )}
                       
-                      <div className="flex items-center justify-between mb-4">
-                        <div className={`w-12 h-12 bg-gradient-to-br ${colors.iconBg} rounded-xl flex items-center justify-center text-white`}>
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center justify-between mb-3 sm:mb-4">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${colors.iconBg} rounded-xl flex items-center justify-center text-white`}>
+                          <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={getReportIcon(report.report_name)} />
                           </svg>
                         </div>
                         {report.has_access ? (
-                          <svg className={`w-5 h-5 ${colors.arrowColor} group-hover:${colors.arrowHover} transition-colors`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className={`w-4 h-4 sm:w-5 sm:h-5 ${colors.arrowColor} group-hover:${colors.arrowHover} transition-colors`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                           </svg>
                         ) : (
@@ -503,8 +502,8 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
-                      <h4 className={`text-lg font-semibold ${colors.textColor} mb-2`}>{report.report_name}</h4>
-                      <p className={`${colors.textColor} text-sm mb-4`}>{report.report_description}</p>
+                      <h4 className={`text-base sm:text-lg font-semibold ${colors.textColor} mb-1 sm:mb-2`}>{report.report_name}</h4>
+                      <p className={`${colors.textColor} text-xs sm:text-sm mb-3 sm:mb-4`}>{report.report_description}</p>
                       <div className="flex items-center space-x-2">
                         <span className={`${colors.badgeBg} text-white text-xs px-2 py-1 rounded-full`}>
                           {report.has_access ? 'Hazır' : 'Premium'}
@@ -522,16 +521,16 @@ export default function Dashboard() {
             {/* Eğer 3'ten az rapor varsa boş kartları doldur */}
             {!loadingReports && userReports.length > 0 && userReports.length < 3 && (
               Array.from({length: 3 - userReports.length}).map((_, index) => (
-                <div key={`empty-${index}`} className="bg-gray-50 rounded-xl p-6 border border-gray-200 opacity-50">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gray-300 rounded-xl flex items-center justify-center">
-                      <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div key={`empty-${index}`} className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-200 opacity-50">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-xl flex items-center justify-center">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
                     </div>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-500 mb-2">Yakında</h4>
-                  <p className="text-gray-400 text-sm mb-4">Yeni raporlar ekleniyor...</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-500 mb-1 sm:mb-2">Yakında</h4>
+                  <p className="text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4">Yeni raporlar ekleniyor...</p>
                   <div className="flex items-center space-x-2">
                     <span className="bg-gray-300 text-gray-600 text-xs px-2 py-1 rounded-full">Geliştiriliyor</span>
                   </div>
@@ -541,32 +540,32 @@ export default function Dashboard() {
 
             {/* Eğer hiç rapor yoksa */}
             {!loadingReports && userReports.length === 0 && (
-              <div className="md:col-span-3 text-center py-12">
-                <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="md:col-span-3 text-center py-8 sm:py-12">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <p className="text-gray-500 text-lg">Henüz erişilebilir rapor bulunmuyor</p>
-                <p className="text-gray-400 text-sm mt-2">Yöneticinizle iletişime geçerek rapor erişimi talep edebilirsiniz</p>
+                <p className="text-gray-500 text-base sm:text-lg">Henüz erişilebilir rapor bulunmuyor</p>
+                <p className="text-gray-400 text-xs sm:text-sm mt-2">Yöneticinizle iletişime geçerek rapor erişimi talep edebilirsiniz</p>
               </div>
             )}
 
             {/* Gelişmiş Analiz */}
             <div className="group">
-              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200 hover:border-red-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-red-700 to-red-800 rounded-xl flex items-center justify-center text-white">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 sm:p-6 border border-red-200 hover:border-red-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-red-700 to-red-800 rounded-xl flex items-center justify-center text-white">
+                    <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
                   </div>
-                  <svg className="w-5 h-5 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
                 </div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-2">Gelişmiş Analiz</h4>
-                <p className="text-gray-600 text-sm mb-4">AI destekli veri analizi ve tahmine dayalı raporlama</p>
+                <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Gelişmiş Analiz</h4>
+                <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">AI destekli veri analizi ve tahmine dayalı raporlama</p>
                 <div className="flex items-center space-x-2">
                   <span className="bg-red-600 text-white text-xs px-2 py-1 rounded-full">Yakında</span>
                   <span className="text-xs text-gray-500">Geliştiriliyor</span>
@@ -577,35 +576,35 @@ export default function Dashboard() {
         </div>
 
         {/* Raporlar Bölümü - Kategoriler */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100">
-          <div className="p-6 border-b border-gray-100">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl border border-gray-100">
+          <div className="p-4 sm:p-6 border-b border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-bold text-gray-900">Rapor Kategorileri</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Rapor Kategorileri</h3>
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-gray-500">6 kategori, 15-20 rapor hazırlanıyor</span>
+                <span className="text-xs sm:text-sm text-gray-500">6 kategori, 15-20 rapor hazırlanıyor</span>
               </div>
             </div>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {/* Finansal Raporlar Kategorisi */}
               <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200 hover:border-red-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 sm:p-6 border border-red-200 hover:border-red-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center text-white">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
                     </div>
-                    <svg className="w-5 h-5 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Finansal Raporlar</h4>
-                  <p className="text-gray-600 text-sm mb-4">Cari bakiye, gelir-gider ve mali tablolar</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Finansal Raporlar</h4>
+                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Cari bakiye, gelir-gider ve mali tablolar</p>
                   <div className="flex items-center justify-between">
-                    <span className="bg-red-100 text-red-700 text-xs px-3 py-1 rounded-full font-medium">5-6 Rapor</span>
+                    <span className="bg-red-100 text-red-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">5-6 Rapor</span>
                     <span className="text-xs text-gray-500">Hazırlanıyor</span>
                   </div>
                 </div>
@@ -613,21 +612,21 @@ export default function Dashboard() {
 
               {/* Satış Raporları Kategorisi */}
               <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200 hover:border-blue-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 sm:p-6 border border-blue-200 hover:border-blue-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                       </svg>
                     </div>
-                    <svg className="w-5 h-5 text-blue-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Satış Raporları</h4>
-                  <p className="text-gray-600 text-sm mb-4">Ciro, performans ve satış analizleri</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Satış Raporları</h4>
+                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Ciro, performans ve satış analizleri</p>
                   <div className="flex items-center justify-between">
-                    <span className="bg-blue-100 text-blue-700 text-xs px-3 py-1 rounded-full font-medium">4-5 Rapor</span>
+                    <span className="bg-blue-100 text-blue-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">4-5 Rapor</span>
                     <span className="text-xs text-gray-500">Hazırlanıyor</span>
                   </div>
                 </div>
@@ -635,21 +634,21 @@ export default function Dashboard() {
 
               {/* Stok Raporları Kategorisi */}
               <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200 hover:border-emerald-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 sm:p-6 border border-emerald-200 hover:border-emerald-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                       </svg>
                     </div>
-                    <svg className="w-5 h-5 text-emerald-400 group-hover:text-emerald-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 group-hover:text-emerald-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Stok Raporları</h4>
-                  <p className="text-gray-600 text-sm mb-4">Envanter, stok hareket ve analiz raporları</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Stok Raporları</h4>
+                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Envanter, stok hareket ve analiz raporları</p>
                   <div className="flex items-center justify-between">
-                    <span className="bg-emerald-100 text-emerald-700 text-xs px-3 py-1 rounded-full font-medium">3-4 Rapor</span>
+                    <span className="bg-emerald-100 text-emerald-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">3-4 Rapor</span>
                     <span className="text-xs text-gray-500">Hazırlanıyor</span>
                   </div>
                 </div>
@@ -657,21 +656,21 @@ export default function Dashboard() {
 
               {/* Müşteri Raporları Kategorisi */}
               <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200 hover:border-orange-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 sm:p-6 border border-orange-200 hover:border-orange-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                     </div>
-                    <svg className="w-5 h-5 text-orange-400 group-hover:text-orange-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 group-hover:text-orange-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Müşteri Raporları</h4>
-                  <p className="text-gray-600 text-sm mb-4">Müşteri analizi, segmentasyon ve CRM raporları</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Müşteri Raporları</h4>
+                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Müşteri analizi, segmentasyon ve CRM raporları</p>
                   <div className="flex items-center justify-between">
-                    <span className="bg-orange-100 text-orange-700 text-xs px-3 py-1 rounded-full font-medium">3-4 Rapor</span>
+                    <span className="bg-orange-100 text-orange-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">3-4 Rapor</span>
                     <span className="text-xs text-gray-500">Hazırlanıyor</span>
                   </div>
                 </div>
@@ -679,21 +678,21 @@ export default function Dashboard() {
 
               {/* Analiz Raporları Kategorisi */}
               <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200 hover:border-purple-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 sm:p-6 border border-purple-200 hover:border-purple-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
                     </div>
-                    <svg className="w-5 h-5 text-purple-400 group-hover:text-purple-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400 group-hover:text-purple-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Analiz Raporları</h4>
-                  <p className="text-gray-600 text-sm mb-4">Trend analizi, karşılaştırma ve istatistikler</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Analiz Raporları</h4>
+                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Trend analizi, karşılaştırma ve istatistikler</p>
                   <div className="flex items-center justify-between">
-                    <span className="bg-purple-100 text-purple-700 text-xs px-3 py-1 rounded-full font-medium">2-3 Rapor</span>
+                    <span className="bg-purple-100 text-purple-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">2-3 Rapor</span>
                     <span className="text-xs text-gray-500">Hazırlanıyor</span>
                   </div>
                 </div>
@@ -701,21 +700,21 @@ export default function Dashboard() {
 
               {/* Diğer Raporlar Kategorisi */}
               <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200 hover:border-gray-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 sm:p-6 border border-gray-200 hover:border-gray-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl flex items-center justify-center text-white">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
-                    <svg className="w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 group-hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Diğer Raporlar</h4>
-                  <p className="text-gray-600 text-sm mb-4">Özel raporlar ve sistem kayıtları</p>
+                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Diğer Raporlar</h4>
+                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Özel raporlar ve sistem kayıtları</p>
                   <div className="flex items-center justify-between">
-                    <span className="bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full font-medium">1-2 Rapor</span>
+                    <span className="bg-gray-100 text-gray-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">1-2 Rapor</span>
                     <span className="text-xs text-gray-500">Hazırlanıyor</span>
                   </div>
                 </div>
@@ -723,28 +722,28 @@ export default function Dashboard() {
             </div>
 
             {/* Alt Bilgi */}
-            <div className="mt-8 text-center p-6 bg-gradient-to-r from-red-50 to-red-100 rounded-xl border border-red-200">
-              <div className="flex items-center justify-center mb-3">
-                <svg className="w-8 h-8 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="mt-6 sm:mt-8 text-center p-4 sm:p-6 bg-gradient-to-r from-red-50 to-red-100 rounded-xl border border-red-200">
+              <div className="flex items-center justify-center mb-2 sm:mb-3">
+                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-red-600 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <h4 className="text-lg font-semibold text-gray-900">Rapor Geliştirme Süreci</h4>
+                <h4 className="text-base sm:text-lg font-semibold text-gray-900">Rapor Geliştirme Süreci</h4>
               </div>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">
                 Tüm rapor kategorilerinde toplam 15-20 adet detaylı rapor hazırlanmaktadır. Her kategori kendi özel sayfasına sahip olacak ve gelişmiş filtreleme seçenekleri sunacaktır.
               </p>
-              <div className="flex items-center justify-center space-x-4">
+              <div className="flex items-center justify-center space-x-2 sm:space-x-4">
                 <div className="flex items-center">
-                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Aktif Geliştirme</span>
+                  <div className="w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full mr-1 sm:mr-2"></div>
+                  <span className="text-xs sm:text-sm text-gray-600">Aktif Geliştirme</span>
                 </div>
                 <div className="flex items-center">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Kullanıcı Odaklı</span>
+                  <div className="w-2 h-2 sm:w-3 sm:h-3 bg-blue-500 rounded-full mr-1 sm:mr-2"></div>
+                  <span className="text-xs sm:text-sm text-gray-600">Kullanıcı Odaklı</span>
                 </div>
                 <div className="flex items-center">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full mr-2"></div>
-                  <span className="text-sm text-gray-600">Modern Tasarım</span>
+                  <div className="w-2 h-2 sm:w-3 sm:h-3 bg-purple-500 rounded-full mr-1 sm:mr-2"></div>
+                  <span className="text-xs sm:text-sm text-gray-600">Modern Tasarım</span>
                 </div>
               </div>
             </div>

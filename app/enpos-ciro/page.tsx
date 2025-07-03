@@ -344,7 +344,15 @@ export default function EnposCiro() {
 
     // Eğer zaten loading ise, duplicate tıklamayı engelle
     if (loading) {
-      console.log('⚠️ Zaten rapor yükleniyokur, duplicate tıklama engellendi');
+      console.log('⚠️ Zaten rapor yükleniyor, duplicate tıklama engellendi');
+      return;
+    }
+    
+    // Company ref'i önce al
+    const companyRef = localStorage.getItem('companyRef');
+    if (!companyRef) {
+      console.error('Company ref bulunamadı');
+      alert('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
       return;
     }
     
@@ -354,9 +362,34 @@ export default function EnposCiro() {
     
     setLoading(true);
     try {
+      // Mobil debug için initial check
+      console.log('🔄 fetchCiroData başlatılıyor - Mobil Debug');
+      
+      // User Agent kontrolü (mobil debug için)
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      console.log('📱 Mobil cihaz tespit edildi:', isMobile);
+      
       // Önce localStorage'dan connection bilgilerini kontrol et
       let connectionInfo = null;
       const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      
+      // Mobil localStorage kontrolü
+      if (!cachedConnectionInfo) {
+        console.log('⚠️ MOBIL DEBUG: localStorage\'da connectionInfo bulunamadı');
+        // Mobil cihazlarda localStorage sorunları için alternatif kontrol
+        try {
+          localStorage.setItem('test', 'test');
+          localStorage.removeItem('test');
+          console.log('✅ MOBIL DEBUG: localStorage çalışıyor');
+        } catch (e) {
+          console.error('❌ MOBIL DEBUG: localStorage erişim sorunu:', e);
+          alert('Mobil cihazınızda localStorage sorunu tespit edildi. Lütfen gizli sekme kullanmayın ve çerezleri etkinleştirin.');
+          setLoading(false);
+          return;
+        }
+      } else {
+        console.log('✅ MOBIL DEBUG: localStorage\'da connectionInfo mevcut');
+      }
       
       if (cachedConnectionInfo) {
         try {
@@ -364,34 +397,59 @@ export default function EnposCiro() {
           console.log('✅ Connection bilgileri localStorage\'dan alındı (Ciro):', connectionInfo);
         } catch (e) {
           console.log('⚠️ localStorage\'daki connection bilgileri parse edilemedi, API\'den alınacak');
+          // Mobil debug için
+          if (isMobile) {
+            console.log('📱 MOBIL DEBUG: JSON parse hatası:', e);
+          }
         }
       }
       
       // Eğer localStorage'da yoksa API'den al
       if (!connectionInfo) {
-        const companyRef = localStorage.getItem('companyRef');
-        if (!companyRef) {
-          showErrorMessage('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
-          setLoading(false);
-          return;
-        }
 
         console.log('🔄 Connection bilgileri API\'den alınıyor (Ciro)...');
-        const apiUrl = process.env.NODE_ENV === 'development' 
-          ? `/api/btrapor/connection-info/${companyRef}`
-          : `https://api.btrapor.com/connection-info/${companyRef}`;
-        const connectionResponse = await fetch(apiUrl);
-        const connectionData = await connectionResponse.json();
+        
+        // Mobil cihazlar için timeout ekleyelim
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), isMobile ? 15000 : 10000); // Mobilde daha uzun timeout
+        
+        try {
+          const connectionResponse = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`, {
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          clearTimeout(timeoutId);
+          
+          const connectionData = await connectionResponse.json();
 
-        if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
-          showErrorMessage('Veritabanı bağlantı bilgileri alınamadı. Lütfen sistem yöneticisi ile iletişime geçin.');
+          console.log('📡 Connection Response:', connectionData);
+
+          if (!connectionResponse.ok || connectionData.status !== 'success' || !connectionData.data) {
+            console.error('Connection bilgileri alınamadı:', connectionData);
+            const errorMsg = connectionData.message || 'Veritabanı bağlantı bilgileri alınamadı';
+            alert(`${errorMsg}. Lütfen sistem yöneticisi ile iletişime geçin.`);
+            setLoading(false);
+            return;
+          }
+
+          connectionInfo = connectionData.data;
+          // API'den alınan bilgileri localStorage'a kaydet
+          localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+          console.log('💾 Connection bilgileri localStorage\'a kaydedildi (Ciro)');
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            console.error('❌ Connection bilgileri timeout:', error);
+            alert('Bağlantı zaman aşımı. Lütfen internet bağlantınızı kontrol edin.');
+          } else {
+            console.error('❌ Connection bilgileri alınırken hata:', error);
+            alert('Bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.');
+          }
           setLoading(false);
           return;
         }
-
-        connectionInfo = connectionData.data;
-        localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
-        console.log('💾 Connection bilgileri localStorage\'a kaydedildi (Ciro)');
       }
 
       // public_ip'den dış IP ve portu ayır
@@ -403,6 +461,8 @@ export default function EnposCiro() {
         externalIP = ip || 'localhost';
         servicePort = port || '45678';
       }
+
+      console.log('🔗 MOBIL DEBUG - Target Service:', `http://${externalIP}:${servicePort}/sql`);
 
       // ENPOS bilgileri varsa onları kullan, yoksa normal database bilgilerini kullan
       const useEnposDb = connectionInfo.enpos_server_name && connectionInfo.enpos_database_name;
@@ -441,49 +501,64 @@ GROUP BY B.Sube_No,D.NAME
 
       console.log('📝 Dinamik SQL Sorgusu (Ciro):', sqlQuery);
 
-      const proxyUrl = process.env.NODE_ENV === 'development' 
-        ? '/api/btrapor/proxy'
-        : 'https://api.btrapor.com/proxy';
-      
-      // Retry logic - bazen ilk deneme başarısız oluyor
-      let response;
-      let lastError;
-      const maxRetries = 2;
+      // SQL sorgusunu proxy üzerinden çalıştır - Mobil için geliştirilmiş retry logic
+      let response: Response | undefined;
+      const maxRetries = isMobile ? 3 : 2; // Mobilde daha az deneme
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries}...`);
-          response = await fetch(proxyUrl, {
+          console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries} (Ciro${isMobile ? ' - Mobil' : ''})...`);
+          
+          // Debug: Gönderilen payload'u logla
+          const requestPayload = {
+            companyRef: companyRef,
+            connectionType: 'enpos_db_key', // ENPOS için özel connection kullan
+            payload: {
+              query: sqlQuery
+            }
+          };
+          console.log('🚀 ENPOS Backend\'e gönderilen payload:', requestPayload);
+          console.log('📋 CompanyRef değeri:', companyRef);
+          console.log('🔑 ConnectionType değeri:', 'enpos_db_key');
+          
+          // Mobil cihazlar için timeout kontrolü
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), isMobile ? 20000 : 15000); // Mobilde daha uzun timeout
+          
+          response = await fetch('https://api.btrapor.com/proxy', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
+              'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              target_url: `http://${externalIP}:${servicePort}/sql`,
-              payload: {
-                connectionString,
-                query: sqlQuery
-              }
-            })
+            body: JSON.stringify(requestPayload),
+            signal: controller.signal
           });
           
+          clearTimeout(timeoutId);
+          
           if (response.ok) {
-            console.log(`✅ Proxy çağrısı ${attempt}. denemede başarılı`);
+            console.log(`✅ Proxy çağrısı ${attempt}. denemede başarılı (Ciro${isMobile ? ' - Mobil' : ''})`);
             break; // Başarılı, döngüden çık
           } else if (attempt === maxRetries) {
-            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status}`);
+            console.error(`❌ Tüm denemeler başarısız - HTTP ${response.status} (Ciro${isMobile ? ' - Mobil' : ''})`);
           } else {
-            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek...`);
-            await new Promise(resolve => setTimeout(resolve, 100)); // 100ms bekle
+            console.log(`⚠️ Deneme ${attempt} başarısız (${response.status}), tekrar denenecek... (Ciro${isMobile ? ' - Mobil' : ''})`);
+            await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100)); // Mobilde daha uzun bekleme
           }
-        } catch (error) {
-          lastError = error;
-          if (attempt === maxRetries) {
-            console.error(`❌ Tüm denemeler başarısız:`, error);
+        } catch (error: any) {
+          if (error.name === 'AbortError') {
+            console.error(`❌ Proxy çağrısı timeout (deneme ${attempt})`);
+            if (attempt === maxRetries) {
+              alert('İstek zaman aşımı. Lütfen internet bağlantınızı kontrol edin.');
+              setLoading(false);
+              return;
+            }
+          } else if (attempt === maxRetries) {
+            console.error(`❌ Tüm denemeler başarısız (Ciro${isMobile ? ' - Mobil' : ''}):`, error);
             throw error;
           } else {
-            console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek:`, error);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
+            console.log(`⚠️ Deneme ${attempt} hata aldı, tekrar denenecek (Ciro${isMobile ? ' - Mobil' : ''}):`, error);
+            await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100)); // Mobilde daha uzun bekleme
           }
         }
       }
@@ -492,13 +567,42 @@ GROUP BY B.Sube_No,D.NAME
       if (!response || !response.ok) {
         const status = response?.status || 'Bilinmeyen';
         const statusText = response?.statusText || 'Bağlantı hatası';
+        
+        // Backend'den gelen hata mesajını oku
+        let errorMessage = `HTTP ${status}: ${statusText}`;
+        if (response) {
+          try {
+            const errorData = await response.json();
+            console.error('❌ ENPOS Backend hata detayı:', errorData);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            console.error('❌ ENPOS Backend hata response\'u okunamadı:', e);
+          }
+        }
+        
         console.error('HTTP hatası:', status, statusText);
-        showErrorMessage(`Bağlantı hatası: ${status} - ${statusText}`);
+        alert(`Bağlantı hatası: ${errorMessage}`);
         setData([]);
         return;
       }
 
-      const jsonData = await response.json();
+      // Backend response'unu debug et
+      const responseText = await response.text();
+      console.log('🔍 ENPOS Backend raw response:', responseText);
+      console.log('📏 ENPOS Response length:', responseText.length);
+      console.log('🎯 ENPOS Response first 200 chars:', responseText.substring(0, 200));
+      
+      let jsonData;
+      try {
+        jsonData = JSON.parse(responseText);
+        console.log('✅ ENPOS JSON parse başarılı:', jsonData);
+      } catch (parseError) {
+        console.error('❌ ENPOS JSON parse hatası:', parseError);
+        console.error('🔍 ENPOS Parse edilemeyen response:', responseText);
+        alert(`Backend'den geçersiz response geldi. Muhtemelen backend'de hata var:\n\n${responseText.substring(0, 500)}`);
+        setData([]);
+        return;
+      }
       
       console.log('Gelen ciro data:', jsonData);
       
@@ -506,28 +610,32 @@ GROUP BY B.Sube_No,D.NAME
       if (jsonData.status === 'error' || jsonData.error || jsonData.curl_error) {
         const errorMsg = jsonData.message || jsonData.error || jsonData.curl_error || 'Bilinmeyen hata';
         console.error('Server hatası:', errorMsg);
-        showErrorMessage(`Veritabanı bağlantı hatası: ${errorMsg}`);
+        alert(`Veritabanı bağlantı hatası: ${errorMsg}`);
         setData([]);
         return;
       }
       
-      // Success response'u kontrol et
-      if (jsonData.status === 'success' && Array.isArray(jsonData.data)) {
-        setData(jsonData.data);
-      } else if (Array.isArray(jsonData)) {
-        setData(jsonData);
+      // Eğer data array değilse, uygun formata çevir
+      let finalData: any[] = [];
+      if (Array.isArray(jsonData)) {
+        finalData = jsonData;
       } else if (jsonData && Array.isArray(jsonData.data)) {
-        setData(jsonData.data);
+        finalData = jsonData.data;
       } else if (jsonData && Array.isArray(jsonData.recordset)) {
-        setData(jsonData.recordset);
+        finalData = jsonData.recordset;
       } else {
         console.error('Beklenmeyen data formatı:', jsonData);
-        showErrorMessage('Beklenmeyen veri formatı alındı. Lütfen sistem yöneticisi ile iletişime geçin.');
+        alert('Beklenmeyen veri formatı alındı. Lütfen sistem yöneticisi ile iletişime geçin.');
         setData([]);
+        return;
       }
+
+      console.log(`✅ MOBIL DEBUG: ${finalData.length} kayıt başarıyla yüklendi (Ciro)`);
+      setData(finalData);
+      
     } catch (error) {
       console.error('Veri çekme hatası:', error);
-      showErrorMessage('Veri çekerken hata oluştu. Lütfen tekrar deneyiniz.');
+      alert('Veri çekerken hata oluştu. Lütfen tekrar deneyiniz.');
     } finally {
       setLoading(false);
     }

@@ -233,25 +233,39 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
         ORDER BY DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) ASC
       `;
 
+      // CompanyRef'i al
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        alert('Şirket bilgisi bulunamadı. Lütfen sayfayı yenileyin.');
+        return;
+      }
+      
       // Proxy üzerinden istek gönder - Retry logic ile
       let response: Response | undefined;
       const maxRetries = 2;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`🔄 Müşteri detay çağrısı deneme ${attempt}/${maxRetries}...`);
-          response = await fetch('https://btrapor.boluteknoloji.tr/proxy', {
+          console.log(`🔄 Müşteri detay proxy çağrısı deneme ${attempt}/${maxRetries}...`);
+          
+          // Debug: Gönderilen payload'u logla
+          const requestPayload = {
+            companyRef: companyRef,
+            connectionType: 'first_db_key', // Cari bakiye için first database kullan
+            payload: {
+              query: detailQuery
+            }
+          };
+          console.log('🚀 Table Backend\'e gönderilen payload:', requestPayload);
+          console.log('📋 CompanyRef değeri:', companyRef);
+          console.log('🔑 ConnectionType değeri:', 'first_db_key');
+          
+          response = await fetch('https://api.btrapor.com/proxy', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              target_url: `http://${externalIP}:${servicePort}/sql`,
-              payload: {
-                connectionString,
-                query: detailQuery
-              }
-            })
+            body: JSON.stringify(requestPayload)
           });
           
           if (response.ok) {

@@ -182,20 +182,14 @@ export default function CBakiye() {
         return {};
       }
       
-      // public_ip'den dış IP ve portu ayır
-      let externalIP = 'localhost';
-      let servicePort = '45678';
-      
-      if (connectionInfo.public_ip) {
-        const [ip, port] = connectionInfo.public_ip.split(':');
-        externalIP = ip || 'localhost';
-        servicePort = port || '45678';
+      // CompanyRef'i al
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        console.warn('⚠️ CompanyRef bulunamadı, hareket detayları yüklenemedi');
+        return {};
       }
-
-      // Connection string'i oluştur
-      const connectionString = `Server=${connectionInfo.first_server_name || ''};Database=${connectionInfo.first_db_name || ''};User Id=${connectionInfo.first_username || ''};Password=${connectionInfo.first_password || ''};`;
       
-      // Firma no ve dönem no'yu al
+      // Firma no ve dönem no'yu al (backend için gerekli olabilir)
       const firmaNo = connectionInfo.first_firma_no || '009';
       const donemNo = connectionInfo.first_donem_no || '01';
       
@@ -302,9 +296,9 @@ export default function CBakiye() {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              target_url: `http://${externalIP}:${servicePort}/sql`,
+              companyRef: companyRef,
+              connectionType: 'first_db_key', // Cari bakiye için first database kullan
               payload: {
-                connectionString,
                 query: detailQuery
               }
             })
@@ -615,6 +609,14 @@ export default function CBakiye() {
       return;
     }
     
+    // Company ref'i önce al
+    const companyRef = localStorage.getItem('companyRef');
+    if (!companyRef) {
+      console.error('Company ref bulunamadı');
+      alert('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+      return;
+    }
+    
     setLoading(true);
     try {
       // Mobil debug için initial check
@@ -661,13 +663,6 @@ export default function CBakiye() {
       
       // Eğer localStorage'da yoksa API'den al
       if (!connectionInfo) {
-        const companyRef = localStorage.getItem('companyRef');
-        if (!companyRef) {
-          console.error('Company ref bulunamadı');
-          alert('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
-          setLoading(false);
-          return;
-        }
 
         console.log('🔄 Connection bilgileri API\'den alınıyor...');
         
@@ -838,6 +833,18 @@ export default function CBakiye() {
         try {
           console.log(`🔄 Proxy çağrısı deneme ${attempt}/${maxRetries} (C-Bakiye${isMobile ? ' - Mobil' : ''})...`);
           
+          // Debug: Gönderilen payload'u logla
+          const requestPayload = {
+            companyRef: companyRef,
+            connectionType: 'first_db_key', // Cari bakiye için first database kullan
+            payload: {
+              query: sqlQuery
+            }
+          };
+          console.log('🚀 Backend\'e gönderilen payload:', requestPayload);
+          console.log('📋 CompanyRef değeri:', companyRef);
+          console.log('🔑 ConnectionType değeri:', 'first_db_key');
+          
           // Mobil cihazlar için timeout kontrolü
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), isMobile ? 20000 : 15000); // Mobilde daha uzun timeout
@@ -847,13 +854,7 @@ export default function CBakiye() {
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              target_url: `http://${externalIP}:${servicePort}/sql`,
-              payload: {
-                connectionString,
-                query: sqlQuery
-              }
-            }),
+            body: JSON.stringify(requestPayload),
             signal: controller.signal
           });
           
@@ -890,8 +891,21 @@ export default function CBakiye() {
       if (!response || !response.ok) {
         const status = response?.status || 'Bilinmeyen';
         const statusText = response?.statusText || 'Bağlantı hatası';
+        
+        // Backend'den gelen hata mesajını oku
+        let errorMessage = `HTTP ${status}: ${statusText}`;
+        if (response) {
+          try {
+            const errorData = await response.json();
+            console.error('❌ Backend hata detayı:', errorData);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            console.error('❌ Backend hata response\'u okunamadı:', e);
+          }
+        }
+        
         console.error('HTTP hatası:', status, statusText);
-        alert(`Bağlantı hatası: ${status} - ${statusText}`);
+        alert(`Bağlantı hatası: ${errorMessage}`);
         setData([]);
         return;
       }
