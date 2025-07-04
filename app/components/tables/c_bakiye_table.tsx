@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import Lottie from 'lottie-react';
+import { sendSecureProxyRequest } from '../../utils/api';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -260,13 +261,13 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           console.log('📋 CompanyRef değeri:', companyRef);
           console.log('🔑 ConnectionType değeri:', 'first_db_key');
           
-          response = await fetch('https://api.btrapor.com/proxy', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestPayload)
-          });
+          response = await sendSecureProxyRequest(
+            companyRef,
+            'first_db_key', // Cari bakiye için first database kullan
+            {
+              query: detailQuery
+            }
+          );
           
           if (response.ok) {
             console.log(`✅ Müşteri detay çağrısı ${attempt}. denemede başarılı`);

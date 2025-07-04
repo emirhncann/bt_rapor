@@ -7,6 +7,7 @@ import EnposCiroTable from '../components/tables/CiroTable';
 import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser, hasReportAccess, getAuthorizedReports } from '../utils/simple-permissions';
+import { sendSecureProxyRequest } from '../utils/api';
 
 export default function EnposCiro() {
   const [data, setData] = useState<any[]>([]);
@@ -525,14 +526,13 @@ GROUP BY B.Sube_No,D.NAME
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), isMobile ? 20000 : 15000); // Mobilde daha uzun timeout
           
-          response = await fetch('https://api.btrapor.com/proxy', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestPayload),
-            signal: controller.signal
-          });
+          response = await sendSecureProxyRequest(
+            companyRef,
+            'enpos_db_key', // ENPOS için özel connection kullan
+            {
+              query: sqlQuery
+            }
+          );
           
           clearTimeout(timeoutId);
           

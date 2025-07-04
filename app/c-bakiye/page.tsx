@@ -9,6 +9,7 @@ import CurrencySelector from '../components/CurrencySelector';
 import { getCurrencyByNo, getCurrencyByCode } from '../../types/currency';
 import { fetchUserReports, getCurrentUser, getAuthorizedReports } from '../utils/simple-permissions';
 import type { ReportWithAccess } from '../utils/simple-permissions';
+import { sendSecureProxyRequest } from '../utils/api';
 
 export default function CBakiye() {
   const [data, setData] = useState<any[]>([]);
@@ -290,19 +291,13 @@ export default function CBakiye() {
             await new Promise(resolve => setTimeout(resolve, delay));
           }
           
-          response = await fetch('https://api.btrapor.com/proxy', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              companyRef: companyRef,
-              connectionType: 'first_db_key', // Cari bakiye için first database kullan
-              payload: {
-                query: detailQuery
-              }
-            })
-          });
+          response = await sendSecureProxyRequest(
+            companyRef,
+            'first_db_key', // Cari bakiye için first database kullan
+            {
+              query: detailQuery
+            }
+          );
           
           if (response.ok) {
             break; // Başarılı, döngüden çık
@@ -849,14 +844,13 @@ export default function CBakiye() {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), isMobile ? 20000 : 15000); // Mobilde daha uzun timeout
           
-          response = await fetch('https://api.btrapor.com/proxy', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestPayload),
-            signal: controller.signal
-          });
+          response = await sendSecureProxyRequest(
+            companyRef,
+            'first_db_key', // Cari bakiye için first database kullan
+            {
+              query: sqlQuery
+            }
+          );
           
           clearTimeout(timeoutId);
           
