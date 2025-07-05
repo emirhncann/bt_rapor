@@ -151,12 +151,9 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       
       // SQL sorgusu - detay sorgusu
       const detailQuery = `
-        SELECT 
-          DATE_ + 
-        RIGHT('0' + CAST(CONVERT(INT, ROUND(FTIME / 16777216.0, 0)) AS VARCHAR), 2) + ':' +
-        RIGHT('0' + CAST(CONVERT(INT, ROUND((FTIME % 16777216) / 65536.0, 0)) AS VARCHAR), 2) + ':' +
-        RIGHT('0' + CAST(CONVERT(INT, ROUND(((FTIME % 65536) / 256.0), 0)) AS VARCHAR), 2)
-        AS [Tarih],
+         SELECT 
+          CLIENTREF,
+          DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) AS [Tarih],
           TRANNO AS [Fiş No],
           CASE MODULENR
             WHEN 4 THEN
@@ -230,7 +227,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
             WHEN 1 THEN 'İptal Edilmiş'
           END AS [İptal Durumu]
         FROM LV_${firmaNo}_${donemNo}_CLEKSTRE 
-        WHERE CLIENTREF='${clientRef}'
+        WHERE CLIENTREF=${clientRef}
         ORDER BY DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) ASC
       `;
 
