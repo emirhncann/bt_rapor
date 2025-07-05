@@ -62,7 +62,8 @@ export const sendSecureProxyRequest = async (
   companyRef: string, 
   connectionType: string, 
   payload: any,
-  endpoint: string = 'https://api.btrapor.com/proxy'
+  endpoint: string = 'https://api.btrapor.com/proxy',
+  timeoutMs: number = 120000 // 2 dakika timeout (büyük raporlar için)
 ): Promise<Response> => {
   try {
     // Payload'u gerçekten şifrele (AES-GCM ile)
@@ -77,7 +78,9 @@ export const sendSecureProxyRequest = async (
       encryptedConnectionType: encryptedConnectionType, // Şifrelenmiş connection type
       encryptedPayload: encryptedPayload, // Şifrelenmiş payload
       timestamp: Date.now(),
-      nonce: Math.random().toString(36).substring(2, 15) // Güvenlik için rastgele değer
+      nonce: Math.random().toString(36).substring(2, 15), // Güvenlik için rastgele değer
+      maxResponseSize: 100 * 1024 * 1024, // 100MB maksimum response boyutu
+      timeoutMs: timeoutMs // Timeout ayarı
     };
     
     console.log('🔐 Güvenli proxy request gönderiliyor:', {
@@ -85,18 +88,31 @@ export const sendSecureProxyRequest = async (
       connectionType: 'ŞİFRELİ',
       payloadSize: JSON.stringify(payload).length,
       encryptedSize: encryptedPayload.length,
-      timestamp: secureBody.timestamp
+      timestamp: secureBody.timestamp,
+      timeoutMs: timeoutMs,
+      maxResponseSize: '100MB'
     });
     
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(secureBody)
-    });
+    // AbortController ile timeout kontrolü
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
-    return response;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(secureBody),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
   } catch (error) {
     console.error('Güvenli proxy request hatası:', error);
     throw error;
