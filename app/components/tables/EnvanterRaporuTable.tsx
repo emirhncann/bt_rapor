@@ -15,11 +15,22 @@ declare module 'jspdf' {
 interface EnvanterRaporuTableProps {
   data: any[];
   dynamicColumns: string[];
+  filterCodes?: any[];
+  loadingFilterCodes?: boolean;
+  selectedFilters: Record<string, string[]>;
+  onToggleFilter: (codeType: string, code: string) => void;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRaporuTableProps) {
+export default function EnvanterRaporuTable({ 
+  data, 
+  dynamicColumns, 
+  filterCodes = [], 
+  loadingFilterCodes = false,
+  selectedFilters,
+  onToggleFilter
+}: EnvanterRaporuTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>('Malzeme Kodu');
@@ -32,10 +43,15 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
   const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [durumuFilter, setDurumuFilter] = useState<string>(''); // Aktif/Pasif filtresi
+  
+  // Filtreleme kodları için state'ler
+  const [selectedCodeType, setSelectedCodeType] = useState<string>('');
+  const [selectedCode, setSelectedCode] = useState<string>('');
+  const [codeSearchTerm, setCodeSearchTerm] = useState<string>('');
+  const [showCodeSelector, setShowCodeSelector] = useState(true);
 
   // Sabit kolonlar
-  const fixedColumns = ['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'];
+  const fixedColumns = ['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'];
   // Tüm kolonlar (sabit + dinamik)
   const allColumns = [...fixedColumns, ...dynamicColumns];
 
@@ -47,20 +63,6 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
     if (value === null || value === undefined || value === '') return 0;
     const parsed = parseFloat(String(value));
     return isNaN(parsed) ? 0 : parsed;
-  };
-
-  // Durumu formatla
-  const formatDurum = (durum: any): string => {
-    if (durum === 0 || durum === '0') return 'Aktif';
-    if (durum === 1 || durum === '1') return 'Pasif';
-    return 'Bilinmeyen';
-  };
-
-  // Durumu rengini al
-  const getDurumColor = (durum: any): string => {
-    if (durum === 1 || durum === '1') return 'text-red-600 bg-red-100';
-    if (durum === 0 || durum === '0') return 'text-green-600 bg-green-100';
-    return 'text-gray-600 bg-gray-100';
   };
 
   // Sayı formatla
@@ -76,7 +78,18 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
     'Malzeme Ref': 120,
     'Malzeme Kodu': 150,
     'Malzeme Adı': 300,
-    'Durumu': 100,
+    'Grup Kodu': 120,
+    'Grup Kodu Açıklaması': 200,
+    'Özel Kod': 120,
+    'Özel Kod Açıklaması': 200,
+    'Özel Kod2': 120,
+    'Özel Kod2 Açıklaması': 200,
+    'Özel Kod3': 120,
+    'Özel Kod3 Açıklaması': 200,
+    'Özel Kod4': 120,
+    'Özel Kod4 Açıklaması': 200,
+    'Özel Kod5': 120,
+    'Özel Kod5 Açıklaması': 200,
     ...Object.fromEntries(dynamicColumns.map(col => [col, 150]))
   };
 
@@ -120,17 +133,56 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
     setCurrentPage(1);
   };
 
+  // Filtreleme kodları için helper fonksiyonlar
+  const getCodeTypes = () => {
+    const types = Array.from(new Set(filterCodes.map(code => code.ALAN)));
+    return types.sort();
+  };
+
+  const getFilteredCodes = () => {
+    if (!selectedCodeType) return [];
+    
+    const codes = filterCodes
+      .filter(code => code.ALAN === selectedCodeType)
+      .filter(code => 
+        code.KOD.toLowerCase().includes(codeSearchTerm.toLowerCase()) ||
+        code.AÇIKLAMA.toLowerCase().includes(codeSearchTerm.toLowerCase())
+      );
+    
+    return codes.sort((a, b) => a.KOD.localeCompare(b.KOD));
+  };
+
+  const getCodeTypeLabel = (codeType: string) => {
+    const labels: {[key: string]: string} = {
+      'STRGRPCODE': 'Grup Kodu',
+      'SPECODE': 'Özel Kod 1',
+      'SPECODE2': 'Özel Kod 2',
+      'SPECODE3': 'Özel Kod 3',
+      'SPECODE4': 'Özel Kod 4',
+      'SPECODE5': 'Özel Kod 5'
+    };
+    return labels[codeType] || codeType;
+  };
+
+  const clearCodeFilters = () => {
+    setSelectedCodeType('');
+    setSelectedCode('');
+    setCodeSearchTerm('');
+    setShowCodeSelector(false);
+  };
+
+  // Seçim highlight
+  const isCodeSelected = (codeType:string, kod:string)=>{
+    const arr = selectedFilters[codeType]||[];
+    return arr.includes(kod);
+  };
+
   // Filtrelenmiş ve sıralanmış veri
   const filteredData = data.filter(item => {
     // Arama filtresi
     const matchesSearch = Object.values(item).some(value => 
       String(value).toLowerCase().includes(searchTerm.toLowerCase())
     );
-    
-    // Durumu filtresi - Logo mantığı: 0=Aktif, 1=Pasif
-    const matchesDurum = durumuFilter === '' || 
-      (durumuFilter === 'aktif' && (item.Durumu === 0 || item.Durumu === '0')) ||
-      (durumuFilter === 'pasif' && (item.Durumu === 1 || item.Durumu === '1'));
     
     // Sayı filtresi
     let matchesNumeric = true;
@@ -141,21 +193,30 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
       matchesNumeric = columnValue >= min && columnValue <= max;
     }
     
-    return matchesSearch && matchesDurum && matchesNumeric;
+    // Kod filtresi - Yeni şemaya göre filtreleme
+    let matchesCode = true;
+    if (selectedCodeType && selectedCode) {
+      const codeFieldMap: {[key: string]: string} = {
+        'STRGRPCODE': 'Grup Kodu',
+        'SPECODE': 'Özel Kod',
+        'SPECODE2': 'Özel Kod2',
+        'SPECODE3': 'Özel Kod3',
+        'SPECODE4': 'Özel Kod4',
+        'SPECODE5': 'Özel Kod5'
+      };
+      
+      const codeField = codeFieldMap[selectedCodeType];
+      if (codeField) {
+        matchesCode = item[codeField] === selectedCode;
+      }
+    }
+    
+    return matchesSearch && matchesNumeric && matchesCode;
   }).sort((a, b) => {
     if (!sortColumn || !sortDirection) return 0;
     
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
-    
-    // Durumu sütunu için özel sıralama
-    if (sortColumn === 'Durumu') {
-      const aStatus = formatDurum(aValue);
-      const bStatus = formatDurum(bValue);
-      return sortDirection === 'asc' ? 
-        aStatus.localeCompare(bStatus) : 
-        bStatus.localeCompare(aStatus);
-    }
     
     // Sayısal sütunlar için
     if (numericColumns.includes(sortColumn)) {
@@ -185,9 +246,7 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
       const exportData = filteredData.map(row => {
         const newRow: any = {};
         allColumns.forEach(key => {
-          if (key === 'Durumu') {
-            newRow[key] = formatDurum(row[key]);
-          } else if (numericColumns.includes(key)) {
+          if (numericColumns.includes(key)) {
             const value = safeParseFloat(row[key]);
             newRow[key] = formatNumber(value);
           } else {
@@ -206,7 +265,7 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
         if (key === 'Malzeme Adı') return { wch: 35 };
         if (key === 'Malzeme Kodu') return { wch: 20 };
         if (key === 'Malzeme Ref') return { wch: 15 };
-        if (key === 'Durumu') return { wch: 10 };
+        if (key.includes('Açıklama')) return { wch: 25 };
         if (numericColumns.includes(key)) return { wch: 15 };
         return { wch: 12 };
       });
@@ -247,9 +306,6 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
         <tr>
           <td>${row['Malzeme Kodu'] || ''}</td>
           <td>${row['Malzeme Adı'] || ''}</td>
-          <td class="text-center">
-            <span class="status-badge ${getDurumColor(row.Durumu)}">${formatDurum(row.Durumu)}</span>
-          </td>
           ${numericColumns.map(col => `
             <td class="number">${formatNumber(safeParseFloat(row[col]))}</td>
           `).join('')}
@@ -333,7 +389,6 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
               <tr>
                 <th>Malzeme Kodu</th>
                 <th>Malzeme Adı</th>
-                <th>Durumu</th>
                 ${numericColumns.map(col => `<th>${col}</th>`).join('')}
               </tr>
             </thead>
@@ -373,8 +428,8 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
     setFilterColumn('');
     setMinValue('');
     setMaxValue('');
-    setDurumuFilter('');
     setCurrentPage(1);
+    clearCodeFilters(); // Kod filtrelerini de temizle
   };
 
   // Sıralama ikonu
@@ -437,22 +492,27 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
             <span className="absolute left-3 top-2.5">🔍</span>
           </div>
 
-          <select
-            value={durumuFilter}
-            onChange={(e) => setDurumuFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-          >
-            <option value="">Tüm Durumlar</option>
-            <option value="aktif">Aktif</option>
-            <option value="pasif">Pasif</option>
-          </select>
-
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
           >
             {showFilters ? 'Filtreleri Gizle' : 'Filtreleri Göster'} 📊
           </button>
+
+          {filterCodes.length > 0 && (
+            <button
+              onClick={() => setShowCodeSelector(!showCodeSelector)}
+              className="px-4 py-2 text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {showCodeSelector ? 'Kod Filtrelerini Gizle' : 'Kod Filtreleri'} 🏷️
+            </button>
+          )}
+
+          {loadingFilterCodes && (
+            <div className="px-4 py-2 text-sm text-gray-500">
+              Filtreleme kodları yükleniyor...
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -524,6 +584,98 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
         </div>
       )}
 
+      {/* Kod Filtreleri */}
+      {showCodeSelector && filterCodes.length > 0 && (
+        <div className="p-4 border-b border-gray-200 bg-blue-50">
+          <div className="space-y-4">
+            {/* Kod Tipi Seçimi */}
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium text-gray-700">Kod Tipi:</label>
+              <select
+                value={selectedCodeType}
+                onChange={(e) => {
+                  setSelectedCodeType(e.target.value);
+                  setSelectedCode('');
+                  setCodeSearchTerm('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Kod Tipi Seçin</option>
+                {getCodeTypes().map(type => (
+                  <option key={type} value={type}>{getCodeTypeLabel(type)}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Kod Arama ve Seçimi */}
+            {selectedCodeType && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Kod Ara:</label>
+                  <input
+                    type="text"
+                    placeholder="Kod veya açıklama ara..."
+                    value={codeSearchTerm}
+                    onChange={(e) => setCodeSearchTerm(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
+                  />
+                </div>
+
+                {/* Kod Listesi */}
+                <div className="max-h-60 overflow-y-auto border border-gray-300 rounded-lg bg-white">
+                  {getFilteredCodes().map(code => (
+                    <div
+                      key={`${code.ALAN}-${code.KOD}`}
+                      onClick={() => {
+                        setSelectedCode(code.KOD);
+                        onToggleFilter(selectedCodeType, code.KOD);
+                      }}
+                      className={`p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
+                        isCodeSelected(selectedCodeType, code.KOD) ? 'bg-blue-100 border-blue-200' : ''
+                      }`}
+                    >
+                      <div className="font-medium text-sm">{code.KOD}</div>
+                      <div className="text-xs text-gray-600">{code.AÇIKLAMA}</div>
+                    </div>
+                  ))}
+                  
+                  {getFilteredCodes().length === 0 && (
+                    <div className="p-4 text-center text-gray-500 text-sm">
+                      {codeSearchTerm ? 'Arama kriterine uygun kod bulunamadı' : 'Bu kod tipinde kod bulunamadı'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Seçili Kod Bilgisi */}
+                {selectedCode && (
+                  <div className="p-3 bg-blue-100 rounded-lg border border-blue-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium text-sm text-blue-800">
+                          Seçili: {selectedCode}
+                        </div>
+                        <div className="text-xs text-blue-600">
+                          {filterCodes.find(c => c.KOD === selectedCode)?.AÇIKLAMA}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearCodeFilters();
+                        }}
+                        className="px-3 py-1 text-xs bg-blue-200 text-blue-800 rounded hover:bg-blue-300"
+                      >
+                        Temizle
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tablo container */}
       <div className="overflow-x-auto w-full" style={{ maxWidth: '100vw' }}>
         <table className="w-full table-auto divide-y divide-gray-200">
@@ -563,11 +715,7 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
                       minWidth: column === 'Malzeme Adı' ? '250px' : '100px'
                     }}
                   >
-                    {column === 'Durumu' ? (
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDurumColor(row[column])}`}>
-                        {formatDurum(row[column])}
-                      </span>
-                    ) : numericColumns.includes(column) ? (
+                    {numericColumns.includes(column) ? (
                       <span className="font-medium text-right block">
                         {formatNumber(safeParseFloat(row[column]))}
                       </span>

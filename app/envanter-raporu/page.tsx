@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import EnvanterRaporuTable from '../components/tables/EnvanterRaporuTable';
 import DashboardLayout from '../components/DashboardLayout';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import { buildInventoryFilters } from '../utils/buildFilter';
 
 export default function EnvanterRaporu() {
   const [data, setData] = useState<any[]>([]);
@@ -16,6 +17,12 @@ export default function EnvanterRaporu() {
   const [hasAccess, setHasAccess] = useState<boolean>(false);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
+  const [filterCodes, setFilterCodes] = useState<any[]>([]);
+  const [loadingFilterCodes, setLoadingFilterCodes] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({});
+  const selectedFiltersRef = useRef(selectedFilters);
+  useEffect(()=>{selectedFiltersRef.current = selectedFilters;},[selectedFilters]);
   
   const router = useRouter();
   
@@ -181,7 +188,7 @@ export default function EnvanterRaporu() {
   };
 
   // Envanter verilerini çek
-  const fetchEnvanterData = async () => {
+  const fetchEnvanterData = async (filtersState?:Record<string,string[]>) => {
     console.log('🔄 Envanter verileri çekiliyor...');
     setLoading(true);
     setShowError(false);
@@ -195,24 +202,42 @@ export default function EnvanterRaporu() {
 
       // Connection bilgilerini al
       let connectionInfo;
-      try {
-        const cachedConnectionInfo = localStorage.getItem('connectionInfo');
-        if (cachedConnectionInfo) {
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      if (cachedConnectionInfo) {
+        try {
           connectionInfo = JSON.parse(cachedConnectionInfo);
-        } else {
-          throw new Error('Connection bilgileri bulunamadı');
+        } catch (e) {
+          console.error('Connection bilgileri parse edilemedi:', e);
+          showErrorMessage('Bağlantı bilgileri geçersiz. Lütfen tekrar giriş yapın.');
+          return;
         }
-      } catch (error) {
-        console.error('Connection bilgileri alınırken hata:', error);
-        showErrorMessage('Bağlantı bilgileri alınamadı. Lütfen sayfayı yenileyin.');
+      }
+
+      if (!connectionInfo) {
+        showErrorMessage('Bağlantı bilgileri bulunamadı. Lütfen sayfayı yenileyip tekrar deneyin.');
         return;
       }
 
       const firmaNo = connectionInfo.first_firma_no || '009';
-      
-      console.log('📦 Envanter API çağrısı yapılıyor:', { companyRef, firmaNo });
+      const donemNo = connectionInfo.first_donem_no || '01';
 
-      // SQL sorgusu - Diğer raporlarla tutarlı format (string interpolation)
+      console.log(`🔄 Firma No: ${firmaNo}, Dönem No: ${donemNo} ile envanter verileri çekiliyor...`);
+
+      const currentFilters = filtersState || selectedFiltersRef.current;
+      // Filtre koşulları
+      const rawFilters = buildInventoryFilters({
+        grpcod: currentFilters['STRGRPCODE'] || [],
+        specode: currentFilters['SPECODE'] || [],
+        specode2: currentFilters['SPECODE2'] || [],
+        specode3: currentFilters['SPECODE3'] || [],
+        specode4: currentFilters['SPECODE4'] || [],
+        specode5: currentFilters['SPECODE5'] || []
+      });
+
+      // İç dinamik SQL'de tek tırnakları kaçırmak için
+      const whereFilters = rawFilters.replace(/'/g, "''");
+
+      // Yeni SQL sorgusu - tüm ürünlerle grup/özel kod açıklamaları
       const sqlQuery = `
         DECLARE @kolonlar NVARCHAR(MAX);
         DECLARE @kolonlarNullsuz NVARCHAR(MAX);
@@ -232,34 +257,96 @@ export default function EnvanterRaporu() {
             WHERE WH.FIRMNR = ${firmaNo}
             FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '');
 
-        -- 3. Dinamik sorgu
+        -- 3. Dinamik SQL sorgusu
         SET @sql = '
         SELECT 
           [Malzeme Ref],
-          [Durumu],
           [Malzeme Kodu],
           [Malzeme Adı],
+          [Grup Kodu],
+          [Grup Kodu Açıklaması],
+          [Özel Kod],
+          [Özel Kod Açıklaması],
+          [Özel Kod2],
+          [Özel Kod2 Açıklaması],
+          [Özel Kod3],
+          [Özel Kod3 Açıklaması],
+          [Özel Kod4],
+          [Özel Kod4 Açıklaması],
+          [Özel Kod5],
+          [Özel Kod5 Açıklaması],
           ' + @kolonlarNullsuz + '
         FROM (
           SELECT 
             I.LOGICALREF AS [Malzeme Ref],
-            I.ACTIVE AS [Durumu],
             I.CODE AS [Malzeme Kodu],
             I.NAME AS [Malzeme Adı],
+            I.STGRPCODE AS [Grup Kodu],
+            S7.DEFINITION_ AS [Grup Kodu Açıklaması],
+            I.SPECODE AS [Özel Kod],
+            S1.DEFINITION_ AS [Özel Kod Açıklaması],
+            I.SPECODE2 AS [Özel Kod2],
+            S2.DEFINITION_ AS [Özel Kod2 Açıklaması],
+            I.SPECODE3 AS [Özel Kod3],
+            S3.DEFINITION_ AS [Özel Kod3 Açıklaması],
+            I.SPECODE4 AS [Özel Kod4],
+            S4.DEFINITION_ AS [Özel Kod4 Açıklaması],
+            I.SPECODE5 AS [Özel Kod5],
+            S5.DEFINITION_ AS [Özel Kod5 Açıklaması],
             WH.NAME AS [Ambar Adı],
-            ISNULL(S.ONHAND, 0) AS ONHAND
+            S.ONHAND
+          FROM LV_${firmaNo.padStart(3, '0')}_${donemNo}_STINVTOT S WITH(NOLOCK)
+          LEFT JOIN LG_${firmaNo.padStart(3, '0')}_ITEMS I WITH(NOLOCK) ON I.LOGICALREF = S.STOCKREF
+          LEFT JOIN GO3..L_CAPIWHOUSE WH WITH(NOLOCK) ON WH.FIRMNR = ${firmaNo} AND WH.NR = S.INVENNO
+
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S7 WHERE I.STGRPCODE = S7.SPECODE AND S7.CODETYPE = 4 AND S7.SPECODETYPE = 0) S7
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S1 WHERE I.SPECODE = S1.SPECODE AND S1.CODETYPE = 1 AND S1.SPECODETYPE = 1 AND S1.SPETYP1 = 1) S1
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S2 WHERE I.SPECODE2 = S2.SPECODE AND S2.CODETYPE = 1 AND S2.SPECODETYPE = 1 AND S2.SPETYP2 = 1) S2
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S3 WHERE I.SPECODE3 = S3.SPECODE AND S3.CODETYPE = 1 AND S3.SPECODETYPE = 1 AND S3.SPETYP3 = 1) S3
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S4 WHERE I.SPECODE4 = S4.SPECODE AND S4.CODETYPE = 1 AND S4.SPECODETYPE = 1 AND S4.SPETYP4 = 1) S4
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S5 WHERE I.SPECODE5 = S5.SPECODE AND S5.CODETYPE = 1 AND S5.SPECODETYPE = 1 AND S5.SPETYP5 = 1) S5
+          WHERE S.INVENNO <> -1 ${whereFilters}
+
+          UNION ALL
+
+          SELECT 
+            I.LOGICALREF,
+            I.CODE,
+            I.NAME,
+            I.STGRPCODE,
+            S7.DEFINITION_,
+            I.SPECODE,
+            S1.DEFINITION_,
+            I.SPECODE2,
+            S2.DEFINITION_,
+            I.SPECODE3,
+            S3.DEFINITION_,
+            I.SPECODE4,
+            S4.DEFINITION_,
+            I.SPECODE5,
+            S5.DEFINITION_,
+            WH.NAME,
+            0
           FROM LG_${firmaNo.padStart(3, '0')}_ITEMS I WITH(NOLOCK)
-          LEFT JOIN LV_${firmaNo.padStart(3, '0')}_01_STINVTOT S WITH(NOLOCK) ON I.LOGICALREF = S.STOCKREF
-          LEFT JOIN GO3..L_CAPIWHOUSE WH WITH(NOLOCK) ON WH.FIRMNR = ${firmaNo} AND WH.NR = ISNULL(S.INVENNO, 0)
-          WHERE I.ACTIVE IN (0, 1) -- Sadece aktif ve pasif ürünler
-            AND WH.FIRMNR IS NOT NULL -- Geçerli ambar kontrolü
+          CROSS JOIN GO3..L_CAPIWHOUSE WH WITH(NOLOCK)
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S7 WHERE I.STGRPCODE = S7.SPECODE AND S7.CODETYPE = 4 AND S7.SPECODETYPE = 0) S7
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S1 WHERE I.SPECODE = S1.SPECODE AND S1.CODETYPE = 1 AND S1.SPECODETYPE = 1 AND S1.SPETYP1 = 1) S1
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S2 WHERE I.SPECODE2 = S2.SPECODE AND S2.CODETYPE = 1 AND S2.SPECODETYPE = 1 AND S2.SPETYP2 = 1) S2
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S3 WHERE I.SPECODE3 = S3.SPECODE AND S3.CODETYPE = 1 AND S3.SPECODETYPE = 1 AND S3.SPETYP3 = 1) S3
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S4 WHERE I.SPECODE4 = S4.SPECODE AND S4.CODETYPE = 1 AND S4.SPECODETYPE = 1 AND S4.SPETYP4 = 1) S4
+          OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S5 WHERE I.SPECODE5 = S5.SPECODE AND S5.CODETYPE = 1 AND S5.SPECODETYPE = 1 AND S5.SPETYP5 = 1) S5
+          WHERE WH.FIRMNR = ${firmaNo} ${whereFilters}
+            AND NOT EXISTS (
+                SELECT 1 FROM LV_${firmaNo.padStart(3, '0')}_${donemNo}_STINVTOT S WHERE S.STOCKREF = I.LOGICALREF AND S.INVENNO = WH.NR
+            )
+
         ) AS Kaynak
         PIVOT (
           SUM(ONHAND) FOR [Ambar Adı] IN (' + @kolonlar + ')
         ) AS PivotTablo
         ORDER BY [Malzeme Kodu];';
 
-        -- 4. Sorguyu çalıştır
+        -- 4. Çalıştır
         EXEC sp_executesql @sql;
       `;
 
@@ -306,7 +393,7 @@ export default function EnvanterRaporu() {
         // Dinamik kolonları ayarla (ilk kayıttan al)
         if (result.results.length > 0) {
           const dynamicCols = Object.keys(result.results[0]).filter(col => 
-            !['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'].includes(col)
+            !['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'].includes(col)
           );
           setDynamicColumns(dynamicCols);
         }
@@ -314,7 +401,7 @@ export default function EnvanterRaporu() {
         console.log('✅ Envanter verileri başarıyla yüklendi');
         console.log('📊 Toplam kayıt sayısı:', result.results.length);
         console.log('📋 Dinamik kolonlar:', result.results.length > 0 ? Object.keys(result.results[0]).filter(col => 
-          !['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'].includes(col)
+          !['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'].includes(col)
         ) : []);
       } else if (result.data && Array.isArray(result.data)) {
         // Alternatif response formatı
@@ -322,7 +409,7 @@ export default function EnvanterRaporu() {
         
         if (result.data.length > 0) {
           const dynamicCols = Object.keys(result.data[0]).filter(col => 
-            !['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'].includes(col)
+            !['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'].includes(col)
           );
           setDynamicColumns(dynamicCols);
         }
@@ -348,12 +435,165 @@ export default function EnvanterRaporu() {
     }
   };
 
-  // Sayfa yüklendiğinde verileri çek
+  const fetchFilterCodes = async () => {
+    try {
+      setLoadingFilterCodes(true);
+      
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        console.warn('⚠️ CompanyRef bulunamadı, filtreleme kodları yüklenemedi');
+        return;
+      }
+      
+      const filterCodesQuery = `
+       
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'STRGRPCODE' AS [ALAN]
+        FROM LG_009_SPECODES S
+        WHERE S.CODETYPE = 4 AND S.SPECODETYPE = 0
+
+        UNION ALL
+
+        -- SPECODE (Özel Kod 1)
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE' AS [ALAN]
+        FROM LG_009_SPECODES S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP1 = 1
+
+        UNION ALL
+
+        -- SPECODE2
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE2' AS [ALAN]
+        FROM LG_009_SPECODES S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP2 = 1
+
+        UNION ALL
+
+        -- SPECODE3
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE3' AS [ALAN]
+        FROM LG_009_SPECODES S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP3 = 1
+
+        UNION ALL
+
+        -- SPECODE4
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE4' AS [ALAN]
+        FROM LG_009_SPECODES S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP4 = 1
+
+        UNION ALL
+
+        -- SPECODE5
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE5' AS [ALAN]
+        FROM LG_009_SPECODES S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP5 = 1
+        
+        ORDER BY [ALAN], [KOD]
+      `;
+
+      // Güvenli proxy request gönder
+      const response = await sendSecureProxyRequest(
+        companyRef,
+        'first_db_key', // Diğer raporlarla tutarlı connection type
+        {
+          query: filterCodesQuery
+        },
+        'https://api.btrapor.com/proxy',
+        600000 // 10 dakika timeout
+      );
+
+      // İlk olarak response type kontrolü
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        console.error('❌ Filtreleme kodları - API HTML döndürdü - proxy hatası olabilir');
+        showErrorMessage('Proxy sunucusuna erişilemiyor. Lütfen sistem yöneticinize başvurun.');
+        return;
+      }
+
+      if (!response.ok) {
+        let errorMessage = 'Filtreleme kodları alınamadı';
+        try {
+          const errorData = await response.json();
+          console.error('❌ Filtreleme kodları API hatası:', errorData);
+          errorMessage = errorData.error || errorData.message || errorData.details || errorMessage;
+        } catch (e) {
+          // JSON parse edilemezse response text'i al
+          const errorText = await response.text();
+          console.error('❌ Filtreleme kodları API ham hata:', errorText);
+          errorMessage = 'Sunucu yanıtı işlenemedi';
+        }
+        showErrorMessage(errorMessage);
+        return;
+      }
+
+      const result = await response.json();
+      
+      if (result.results && Array.isArray(result.results)) {
+        setFilterCodes(result.results);
+        console.log('✅ Filtreleme kodları başarıyla yüklendi');
+        console.log('📊 Toplam filtreleme kodu sayısı:', result.results.length);
+      } else if (result.data && Array.isArray(result.data)) {
+        // Alternatif response formatı
+        setFilterCodes(result.data);
+        console.log('✅ Filtreleme kodları başarıyla yüklendi (alternatif format)');
+      } else {
+        console.error('❌ Filtreleme kodları API yanıtı geçersiz format:', result);
+        showErrorMessage('Sunucu yanıtı geçersiz formatta');
+      }
+    } catch (error: any) {
+      console.error('Filtreleme kodları yüklenirken hata:', error);
+      
+      if (error.name === 'AbortError') {
+        showErrorMessage('İstek zaman aşımına uğradı. Lütfen tekrar deneyin.');
+      } else if (error.message?.includes('Failed to fetch')) {
+        showErrorMessage('Sunucuya bağlanılamıyor. İnternet bağlantınızı kontrol edin.');
+      } else {
+        showErrorMessage('Filtreleme kodları alınırken bir hata oluştu. Lütfen tekrar deneyin.');
+      }
+    } finally {
+      setLoadingFilterCodes(false);
+    }
+  };
+
+  // Filtre kodlarını ve animasyonları yükle
   useEffect(() => {
     if (isAuthenticated && hasAccess && !isCheckingAccess) {
-      fetchEnvanterData();
+      fetchFilterCodes(); // Sadece filtre kodlarını yükle
     }
   }, [isAuthenticated, hasAccess, isCheckingAccess]);
+
+  // Raporu getir butonu handler
+  const handleFetchReport = async () => {
+    await fetchEnvanterData(selectedFiltersRef.current);
+    setHasFetched(true);
+  };
+
+  // Kod çoklu seçim handler
+  const toggleFilterValue = (codeType: string, value: string) => {
+    setSelectedFilters(prev => {
+      const currentArr = prev[codeType] || [];
+      if (currentArr.includes(value)) {
+        return { ...prev, [codeType]: currentArr.filter(v => v !== value) };
+      }
+      return { ...prev, [codeType]: [...currentArr, value] };
+    });
+  };
 
   if (isCheckingAuth || isCheckingAccess) {
     return (
@@ -399,7 +639,7 @@ export default function EnvanterRaporu() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={fetchEnvanterData}
+                  onClick={handleFetchReport}
                   disabled={loading}
                   className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -428,78 +668,6 @@ export default function EnvanterRaporu() {
           </div>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Ürün</p>
-                <p className="text-2xl font-semibold text-gray-900">{data.length}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Ambar</p>
-                <p className="text-2xl font-semibold text-gray-900">{dynamicColumns.length}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Aktif Ürün</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.filter(item => item.Durumu === 0 || item.Durumu === '0').length}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-orange-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Pasif Ürün</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {data.filter(item => item.Durumu === 1 || item.Durumu === '1').length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        
         {/* Action Button */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -508,7 +676,7 @@ export default function EnvanterRaporu() {
               <p className="text-sm text-gray-500">Ürün stok durumlarını görüntüleyin ve analiz edin</p>
             </div>
             <button
-              onClick={fetchEnvanterData}
+              onClick={handleFetchReport}
               disabled={loading}
               className="px-6 py-3 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
             >
@@ -525,7 +693,7 @@ export default function EnvanterRaporu() {
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Raporu Yenile
+                  Raporu Getir
                 </>
               )}
             </button>
@@ -544,22 +712,16 @@ export default function EnvanterRaporu() {
               <p className="text-gray-600 font-medium">Envanter verileri yükleniyor...</p>
             </div>
           </div>
-        ) : Array.isArray(data) && data.length > 0 ? (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
+        ) : (
+          <div className="bg-white rounded-lg shadow">
             <EnvanterRaporuTable 
               data={data} 
               dynamicColumns={dynamicColumns}
+              filterCodes={filterCodes}
+              loadingFilterCodes={loadingFilterCodes}
+              selectedFilters={selectedFilters}
+              onToggleFilter={toggleFilterValue}
             />
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow p-12">
-            <div className="text-center">
-              <svg className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Henüz veri yok</h3>
-              <p className="text-gray-500">Raporu getirmek için yukarıdaki butona tıklayın</p>
-            </div>
           </div>
         )}
       </div>
