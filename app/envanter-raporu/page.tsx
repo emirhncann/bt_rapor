@@ -24,7 +24,7 @@ export default function EnvanterRaporu() {
   const [failedAnimationData, setFailedAnimationData] = useState(null);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  
+
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
@@ -212,210 +212,215 @@ export default function EnvanterRaporu() {
       
       console.log('📦 Envanter API çağrısı yapılıyor:', { companyRef, firmaNo });
 
-      const response = await fetch('/api/inventory-report', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // SQL sorgusu - Diğer raporlarla tutarlı format (string interpolation)
+      const sqlQuery = `
+        DECLARE @kolonlar NVARCHAR(MAX);
+        DECLARE @kolonlarNullsuz NVARCHAR(MAX);
+        DECLARE @sql NVARCHAR(MAX);
+
+        -- 1. Pivot kolonları
+        SELECT @kolonlar = STUFF(( 
+            SELECT DISTINCT ', ' + QUOTENAME(WH.NAME)
+            FROM GO3..L_CAPIWHOUSE WH
+            WHERE WH.FIRMNR = ${firmaNo}
+            FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '');
+
+        -- 2. ISNULL'lu kolonlar
+        SELECT @kolonlarNullsuz = STUFF(( 
+            SELECT DISTINCT ', ISNULL(' + QUOTENAME(WH.NAME) + ', 0) AS ' + QUOTENAME(WH.NAME)
+            FROM GO3..L_CAPIWHOUSE WH
+            WHERE WH.FIRMNR = ${firmaNo}
+            FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '');
+
+        -- 3. Dinamik sorgu
+        SET @sql = '
+        SELECT 
+          [Malzeme Ref],
+          [Durumu],
+          [Malzeme Kodu],
+          [Malzeme Adı],
+          ' + @kolonlarNullsuz + '
+        FROM (
+          SELECT 
+            I.LOGICALREF AS [Malzeme Ref],
+            I.ACTIVE AS [Durumu],
+            I.CODE AS [Malzeme Kodu],
+            I.NAME AS [Malzeme Adı],
+            WH.NAME AS [Ambar Adı],
+            ISNULL(S.ONHAND, 0) AS ONHAND
+          FROM LG_${firmaNo.padStart(3, '0')}_ITEMS I WITH(NOLOCK)
+          LEFT JOIN LV_${firmaNo.padStart(3, '0')}_01_STINVTOT S WITH(NOLOCK) ON I.LOGICALREF = S.STOCKREF
+          LEFT JOIN GO3..L_CAPIWHOUSE WH WITH(NOLOCK) ON WH.FIRMNR = ${firmaNo} AND WH.NR = ISNULL(S.INVENNO, 0)
+          WHERE I.ACTIVE IN (0, 1) -- Sadece aktif ve pasif ürünler
+            AND WH.FIRMNR IS NOT NULL -- Geçerli ambar kontrolü
+        ) AS Kaynak
+        PIVOT (
+          SUM(ONHAND) FOR [Ambar Adı] IN (' + @kolonlar + ')
+        ) AS PivotTablo
+        ORDER BY [Malzeme Kodu];';
+
+        -- 4. Sorguyu çalıştır
+        EXEC sp_executesql @sql;
+      `;
+
+      // Güvenli proxy request gönder
+      const response = await sendSecureProxyRequest(
+        companyRef,
+        'first_db_key', // Diğer raporlarla tutarlı connection type
+        {
+          query: sqlQuery
         },
-        body: JSON.stringify({
-          companyRef,
-          firmaNo
-        })
-      });
+        'https://api.btrapor.com/proxy',
+        300000 // 5 dakika timeout
+      );
+
+      // İlk olarak response type kontrolü
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        console.error('❌ API HTML döndürdü - proxy hatası olabilir');
+        showErrorMessage('Proxy sunucusuna erişilemiyor. Lütfen sistem yöneticinize başvurun.');
+        return;
+      }
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Envanter API hatası:', errorData);
-        showErrorMessage(errorData.error || 'Envanter verileri alınamadı');
+        let errorMessage = 'Envanter verileri alınamadı';
+        try {
+          const errorData = await response.json();
+          console.error('❌ Envanter API hatası:', errorData);
+          errorMessage = errorData.error || errorData.message || errorData.details || errorMessage;
+        } catch (e) {
+          // JSON parse edilemezse response text'i al
+          const errorText = await response.text();
+          console.error('❌ Envanter API ham hata:', errorText);
+          errorMessage = 'Sunucu yanıtı işlenemedi';
+        }
+        showErrorMessage(errorMessage);
         return;
       }
 
       const result = await response.json();
-      console.log('✅ Envanter API başarılı:', result);
-
-      // Error kontrolü - çeşitli hata formatlarını kontrol et
-      if (result.status === 'error' || result.error || result.curl_error) {
-        const errorMsg = result.message || result.error || result.curl_error || 'Bilinmeyen hata';
-        console.error('Server hatası:', errorMsg);
-        showErrorMessage(`Veritabanı bağlantı hatası: ${errorMsg}`);
-        return;
-      }
-
-      // Eğer data array değilse, uygun formata çevir
-      let finalData: any[] = [];
-      if (Array.isArray(result)) {
-        finalData = result;
-      } else if (result && Array.isArray(result.data)) {
-        finalData = result.data;
-      } else if (result && Array.isArray(result.recordset)) {
-        finalData = result.recordset;
-      } else if (result && Array.isArray(result.results)) {
-        finalData = result.results;
+      
+      if (result.results && Array.isArray(result.results)) {
+        setData(result.results);
+        
+        // Dinamik kolonları ayarla (ilk kayıttan al)
+        if (result.results.length > 0) {
+          const dynamicCols = Object.keys(result.results[0]).filter(col => 
+            !['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'].includes(col)
+          );
+          setDynamicColumns(dynamicCols);
+        }
+        
+        console.log('✅ Envanter verileri başarıyla yüklendi');
+        console.log('📊 Toplam kayıt sayısı:', result.results.length);
+        console.log('📋 Dinamik kolonlar:', result.results.length > 0 ? Object.keys(result.results[0]).filter(col => 
+          !['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'].includes(col)
+        ) : []);
+      } else if (result.data && Array.isArray(result.data)) {
+        // Alternatif response formatı
+        setData(result.data);
+        
+        if (result.data.length > 0) {
+          const dynamicCols = Object.keys(result.data[0]).filter(col => 
+            !['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'].includes(col)
+          );
+          setDynamicColumns(dynamicCols);
+        }
+        
+        console.log('✅ Envanter verileri başarıyla yüklendi (alternatif format)');
       } else {
-        console.error('Beklenmeyen data formatı:', result);
-        showErrorMessage('Beklenmeyen veri formatı alındı. Lütfen sistem yöneticisi ile iletişime geçin.');
-        return;
+        console.error('❌ API yanıtı geçersiz format:', result);
+        showErrorMessage('Sunucu yanıtı geçersiz formatta');
       }
-
-      setData(finalData);
-      
-      // Dinamik kolonları çıkar (sabit kolonlar hariç)
-      if (finalData.length > 0) {
-        const firstRow = finalData[0];
-        const fixedColumns = ['Malzeme Ref', 'Durumu', 'Malzeme Kodu', 'Malzeme Adı'];
-        const dynamicCols = Object.keys(firstRow).filter(key => !fixedColumns.includes(key));
-        setDynamicColumns(dynamicCols);
-        console.log('🏢 Dinamik şube kolonları:', dynamicCols);
-      }
-      
-      console.log('✅ Envanter verileri yüklendi:', finalData.length, 'kayıt');
 
     } catch (error: any) {
-      console.error('❌ Envanter verisi çekme hatası:', error);
-      showErrorMessage('Envanter verisi çekilirken hata oluştu: ' + (error?.message || 'Bilinmeyen hata'));
+      console.error('❌ Envanter verileri çekilirken hata:', error);
+      
+      if (error.name === 'AbortError') {
+        showErrorMessage('İstek zaman aşımına uğradı. Lütfen tekrar deneyin.');
+      } else if (error.message?.includes('Failed to fetch')) {
+        showErrorMessage('Sunucuya bağlanılamıyor. İnternet bağlantınızı kontrol edin.');
+      } else {
+        showErrorMessage('Veriler alınırken bir hata oluştu. Lütfen tekrar deneyin.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Yetki kontrolü tamamlandıktan sonra otomatik veri yükle
+  // Sayfa yüklendiğinde verileri çek
   useEffect(() => {
     if (isAuthenticated && hasAccess && !isCheckingAccess) {
       fetchEnvanterData();
     }
   }, [isAuthenticated, hasAccess, isCheckingAccess]);
 
-  // Yetki kontrolü devam ediyor
   if (isCheckingAuth || isCheckingAccess) {
     return (
       <DashboardLayout title="Envanter Raporu">
         <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Yetki kontrolü yapılıyor...</p>
-          </div>
+          {animationData && (
+            <div className="w-96 h-96">
+              <Lottie animationData={animationData} loop={true} />
+            </div>
+          )}
         </div>
       </DashboardLayout>
     );
   }
 
-  // Yetki yok
   if (!hasAccess) {
-    return (
-      <DashboardLayout title="Envanter Raporu">
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="text-red-600 text-6xl mb-4">🚫</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Erişim Reddedildi</h2>
-            <p className="text-gray-600 mb-4">Envanter raporunu görüntüleme yetkiniz bulunmamaktadır.</p>
-            <button
-              onClick={() => router.push('/')}
-              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Ana Sayfaya Dön
-            </button>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
+    return null; // Router zaten dashboard'a yönlendirecek
   }
 
   return (
     <DashboardLayout title="Envanter Raporu">
-      <div className="p-6 max-w-7xl mx-auto">
-        {/* Başlık */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="bg-gradient-to-r from-red-600 to-red-700 p-3 rounded-xl shadow-lg">
-              <div className="text-white text-2xl">📦</div>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800">Envanter Raporu</h1>
-              <p className="text-gray-600 mt-1">Malzeme stoklarını şube bazında görüntüleyin</p>
-            </div>
-          </div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Envanter Raporu</h1>
+          <button
+            onClick={fetchEnvanterData}
+            disabled={loading}
+            className="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Yenileniyor...' : 'Yenile 🔄'}
+          </button>
         </div>
-
+        
         {/* Hata mesajı */}
         {showError && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 flex items-center">
-            {failedAnimationData && (
-              <div className="mr-3">
-                <Lottie animationData={failedAnimationData} loop={false} style={{ width: 24, height: 24 }} />
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                {failedAnimationData && (
+                  <div className="w-6 h-6">
+                    <Lottie animationData={failedAnimationData} loop={false} />
+                  </div>
+                )}
               </div>
-            )}
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* Kontrol butonları */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={fetchEnvanterData}
-              disabled={loading}
-              className="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-3 rounded-lg hover:from-red-700 hover:to-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  <span>Yükleniyor...</span>
-                </>
-              ) : (
-                <>
-                  <span>🔄</span>
-                  <span>Verileri Yenile</span>
-                </>
-              )}
-            </button>
-            
-            {data.length > 0 && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <span className="text-green-600">✅</span>
-                <span>Toplam {data.length} malzeme</span>
-                <span className="text-blue-600">•</span>
-                <span>{dynamicColumns.length} şube</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Yükleniyor animasyonu */}
-        {loading && (
-          <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <div className="flex flex-col items-center gap-4">
-              {animationData && (
-                <Lottie animationData={animationData} loop={true} style={{ width: 120, height: 120 }} />
-              )}
-              <div>
-                <p className="text-xl font-semibold text-gray-700 mb-2">Envanter Raporu Hazırlanıyor</p>
-                <p className="text-gray-500">Malzeme stokları şube bazında çekiliyor...</p>
+              <div className="ml-3">
+                <p>{errorMessage}</p>
               </div>
             </div>
           </div>
         )}
-
-        {/* Tablo */}
-        {!loading && data.length > 0 && (
+        
+        {/* Loading animasyonu */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            {animationData && (
+              <div className="w-96 h-96">
+                <Lottie animationData={animationData} loop={true} />
+              </div>
+            )}
+            <p className="mt-4 text-gray-600 text-lg">Envanter verileri yükleniyor...</p>
+          </div>
+        ) : (
+          /* Envanter tablosu */
           <EnvanterRaporuTable 
             data={data} 
             dynamicColumns={dynamicColumns}
           />
-        )}
-
-        {/* Veri yok */}
-        {!loading && data.length === 0 && !showError && (
-          <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <div className="text-gray-400 text-6xl mb-4">📦</div>
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">Envanter Verisi Bulunamadı</h3>
-            <p className="text-gray-500 mb-4">Şu anda görüntülenecek envanter verisi bulunmamaktadır.</p>
-            <button
-              onClick={fetchEnvanterData}
-              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Tekrar Dene
-            </button>
-          </div>
         )}
       </div>
     </DashboardLayout>

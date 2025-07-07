@@ -127,10 +127,10 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
       String(value).toLowerCase().includes(searchTerm.toLowerCase())
     );
     
-    // Durumu filtresi
+    // Durumu filtresi - Logo mantığı: 0=Aktif, 1=Pasif
     const matchesDurum = durumuFilter === '' || 
-      (durumuFilter === 'aktif' && (item.Durumu === 1 || item.Durumu === '1')) ||
-      (durumuFilter === 'pasif' && (item.Durumu === 0 || item.Durumu === '0'));
+      (durumuFilter === 'aktif' && (item.Durumu === 0 || item.Durumu === '0')) ||
+      (durumuFilter === 'pasif' && (item.Durumu === 1 || item.Durumu === '1'));
     
     // Sayı filtresi
     let matchesNumeric = true;
@@ -317,6 +317,7 @@ export default function EnvanterRaporuTable({ data, dynamicColumns }: EnvanterRa
                 <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR')}</p>
                 <p><strong>Toplam Ürün:</strong> ${filteredData.length} adet</p>
                 <p><strong>Rapor Türü:</strong> Detaylı Envanter Raporu</p>
+                <p><strong>Ambar Sayısı:</strong> ${dynamicColumns.length} adet</p>
               </div>
             </div>
           </div>

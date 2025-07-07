@@ -1,9 +1,9 @@
 // API base URL'ini environment'a göre ayarla
 export const getApiUrl = (endpoint: string): string => {
   if (process.env.NODE_ENV === 'development') {
-    return `/api/btrapor${endpoint}`;
+    return `/api${endpoint}`;
   }
-  return `https://btrapor.boluteknoloji.tr${endpoint}`;
+  return `https://panel.btrapor.com/api${endpoint}`;
 };
 
 // Şifreleme için utility fonksiyonlar
