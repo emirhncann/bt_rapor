@@ -375,21 +375,44 @@ export default function EnvanterRaporu() {
 
   return (
     <DashboardLayout title="Envanter Raporu">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Envanter Raporu</h1>
-          <button
-            onClick={fetchEnvanterData}
-            disabled={loading}
-            className="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Yenileniyor...' : 'Yenile 🔄'}
-          </button>
+      <div className="space-y-6">
+        {/* Header Section */}
+        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center">
+              <img 
+                src="/img/btRapor.png" 
+                alt="btRapor Logo" 
+                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
+              />
+              <div>
+                <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Envanter Raporu</h2>
+                <p className="text-red-100 text-sm">
+                  Toplam Ambar: {dynamicColumns.length} | Toplam Ürün: {data.length}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
+              <div className="text-left lg:text-right">
+                <p className="text-red-100 text-sm">Bugün</p>
+                <p className="text-lg lg:text-xl font-semibold text-white">{new Date().toLocaleDateString('tr-TR')}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={fetchEnvanterData}
+                  disabled={loading}
+                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  📊 Raporu Getir
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        
+
         {/* Hata mesajı */}
         {showError && (
-          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow" role="alert">
             <div className="flex">
               <div className="flex-shrink-0">
                 {failedAnimationData && (
@@ -404,23 +427,140 @@ export default function EnvanterRaporu() {
             </div>
           </div>
         )}
-        
-        {/* Loading animasyonu */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            {animationData && (
-              <div className="w-96 h-96">
-                <Lottie animationData={animationData} loop={true} />
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                </div>
               </div>
-            )}
-            <p className="mt-4 text-gray-600 text-lg">Envanter verileri yükleniyor...</p>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Toplam Ürün</p>
+                <p className="text-2xl font-semibold text-gray-900">{data.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Toplam Ambar</p>
+                <p className="text-2xl font-semibold text-gray-900">{dynamicColumns.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Aktif Ürün</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {data.filter(item => item.Durumu === 0 || item.Durumu === '0').length}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-orange-100 rounded-md flex items-center justify-center">
+                  <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Pasif Ürün</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {data.filter(item => item.Durumu === 1 || item.Durumu === '1').length}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+        {/* Action Button */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">Envanter Raporu</h3>
+              <p className="text-sm text-gray-500">Ürün stok durumlarını görüntüleyin ve analiz edin</p>
+            </div>
+            <button
+              onClick={fetchEnvanterData}
+              disabled={loading}
+              className="px-6 py-3 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Yükleniyor...
+                </>
+              ) : (
+                <>
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Raporu Yenile
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Data Table */}
+        {loading ? (
+          <div className="bg-white rounded-lg shadow p-12">
+            <div className="flex flex-col items-center justify-center">
+              {animationData && (
+                <div className="w-24 h-24 mb-4">
+                  <Lottie animationData={animationData} loop={true} />
+                </div>
+              )}
+              <p className="text-gray-600 font-medium">Envanter verileri yükleniyor...</p>
+            </div>
+          </div>
+        ) : Array.isArray(data) && data.length > 0 ? (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <EnvanterRaporuTable 
+              data={data} 
+              dynamicColumns={dynamicColumns}
+            />
           </div>
         ) : (
-          /* Envanter tablosu */
-          <EnvanterRaporuTable 
-            data={data} 
-            dynamicColumns={dynamicColumns}
-          />
+          <div className="bg-white rounded-lg shadow p-12">
+            <div className="text-center">
+              <svg className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Henüz veri yok</h3>
+              <p className="text-gray-500">Raporu getirmek için yukarıdaki butona tıklayın</p>
+            </div>
+          </div>
         )}
       </div>
     </DashboardLayout>
