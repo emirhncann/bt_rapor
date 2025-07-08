@@ -181,6 +181,16 @@ export default function EnvanterRaporuTable({
     return arr.includes(kod);
   };
 
+  // Kod tiplerine karşılık gelen tablo alanları (global kullanım için)
+  const codeFieldMap: {[key: string]: string} = {
+    'STRGRPCODE': 'Grup Kodu',
+    'SPECODE': 'Özel Kod',
+    'SPECODE2': 'Özel Kod2',
+    'SPECODE3': 'Özel Kod3',
+    'SPECODE4': 'Özel Kod4',
+    'SPECODE5': 'Özel Kod5'
+  };
+
   // Veri üzerinde toplam stok sütunu ekle
   const dataWithTotal = data.map(item => ({
     ...item,
@@ -203,25 +213,15 @@ export default function EnvanterRaporuTable({
       matchesNumeric = columnValue >= min && columnValue <= max;
     }
     
-    // Kod filtresi - Yeni şemaya göre filtreleme
-    let matchesCode = true;
-    if (selectedCodeType && selectedCode) {
-      const codeFieldMap: {[key: string]: string} = {
-        'STRGRPCODE': 'Grup Kodu',
-        'SPECODE': 'Özel Kod',
-        'SPECODE2': 'Özel Kod2',
-        'SPECODE3': 'Özel Kod3',
-        'SPECODE4': 'Özel Kod4',
-        'SPECODE5': 'Özel Kod5'
-      };
-      
-      const codeField = codeFieldMap[selectedCodeType];
-      if (codeField) {
-        matchesCode = item[codeField] === selectedCode;
-      }
-    }
+    // Kod filtreleri - her kod tipi için seçilen değerlerin KESİŞİMİ
+    const matchesCodes = Object.entries(selectedFilters).every(([type, codes]) => {
+      if (!codes || codes.length === 0) return true; // bu tipte seçim yoksa sorun değil
+      const codeField = codeFieldMap[type];
+      if (!codeField) return true;
+      return codes.includes(item[codeField]);
+    });
     
-    return matchesSearch && matchesNumeric && matchesCode;
+    return matchesSearch && matchesNumeric && matchesCodes;
   }).sort((a, b) => {
     if (!sortColumn || !sortDirection) return 0;
     
@@ -582,28 +582,17 @@ export default function EnvanterRaporuTable({
                   )}
                 </div>
 
-                {/* Seçili Kod Bilgisi */}
-                {selectedCode && (
-                  <div className="p-3 bg-blue-100 rounded-lg border border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-sm text-blue-800">
-                          Seçili: {selectedCode}
-                        </div>
-                        <div className="text-xs text-blue-600">
-                          {filterCodes.find(c => c.KOD === selectedCode)?.AÇIKLAMA}
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          clearCodeFilters();
-                        }}
-                        className="px-3 py-1 text-xs bg-blue-200 text-blue-800 rounded hover:bg-blue-300"
-                      >
-                        Temizle
-                      </button>
-                    </div>
+                {/* Seçili Kodlar */}
+                {Object.entries(selectedFilters).some(([,arr])=>arr.length>0) && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {Object.entries(selectedFilters).map(([type,codes])=>
+                      codes.map(kod=>(
+                        <span key={`${type}-${kod}`} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded">
+                          {getCodeTypeLabel(type)}: {kod}
+                          <button onClick={(e)=>{e.stopPropagation(); onToggleFilter(type,kod);}} className="ml-1">✖</button>
+                        </span>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
