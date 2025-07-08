@@ -9,6 +9,14 @@ import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 import { buildInventoryFilters } from '../utils/buildFilter';
 
+// Şube isimlerini doğal sırayla (1,2,10 yerine 1,2,3) sıralamak için yardımcı fonksiyon
+const naturalSort = (a:string, b:string) => {
+  const numA = parseInt(a.match(/\d+/)?.[0] || '',10);
+  const numB = parseInt(b.match(/\d+/)?.[0] || '',10);
+  if(!isNaN(numA) && !isNaN(numB)) return numA - numB;
+  return a.localeCompare(b,'tr');
+};
+
 export default function EnvanterRaporu() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -394,7 +402,7 @@ export default function EnvanterRaporu() {
         if (result.results.length > 0) {
           const dynamicCols = Object.keys(result.results[0]).filter(col => 
             !['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'].includes(col)
-          );
+          ).sort(naturalSort);
           setDynamicColumns(dynamicCols);
         }
         
@@ -410,7 +418,7 @@ export default function EnvanterRaporu() {
         if (result.data.length > 0) {
           const dynamicCols = Object.keys(result.data[0]).filter(col => 
             !['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'].includes(col)
-          );
+          ).sort(naturalSort);
           setDynamicColumns(dynamicCols);
         }
         

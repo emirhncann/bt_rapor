@@ -43,6 +43,9 @@ export default function EnvanterRaporuTable({
   const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Toplam stok kolon adı
+  const totalColumn = 'Toplam Stok';
   
   // Filtreleme kodları için state'ler
   const [selectedCodeType, setSelectedCodeType] = useState<string>('');
@@ -51,17 +54,22 @@ export default function EnvanterRaporuTable({
   const [showCodeSelector, setShowCodeSelector] = useState(true);
 
   // Sabit kolonlar
-  const fixedColumns = ['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod', 'Özel Kod Açıklaması', 'Özel Kod2', 'Özel Kod2 Açıklaması', 'Özel Kod3', 'Özel Kod3 Açıklaması', 'Özel Kod4', 'Özel Kod4 Açıklaması', 'Özel Kod5', 'Özel Kod5 Açıklaması'];
+  const fixedColumns = ['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod Açıklaması', 'Özel Kod2 Açıklaması', 'Özel Kod3 Açıklaması', 'Özel Kod4 Açıklaması', 'Özel Kod5 Açıklaması'];
   // Tüm kolonlar (sabit + dinamik)
-  const allColumns = [...fixedColumns, ...dynamicColumns];
+  const allColumns = [...fixedColumns, ...dynamicColumns, totalColumn];
 
   // Sayısal sütunlar (dinamik kolonlar)
-  const numericColumns = [...dynamicColumns];
+  const numericColumns = [...dynamicColumns, totalColumn];
 
   // Güvenli sayı parse fonksiyonu
   const safeParseFloat = (value: any): number => {
     if (value === null || value === undefined || value === '') return 0;
-    const parsed = parseFloat(String(value));
+    if (typeof value === 'number') return value;
+    // Türkçe formatlı sayıları dönüştür: 1.234,56 -> 1234.56
+    const cleaned = String(value)
+      .replace(/\./g, '')   // binlik ayırıcıları sil
+      .replace(/,/g, '.');   // virgülü ondalık noktasına çevir
+    const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;
   };
 
@@ -80,16 +88,12 @@ export default function EnvanterRaporuTable({
     'Malzeme Adı': 300,
     'Grup Kodu': 120,
     'Grup Kodu Açıklaması': 200,
-    'Özel Kod': 120,
     'Özel Kod Açıklaması': 200,
-    'Özel Kod2': 120,
     'Özel Kod2 Açıklaması': 200,
-    'Özel Kod3': 120,
     'Özel Kod3 Açıklaması': 200,
-    'Özel Kod4': 120,
     'Özel Kod4 Açıklaması': 200,
-    'Özel Kod5': 120,
     'Özel Kod5 Açıklaması': 200,
+    [totalColumn]: 150,
     ...Object.fromEntries(dynamicColumns.map(col => [col, 150]))
   };
 
@@ -177,8 +181,14 @@ export default function EnvanterRaporuTable({
     return arr.includes(kod);
   };
 
+  // Veri üzerinde toplam stok sütunu ekle
+  const dataWithTotal = data.map(item => ({
+    ...item,
+    [totalColumn]: dynamicColumns.reduce((sum, col) => sum + safeParseFloat(item[col]), 0)
+  }));
+
   // Filtrelenmiş ve sıralanmış veri
-  const filteredData = data.filter(item => {
+  const filteredData = dataWithTotal.filter(item => {
     // Arama filtresi
     const matchesSearch = Object.values(item).some(value => 
       String(value).toLowerCase().includes(searchTerm.toLowerCase())
@@ -281,127 +291,53 @@ export default function EnvanterRaporuTable({
 
   const exportToPDF = () => {
     try {
-      // Toplam hesaplamalar
-      const totals = numericColumns.reduce((acc, col) => {
-        acc[col] = filteredData.reduce((sum, item) => sum + safeParseFloat(item[col]), 0);
-        return acc;
-      }, {} as {[key: string]: number});
-
-      // Yazdırma için HTML oluştur
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        alert('Pop-up engelleyici nedeniyle PDF yazdırma penceresi açılamıyor.');
+      const email = prompt('PDF raporunu göndermek istediğiniz e-posta adresini girin:');
+      if (!email) {
+        console.log('📄 PDF e-posta gönderimi iptal edildi.');
         return;
       }
+      console.log('📄 PDF e-posta gönderilecek adres:', email);
 
-      const statsHtml = numericColumns.map(col => `
-        <div class="stat-box">
-          <div class="stat-title">${col}</div>
-          <div class="stat-value">${formatNumber(totals[col])}</div>
-          <div class="stat-subtitle">Toplam Stok</div>
-        </div>
-      `).join('');
+      // API isteğini arka planda yap
+      try {
+        const companyRef = localStorage.getItem('companyRef') || '';
+        const connectionInfoStr = localStorage.getItem('connectionInfo') || '{}';
+        const connectionInfo = JSON.parse(connectionInfoStr);
+        const firmaNo = connectionInfo.first_firma_no || '009';
+        const donemNo = connectionInfo.first_donem_no || '01';
 
-      const tableRows = filteredData.map(row => `
-        <tr>
-          <td>${row['Malzeme Kodu'] || ''}</td>
-          <td>${row['Malzeme Adı'] || ''}</td>
-          ${numericColumns.map(col => `
-            <td class="number">${formatNumber(safeParseFloat(row[col]))}</td>
-          `).join('')}
-        </tr>
-      `).join('');
+        // Filtreleri hazırla
+        const apiFilters = {
+          grpcod: selectedFilters['STRGRPCODE'] || [],
+          specode: selectedFilters['SPECODE'] || [],
+          specode2: selectedFilters['SPECODE2'] || [],
+          specode3: selectedFilters['SPECODE3'] || [],
+          specode4: selectedFilters['SPECODE4'] || [],
+          specode5: selectedFilters['SPECODE5'] || []
+        };
 
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Envanter Raporu - PDF</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
-            .header { margin-bottom: 30px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-            .header-top { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
-            .logo { width: 100px; height: auto; flex-shrink: 0; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .header-content { flex: 1; }
-            .header h1 { color: #991b1b; margin: 0 0 8px 0; font-size: 22px; text-align: left; font-weight: bold; letter-spacing: 0.5px; }
-            .header p { margin: 3px 0; color: rgba(255,255,255,0.9); font-size: 12px; text-align: left; }
-            .header .date-range { background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 6px; margin-top: 10px; border-left: 3px solid #fbbf24; }
-            
-            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 20px; }
-            .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
-            .stat-title { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
-            .stat-value { font-size: 14px; font-weight: bold; color: #1f2937; }
-            .stat-subtitle { font-size: 8px; color: #9ca3af; margin-top: 2px; }
-            
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
-            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
-            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            .number { text-align: right; font-weight: bold; }
-            .text-center { text-align: center; }
-            .status-badge { padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; }
-            .text-green-600 { color: #16a34a; }
-            .bg-green-100 { background-color: #dcfce7; }
-            .text-red-600 { color: #dc2626; }
-            .bg-red-100 { background-color: #fee2e2; }
-            .text-gray-600 { color: #6b7280; }
-            .bg-gray-100 { background-color: #f3f4f6; }
-            
-            @media print {
-              body { margin: 0; font-size: 10px; }
-              .stats-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 15px; }
-              .stat-box { padding: 8px; }
-              table { font-size: 8px; }
-              th, td { padding: 3px; }
-              .header { margin-bottom: 20px; padding: 15px; }
-              .header-top { gap: 15px; margin-bottom: 10px; }
-              .logo { width: 75px; }
-              .header h1 { font-size: 16px; margin: 0 0 3px 0; }
-              .header p { font-size: 9px; margin: 1px 0; }
-              .stat-title { font-size: 9px; }
-              .stat-value { font-size: 12px; }
-              .stat-subtitle { font-size: 7px; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="header-top">
-              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
-              <div class="header-content">
-                <h1>ENVANTER RAPORU</h1>
-                <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR')}</p>
-                <p><strong>Toplam Ürün:</strong> ${filteredData.length} adet</p>
-                <p><strong>Rapor Türü:</strong> Detaylı Envanter Raporu</p>
-                <p><strong>Ambar Sayısı:</strong> ${dynamicColumns.length} adet</p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- İstatistikler -->
-          <div class="stats-grid">
-            ${statsHtml}
-          </div>
-          
-          <!-- Tablo -->
-          <table>
-            <thead>
-              <tr>
-                <th>Malzeme Kodu</th>
-                <th>Malzeme Adı</th>
-                ${numericColumns.map(col => `<th>${col}</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
-        </body>
-        </html>
-      `;
+        console.log('📤 PDF export API isteği gönderiliyor...', { companyRef, firmaNo, donemNo, email, apiFilters });
 
-      printWindow.document.write(printContent);
-      printWindow.document.close();
+        fetch('/api/envanter-export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companyRef, firmaNo, donemNo, email, filters: apiFilters })
+        }).then(async res => {
+          if (res.ok) {
+            console.log('✅ PDF raporu e-posta ile gönderildi.');
+            alert('Rapor arka planda hazırlanıp e-posta ile gönderilecektir.');
+          } else {
+            const err = await res.json().catch(()=>({}));
+            console.error('❌ PDF e-posta hatası:', err);
+            alert('E-posta gönderiminde hata oluştu.');
+          }
+        }).catch(err => {
+          console.error('❌ PDF e-posta fetch hatası:', err);
+          alert('Sunucuya bağlanılamadı.');
+        });
+      } catch (err) {
+        console.error('❌ PDF e-posta ön hazırlık hatası:', err);
+      }
     } catch (error) {
       console.error('PDF export hatası:', error);
       alert('PDF dosyası oluşturulurken hata oluştu.');
