@@ -72,11 +72,16 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
         
         {/* Logo - Mobilde kompakt */}
         <div className="ml-2 lg:ml-4 flex items-center min-w-0 flex-1">
-          <img 
-            src="/img/btRapor.png" 
-            alt="btRapor Logo" 
-            className="h-6 lg:h-8 w-auto flex-shrink-0"
-          />
+          <button
+            onClick={() => router.push('/')}
+            className="flex items-center hover:opacity-80 transition-opacity"
+          >
+            <img 
+              src="/img/btRapor.png" 
+              alt="btRapor Logo" 
+              className="h-6 lg:h-8 w-auto flex-shrink-0 cursor-pointer"
+            />
+          </button>
         </div>
       </div>
 

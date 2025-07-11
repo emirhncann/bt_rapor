@@ -603,6 +603,25 @@ export default function EnvanterRaporu() {
     });
   };
 
+  const getCodeTypeLabel = (codeType: string) => {
+    switch (codeType) {
+      case 'STRGRPCODE':
+        return 'Grup Kodu';
+      case 'SPECODE':
+        return 'Özel Kod';
+      case 'SPECODE2':
+        return 'Özel Kod 2';
+      case 'SPECODE3':
+        return 'Özel Kod 3';
+      case 'SPECODE4':
+        return 'Özel Kod 4';
+      case 'SPECODE5':
+        return 'Özel Kod 5';
+      default:
+        return codeType;
+    }
+  };
+
   if (isCheckingAuth || isCheckingAccess) {
     return (
       <DashboardLayout title="Envanter Raporu">
@@ -649,14 +668,84 @@ export default function EnvanterRaporu() {
                 <button
                   onClick={handleFetchReport}
                   disabled={loading}
-                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  📊 Raporu Getir
+                  <span>📊</span>
+                  Raporu Getir
+                  {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+                    <span className="bg-red-600 text-white text-xs px-2 py-1 rounded-full ml-2">
+                      {Object.values(selectedFilters).flat().length} Filtre
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Aktif Filtreler Gösterimi */}
+        {hasFetched && Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                <span className="text-blue-600">🔍</span>
+                Aktif Filtreler
+              </h3>
+              <button
+                onClick={() => setSelectedFilters({})}
+                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+              >
+                Tümünü Temizle
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(selectedFilters).map(([codeType, codes]) =>
+                codes.map(code => {
+                  // Filtre kodundan açıklamayı bul
+                  const filterCode = filterCodes.find(fc => fc.ALAN === codeType && fc.KOD === code);
+                  const description = filterCode ? filterCode.AÇIKLAMA : '';
+                  
+                  return (
+                    <div
+                      key={`${codeType}-${code}`}
+                      className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg border border-blue-200"
+                    >
+                      <span className="text-blue-600 mr-2">🏷️</span>
+                      <span className="font-semibold">{getCodeTypeLabel(codeType)}:</span>
+                      <span className="ml-1">{code}</span>
+                      {description && (
+                        <span className="ml-2 text-blue-600 text-xs opacity-75">
+                          ({description})
+                        </span>
+                      )}
+                      <button
+                        onClick={() => toggleFilterValue(codeType, code)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 transition-colors"
+                      >
+                        ✖
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Filtre Bilgi Kartı */}
+        {hasFetched && data.length > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-green-800">
+              <span>✅</span>
+              <span className="font-medium">
+                {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) 
+                  ? `${data.length} kayıt filtrelenmiş sonuçlardan gösteriliyor`
+                  : `${data.length} kayıt gösteriliyor`
+                }
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Hata mesajı */}
         {showError && (
@@ -682,6 +771,12 @@ export default function EnvanterRaporu() {
             <div>
               <h3 className="text-lg font-medium text-gray-900">Envanter Raporu</h3>
               <p className="text-sm text-gray-500">Ürün stok durumlarını görüntüleyin ve analiz edin</p>
+              {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+                <p className="text-sm text-blue-600 mt-1 flex items-center gap-1">
+                  <span>🔍</span>
+                  {Object.values(selectedFilters).flat().length} aktif filtre uygulanacak
+                </p>
+              )}
             </div>
             <button
               onClick={handleFetchReport}
@@ -702,6 +797,11 @@ export default function EnvanterRaporu() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   Raporu Getir
+                  {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+                    <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded-full">
+                      {Object.values(selectedFilters).flat().length}
+                    </span>
+                  )}
                 </>
               )}
             </button>

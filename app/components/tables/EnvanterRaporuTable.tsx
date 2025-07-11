@@ -364,8 +364,21 @@ export default function EnvanterRaporuTable({
     setFilterColumn('');
     setMinValue('');
     setMaxValue('');
-    setCurrentPage(1);
-    clearCodeFilters(); // Kod filtrelerini de temizle
+    setShowFilters(false);
+  };
+
+  const clearAllFilters = () => {
+    clearFilters();
+    setSelectedCodeType('');
+    setSelectedCode('');
+    setCodeSearchTerm('');
+    setShowCodeSelector(false);
+    // Tüm seçili filtreleri temizle
+    Object.keys(selectedFilters).forEach(codeType => {
+      selectedFilters[codeType].forEach(code => {
+        onToggleFilter(codeType, code);
+      });
+    });
   };
 
   // Sıralama ikonu
@@ -415,106 +428,154 @@ export default function EnvanterRaporuTable({
   return (
     <div className="overflow-x-auto bg-white rounded-lg shadow">
       {/* Arama ve filtre kontrolleri */}
-      <div className="p-4 border-b border-gray-200 flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Ara..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            />
-            <span className="absolute left-3 top-2.5">🔍</span>
+      <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Arama Kutusu */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Ürün ara..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent shadow-sm"
+              />
+              <span className="absolute left-3 top-3 text-gray-400">🔍</span>
+            </div>
+
+            {/* Tüm Filtreleri Temizle Butonu */}
+            {(searchTerm || filterColumn || minValue || maxValue || Object.entries(selectedFilters).some(([, codes]) => codes.length > 0)) && (
+              <button
+                onClick={clearAllFilters}
+                className="px-4 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 flex items-center gap-2"
+              >
+                <span>🧹</span>
+                Tüm Filtreleri Temizle
+              </button>
+            )}
+
+            {/* Filtre Butonları */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`px-4 py-3 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                  showFilters 
+                    ? 'bg-red-100 text-red-700 border border-red-200' 
+                    : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                }`}
+              >
+                <span>📊</span>
+                {showFilters ? 'Filtreleri Gizle' : 'Sayısal Filtreler'}
+              </button>
+
+              {filterCodes.length > 0 && (
+                <button
+                  onClick={() => setShowCodeSelector(!showCodeSelector)}
+                  className={`px-4 py-3 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                    showCodeSelector 
+                      ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                      : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                  }`}
+                >
+                  <span>🏷️</span>
+                  {showCodeSelector ? 'Kod Filtrelerini Gizle' : 'Kod Filtreleri'}
+                </button>
+              )}
+            </div>
+
+            {loadingFilterCodes && (
+              <div className="px-4 py-3 text-sm text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
+                Filtreleme kodları yükleniyor...
+              </div>
+            )}
+
+            {!loadingFilterCodes && filterCodes.length === 0 && (
+              <div className="px-4 py-3 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-2">
+                <span>ℹ️</span>
+                Filtreleme kodları bulunamadı
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-          >
-            {showFilters ? 'Filtreleri Gizle' : 'Filtreleri Göster'} 📊
-          </button>
-
-          {filterCodes.length > 0 && (
-            <button
-              onClick={() => setShowCodeSelector(!showCodeSelector)}
-              className="px-4 py-2 text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          {/* Export Butonları */}
+          <div className="flex items-center gap-3">
+            <select
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+              className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent shadow-sm"
             >
-              {showCodeSelector ? 'Kod Filtrelerini Gizle' : 'Kod Filtreleri'} 🏷️
+              <option value={10}>10 Satır</option>
+              <option value={25}>25 Satır</option>
+              <option value={50}>50 Satır</option>
+              <option value={100}>100 Satır</option>
+            </select>
+
+            <button
+              onClick={exportToExcel}
+              className="px-4 py-3 text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 flex items-center gap-2 shadow-sm"
+            >
+              <span>📊</span>
+              Excel
             </button>
-          )}
 
-          {loadingFilterCodes && (
-            <div className="px-4 py-2 text-sm text-gray-500">
-              Filtreleme kodları yükleniyor...
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-4">
-          <select
-            value={itemsPerPage}
-            onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-          >
-            <option value={10}>10 Satır</option>
-            <option value={25}>25 Satır</option>
-            <option value={50}>50 Satır</option>
-            <option value={100}>100 Satır</option>
-          </select>
-
-          <button
-            onClick={exportToExcel}
-            className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-          >
-            Excel 📊
-          </button>
-
-          <button
-            onClick={exportToPDF}
-            className="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-          >
-            PDF 📄
-          </button>
+            <button
+              onClick={exportToPDF}
+              className="px-4 py-3 text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 flex items-center gap-2 shadow-sm"
+            >
+              <span>📄</span>
+              PDF
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Sayısal filtreler */}
       {showFilters && (
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
           <div className="flex items-center gap-4">
-            <select
-              value={filterColumn}
-              onChange={(e) => setFilterColumn(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            >
-              <option value="">Sütun Seçin</option>
-              {numericColumns.map(col => (
-                <option key={col} value={col}>{col}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">📈</span>
+              <select
+                value={filterColumn}
+                onChange={(e) => setFilterColumn(e.target.value)}
+                className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent shadow-sm"
+              >
+                <option value="">Sütun Seçin</option>
+                {numericColumns.map(col => (
+                  <option key={col} value={col}>{col}</option>
+                ))}
+              </select>
+            </div>
 
-            <input
-              type="number"
-              placeholder="Min Değer"
-              value={minValue}
-              onChange={(e) => setMinValue(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Min:</span>
+              <input
+                type="number"
+                placeholder="Min Değer"
+                value={minValue}
+                onChange={(e) => setMinValue(e.target.value)}
+                className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent shadow-sm w-32"
+              />
+            </div>
 
-            <input
-              type="number"
-              placeholder="Max Değer"
-              value={maxValue}
-              onChange={(e) => setMaxValue(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">Max:</span>
+              <input
+                type="number"
+                placeholder="Max Değer"
+                value={maxValue}
+                onChange={(e) => setMaxValue(e.target.value)}
+                className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent shadow-sm w-32"
+              />
+            </div>
 
             <button
               onClick={clearFilters}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              className="px-4 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 flex items-center gap-2"
             >
-              Filtreleri Temizle 🧹
+              <span>🧹</span>
+              Filtreleri Temizle
             </button>
           </div>
         </div>
@@ -522,11 +583,28 @@ export default function EnvanterRaporuTable({
 
       {/* Kod Filtreleri */}
       {showCodeSelector && filterCodes.length > 0 && (
-        <div className="p-4 border-b border-gray-200 bg-blue-50">
-          <div className="space-y-4">
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
+          <div className="space-y-6">
+            {/* Başlık */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                <span>🏷️</span>
+                Kod Filtreleri
+              </h3>
+              <button
+                onClick={clearCodeFilters}
+                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+              >
+                Temizle
+              </button>
+            </div>
+
             {/* Kod Tipi Seçimi */}
             <div className="flex items-center gap-4">
-              <label className="text-sm font-medium text-gray-700">Kod Tipi:</label>
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <span>📋</span>
+                Kod Tipi:
+              </label>
               <select
                 value={selectedCodeType}
                 onChange={(e) => {
@@ -534,7 +612,7 @@ export default function EnvanterRaporuTable({
                   setSelectedCode('');
                   setCodeSearchTerm('');
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm min-w-48"
               >
                 <option value="">Kod Tipi Seçin</option>
                 {getCodeTypes().map(type => (
@@ -545,20 +623,23 @@ export default function EnvanterRaporuTable({
 
             {/* Kod Arama ve Seçimi */}
             {selectedCodeType && (
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <label className="text-sm font-medium text-gray-700">Kod Ara:</label>
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <span>🔍</span>
+                    Kod Ara:
+                  </label>
                   <input
                     type="text"
                     placeholder="Kod veya açıklama ara..."
                     value={codeSearchTerm}
                     onChange={(e) => setCodeSearchTerm(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
+                    className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm flex-1"
                   />
                 </div>
 
                 {/* Kod Listesi */}
-                <div className="max-h-60 overflow-y-auto border border-gray-300 rounded-lg bg-white">
+                <div className="max-h-80 overflow-y-auto border border-gray-300 rounded-lg bg-white shadow-sm">
                   {getFilteredCodes().map(code => (
                     <div
                       key={`${code.ALAN}-${code.KOD}`}
@@ -566,33 +647,57 @@ export default function EnvanterRaporuTable({
                         setSelectedCode(code.KOD);
                         onToggleFilter(selectedCodeType, code.KOD);
                       }}
-                      className={`p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
+                      className={`p-4 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200 ${
                         isCodeSelected(selectedCodeType, code.KOD) ? 'bg-blue-100 border-blue-200' : ''
                       }`}
                     >
-                      <div className="font-medium text-sm">{code.KOD}</div>
-                      <div className="text-xs text-gray-600">{code.AÇIKLAMA}</div>
+                      <div className="font-medium text-sm text-gray-900">{code.KOD}</div>
+                      <div className="text-xs text-gray-600 mt-1">{code.AÇIKLAMA}</div>
                     </div>
                   ))}
                   
                   {getFilteredCodes().length === 0 && (
-                    <div className="p-4 text-center text-gray-500 text-sm">
-                      {codeSearchTerm ? 'Arama kriterine uygun kod bulunamadı' : 'Bu kod tipinde kod bulunamadı'}
+                    <div className="p-6 text-center text-gray-500 text-sm">
+                      {codeSearchTerm ? '🔍 Arama kriterine uygun kod bulunamadı' : '📋 Bu kod tipinde kod bulunamadı'}
                     </div>
                   )}
                 </div>
 
                 {/* Seçili Kodlar */}
                 {Object.entries(selectedFilters).some(([,arr])=>arr.length>0) && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {Object.entries(selectedFilters).map(([type,codes])=>
-                      codes.map(kod=>(
-                        <span key={`${type}-${kod}`} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded">
-                          {getCodeTypeLabel(type)}: {kod}
-                          <button onClick={(e)=>{e.stopPropagation(); onToggleFilter(type,kod);}} className="ml-1">✖</button>
-                        </span>
-                      ))
-                    )}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-blue-900 mb-3 flex items-center gap-2">
+                      <span>✅</span>
+                      Seçili Kodlar
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(selectedFilters).map(([type,codes])=>
+                        codes.map(kod=> {
+                          // Filtre kodundan açıklamayı bul
+                          const filterCode = filterCodes.find(fc => fc.ALAN === type && fc.KOD === kod);
+                          const description = filterCode ? filterCode.AÇIKLAMA : '';
+                          
+                          return (
+                            <span key={`${type}-${kod}`} className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg border border-blue-200">
+                              <span className="text-blue-600 mr-2">🏷️</span>
+                              <span className="font-semibold">{getCodeTypeLabel(type)}:</span>
+                              <span className="ml-1">{kod}</span>
+                              {description && (
+                                <span className="ml-2 text-blue-600 text-xs opacity-75">
+                                  ({description})
+                                </span>
+                              )}
+                              <button 
+                                onClick={(e)=>{e.stopPropagation(); onToggleFilter(type,kod);}} 
+                                className="ml-2 text-blue-600 hover:text-blue-800 transition-colors"
+                              >
+                                ✖
+                              </button>
+                            </span>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -604,20 +709,20 @@ export default function EnvanterRaporuTable({
       {/* Tablo container */}
       <div className="overflow-x-auto w-full" style={{ maxWidth: '100vw' }}>
         <table className="w-full table-auto divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
             <tr>
               {allColumns.map(column => (
                 <th
                   key={column}
                   onClick={() => handleSort(column)}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none relative group"
+                  className="px-6 py-4 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer select-none relative group hover:bg-gray-200 transition-colors duration-200"
                   style={{ 
                     width: `${100 / allColumns.length}%`,
                     minWidth: column === 'Malzeme Adı' ? '250px' : '100px'
                   }}
                 >
                   <div className="flex items-center gap-2">
-                    {column}
+                    <span className="font-semibold">{column}</span>
                     <span className="text-gray-400">{getSortIcon(column)}</span>
                   </div>
                   <div
@@ -630,7 +735,7 @@ export default function EnvanterRaporuTable({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {currentData.map((row, rowIndex) => (
-              <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              <tr key={rowIndex} className={`hover:bg-gray-50 transition-colors duration-200 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                 {allColumns.map(column => (
                   <td 
                     key={column} 
@@ -641,11 +746,11 @@ export default function EnvanterRaporuTable({
                     }}
                   >
                     {numericColumns.includes(column) ? (
-                      <span className="font-medium text-right block">
+                      <span className="font-medium text-right block text-gray-900">
                         {formatNumber(safeParseFloat(row[column]))}
                       </span>
                     ) : (
-                      <div className="truncate" title={row[column]}>
+                      <div className="truncate text-gray-700" title={row[column]}>
                         {row[column]}
                       </div>
                     )}
@@ -658,12 +763,12 @@ export default function EnvanterRaporuTable({
       </div>
 
       {/* Sayfalama */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-white">
+      <div className="px-6 py-4 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white">
         <div className="flex items-center justify-between">
           <div className="text-sm text-gray-700">
-            Toplam <span className="font-medium">{filteredData.length}</span> kayıt
+            Toplam <span className="font-semibold text-gray-900">{filteredData.length}</span> kayıt
             {itemsPerPage < filteredData.length && (
-              <span> (Sayfa <span className="font-medium">{currentPage}</span> / {totalPages})</span>
+              <span> (Sayfa <span className="font-semibold text-gray-900">{currentPage}</span> / {totalPages})</span>
             )}
           </div>
           
@@ -671,14 +776,14 @@ export default function EnvanterRaporuTable({
             <button
               onClick={() => handlePageClick(1)}
               disabled={currentPage === 1}
-              className="px-3 py-1 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
               ⏮️
             </button>
             <button
               onClick={() => handlePageClick(currentPage - 1)}
               disabled={currentPage === 1}
-              className="px-3 py-1 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
               ◀️
             </button>
@@ -688,9 +793,9 @@ export default function EnvanterRaporuTable({
                 key={index}
                 onClick={() => handlePageClick(page)}
                 disabled={page === '...'}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
                   page === currentPage
-                    ? 'bg-red-600 text-white'
+                    ? 'bg-red-600 text-white shadow-md'
                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                 } ${page === '...' ? 'cursor-default' : ''}`}
               >
@@ -701,14 +806,14 @@ export default function EnvanterRaporuTable({
             <button
               onClick={() => handlePageClick(currentPage + 1)}
               disabled={currentPage === totalPages}
-              className="px-3 py-1 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
               ▶️
             </button>
             <button
               onClick={() => handlePageClick(totalPages)}
               disabled={currentPage === totalPages}
-              className="px-3 py-1 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 rounded-md bg-white border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             >
               ⏭️
             </button>
