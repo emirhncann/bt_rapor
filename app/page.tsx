@@ -101,15 +101,24 @@ export default function Dashboard() {
 
       console.log('🔄 api.btrapor.com\'dan favori raporlar yükleniyor...');
       
-      const response = await fetch(`/api/user-preferences?companyRef=${companyRef}&userId=${currentUser.id}`);
+      const response = await fetch(`https://api.btrapor.com/get-favorite-reports?user_ref=${currentUser.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
         console.log('📡 API Response:', data);
         
-        if (data.status === 'success') {
-          setPinnedReports(data.data.pinnedReports);
-          console.log('📌 api.btrapor.com\'dan favori raporlar yüklendi:', data.data.pinnedReports);
+        if (data.status === 'success' && data.data) {
+          // API'den gelen string array'ini işle
+          const pinnedReports = data.data.flatMap((item: string) => 
+            item.split('-').filter((id: string) => id.trim() !== '')
+          );
+          setPinnedReports(pinnedReports);
+          console.log('📌 api.btrapor.com\'dan favori raporlar yüklendi:', pinnedReports);
         } else {
           console.warn('⚠️ api.btrapor.com\'dan veri alınamadı, localStorage kontrol ediliyor');
           // Fallback: localStorage'dan yükle
@@ -183,15 +192,14 @@ export default function Dashboard() {
       if (currentUser && companyRef) {
         console.log('💾 api.btrapor.com\'a favori raporlar kaydediliyor...');
         
-        const response = await fetch('/api/user-preferences', {
+        const response = await fetch('https://api.btrapor.com/save-favorite-report', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            companyRef: companyRef,
-            userId: currentUser.id,
-            pinnedReports: newPinned
+            user_ref: currentUser.id,
+            report_id: newPinned.join('-')
           })
         });
         
@@ -657,7 +665,7 @@ export default function Dashboard() {
                     <span className="text-white/90 text-xs sm:text-sm">
                       {stats.systemStatus === 'Aktif' ? 'Tüm servisler çalışıyor' : 
                        stats.systemStatus === 'Kontrol ediliyor...' ? 'Bağlantı test ediliyor' : 
-                       'Bağlantı sorunu tespit edildi'}
+                       'Bağlantı Sorunu'}
                     </span>
                   </div>
                 </div>
@@ -793,10 +801,14 @@ export default function Dashboard() {
               // Sabitlenmiş raporlar varsa onları göster, yoksa ilk 3 raporu göster
               (() => {
                 const reportsToShow = pinnedReports.length > 0 
-                  ? userReports.filter(report => pinnedReports.includes(report.id.toString())).slice(0, 3)
+                  ? pinnedReports.map(pinnedId => 
+                      userReports.find(report => report.id.toString() === pinnedId)
+                    ).filter(Boolean).slice(0, 3)
                   : userReports.slice(0, 3);
                 
                 return reportsToShow.map((report) => {
+                  if (!report) return null;
+                  
                   const colors = getReportCardColors(report.report_name, report.has_access);
                   const route = getReportRoute(report.report_name);
                   const isPinned = pinnedReports.includes(report.id.toString());
@@ -863,7 +875,9 @@ export default function Dashboard() {
             {/* Eğer 3'ten az rapor varsa boş kartları doldur */}
             {!loadingReports && (() => {
               const reportsToShow = pinnedReports.length > 0 
-                ? userReports.filter(report => pinnedReports.includes(report.id.toString())).slice(0, 3)
+                ? pinnedReports.map(pinnedId => 
+                    userReports.find(report => report.id.toString() === pinnedId)
+                  ).filter(Boolean).slice(0, 3)
                 : userReports.slice(0, 3);
               
               return reportsToShow.length < 3 && (
@@ -895,7 +909,9 @@ export default function Dashboard() {
             {/* Eğer hiç rapor yoksa */}
             {!loadingReports && (() => {
               const reportsToShow = pinnedReports.length > 0 
-                ? userReports.filter(report => pinnedReports.includes(report.id.toString())).slice(0, 3)
+                ? pinnedReports.map(pinnedId => 
+                    userReports.find(report => report.id.toString() === pinnedId)
+                  ).filter(Boolean).slice(0, 3)
                 : userReports.slice(0, 3);
               
               return reportsToShow.length === 0 && (

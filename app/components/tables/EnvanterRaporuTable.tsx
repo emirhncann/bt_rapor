@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import Lottie from 'lottie-react';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -43,6 +44,95 @@ export default function EnvanterRaporuTable({
   const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Detay görüntüleme için yeni state'ler
+  const [selectedItemRef, setSelectedItemRef] = useState<string | null>(null);
+  const [itemDetails, setItemDetails] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [loadingAnimation, setLoadingAnimation] = useState(null);
+
+  // Loading animasyonunu yükle
+  useEffect(() => {
+    fetch('/animations/loading.json')
+      .then(res => res.json())
+      .then(data => setLoadingAnimation(data))
+      .catch(err => console.log('Loading animasyonu yüklenemedi:', err));
+  }, []);
+
+  // Malzeme detaylarını getir
+  const fetchItemDetails = async (itemRef: string, itemName: string, bypassCache: boolean = false) => {
+    setSelectedItemRef(itemRef);
+    setShowDetails(true);
+    setLoadingDetails(true);
+    
+    console.log(`🔄 ItemRef ${itemRef} için detay çağrısı yapılıyor`);
+    
+    try {
+      // Connection bilgilerini al
+      const connectionInfo = localStorage.getItem('connectionInfo');
+      if (!connectionInfo) {
+        alert('Bağlantı bilgileri bulunamadı. Lütfen sayfayı yenileyin.');
+        return;
+      }
+
+      const connData = JSON.parse(connectionInfo);
+      
+      // CompanyRef'i al
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        alert('Şirket bilgisi bulunamadı. Lütfen sayfayı yenileyin.');
+        return;
+      }
+      
+      console.log('🌐 Envanter detay API çağrısı yapılıyor...');
+      
+      // API çağrısı
+      const response = await fetch('/api/envanter-detay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          itemRef: itemRef,
+          connectionInfo: connData,
+          companyRef: companyRef
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Envanter detay API hatası:', response.status, errorText);
+        alert('Malzeme detayları yüklenirken hata oluştu.');
+        setItemDetails([]);
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        setItemDetails(result.data || []);
+        console.log(`📋 ${result.data?.length || 0} adet işyeri fiyat bilgisi yüklendi`);
+      } else {
+        console.error('Detay sorgusu hatası:', result);
+        alert('Malzeme detayları yüklenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'));
+        setItemDetails([]);
+      }
+    } catch (error) {
+      console.error('Detay fetch hatası:', error);
+      alert('Malzeme detayları yüklenirken hata oluştu.');
+      setItemDetails([]);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  // Detayları kapat
+  const closeDetails = () => {
+    setShowDetails(false);
+    setSelectedItemRef(null);
+    setItemDetails([]);
+  };
 
   // Toplam stok kolon adı
   const totalColumn = 'Toplam Stok';
@@ -711,6 +801,10 @@ export default function EnvanterRaporuTable({
         <table className="w-full table-auto divide-y divide-gray-200">
           <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
             <tr>
+              {/* Detay butonu için ek kolon */}
+              <th className="px-6 py-4 text-left text-xs font-medium text-gray-700 uppercase tracking-wider w-16">
+                <span className="font-semibold">Detay</span>
+              </th>
               {allColumns.map(column => (
                 <th
                   key={column}
@@ -736,6 +830,32 @@ export default function EnvanterRaporuTable({
           <tbody className="bg-white divide-y divide-gray-200">
             {currentData.map((row, rowIndex) => (
               <tr key={rowIndex} className={`hover:bg-gray-50 transition-colors duration-200 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                {/* Detay butonu */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm w-16">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        console.log('🔍 Row data:', row);
+                        const itemRef = row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref || '';
+                        const itemName = row['Malzeme Adı'] || row.NAME || row.malzeme_adi || 'Malzeme';
+                        console.log('🔍 ItemRef:', itemRef);
+                        console.log('🔍 ItemName:', itemName);
+                        if (itemRef) {
+                          fetchItemDetails(itemRef, itemName);
+                        } else {
+                          alert('Malzeme referansı bulunamadı!');
+                        }
+                      }}
+                      className="text-gray-600 hover:text-red-800 transition-colors"
+                      title="Fiyat detaylarını görüntüle"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
+                  </div>
+                </td>
                 {allColumns.map(column => (
                   <td 
                     key={column} 
@@ -820,6 +940,264 @@ export default function EnvanterRaporuTable({
           </div>
         </div>
       </div>
+
+      {/* Malzeme Detay Modal Pop-up */}
+      {showDetails && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={closeDetails}
+          ></div>
+          
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
+            <div className="relative w-full max-w-[98vw] xl:max-w-[90vw] bg-white rounded-lg shadow-xl">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-red-800 to-red-900 text-white p-6 rounded-t-lg">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold">💰 Malzeme Fiyat Detayları</h3>
+                    <p className="text-red-100 text-sm mt-2">
+                      Malzeme Ref: {selectedItemRef} {itemDetails.length > 0 && `• ${itemDetails.length} işyeri fiyat bilgisi`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (selectedItemRef) {
+                          const itemName = data.find(row => 
+                            (row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref) === selectedItemRef
+                          )?.['Malzeme Adı'] || data.find(row => 
+                            (row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref) === selectedItemRef
+                          )?.NAME || 'Malzeme';
+                          console.log(`🔄 Modal'dan yenile tıklandı - ItemRef: ${selectedItemRef}`);
+                          fetchItemDetails(selectedItemRef, itemName, true); // Cache bypass ile yenile
+                        }
+                      }}
+                      disabled={loadingDetails}
+                      className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Fiyat bilgilerini yenile (Veritabanından güncel veri çek)"
+                    >
+                      <svg className={`w-6 h-6 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={closeDetails}
+                      className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700"
+                      title="Detayları kapat"
+                    >
+                      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-3 sm:p-6 max-h-[80vh] overflow-y-auto">
+                {loadingDetails ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    {loadingAnimation && (
+                      <Lottie 
+                        animationData={loadingAnimation} 
+                        style={{ width: 120, height: 120 }}
+                        loop={true}
+                      />
+                    )}
+                    <span className="text-gray-700 font-medium text-xl mt-4">Fiyat bilgileri yükleniyor...</span>
+                    <span className="text-gray-500 text-sm mt-2">Lütfen bekleyin, veriler getiriliyor</span>
+                  </div>
+                ) : itemDetails.length > 0 ? (
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden lg:block">
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">İşyeri No</th>
+                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">İşyeri Adı</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Satış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Satış Birim Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Alış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Alış Birim Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Satış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Alış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Fiyatı</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {itemDetails.map((detail, index) => (
+                              <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-red-50 transition-colors`}>
+                                <td className="px-3 py-3 text-sm font-semibold text-blue-700">
+                                  {detail['İşyeri No']}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-gray-700">
+                                  {detail['İşyeri Adı']}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-green-800">
+                                  {detail['Son Satış Net Fiyat'] && detail['Son Satış Net Fiyat'] !== '0.00000' ? detail['Son Satış Net Fiyat'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-green-800">
+                                  {detail['Son Satış Birim Fiyat'] && detail['Son Satış Birim Fiyat'] !== '0.00000' ? detail['Son Satış Birim Fiyat'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-red-800">
+                                  {detail['Son Alış Net Fiyat'] && detail['Son Alış Net Fiyat'] !== '0.00000' ? detail['Son Alış Net Fiyat'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-red-800">
+                                  {detail['Son Alış Birim Fiyat'] && detail['Son Alış Birim Fiyat'] !== '0.00000' ? detail['Son Alış Birim Fiyat'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-blue-800">
+                                  {detail['Tanımlı Satış Net Fiyat'] && detail['Tanımlı Satış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Satış Net Fiyat'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-blue-800">
+                                  {detail['Tanımlı Alış Net Fiyat'] && detail['Tanımlı Alış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Alış Net Fiyat'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-purple-800">
+                                  {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile/Tablet Card View */}
+                    <div className="lg:hidden space-y-4">
+                      {itemDetails.map((detail, index) => (
+                        <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                          {/* Header Row */}
+                          <div className="flex justify-between items-start mb-3 pb-3 border-b border-gray-100">
+                            <div>
+                              <h4 className="text-lg font-bold text-blue-700">İşyeri {detail['İşyeri No']}</h4>
+                              <p className="text-sm text-gray-600">{detail['İşyeri Adı']}</p>
+                            </div>
+                          </div>
+
+                          {/* Fiyat Grid */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Satış Fiyatları */}
+                            <div className="bg-green-50 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-green-700 mb-2">SATIŞ FİYATLARI</h5>
+                              <div className="space-y-2">
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-green-600">Son Net:</span>
+                                  <span className="text-sm font-bold text-green-800">
+                                    {detail['Son Satış Net Fiyat'] && detail['Son Satış Net Fiyat'] !== '0.00000' ? detail['Son Satış Net Fiyat'] : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-green-600">Son Birim:</span>
+                                  <span className="text-sm font-bold text-green-800">
+                                    {detail['Son Satış Birim Fiyat'] && detail['Son Satış Birim Fiyat'] !== '0.00000' ? detail['Son Satış Birim Fiyat'] : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-green-600">Tanımlı Net:</span>
+                                  <span className="text-sm font-bold text-green-800">
+                                    {detail['Tanımlı Satış Net Fiyat'] && detail['Tanımlı Satış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Satış Net Fiyat'] : '-'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Alış Fiyatları */}
+                            <div className="bg-red-50 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-red-700 mb-2">ALIŞ FİYATLARI</h5>
+                              <div className="space-y-2">
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-red-600">Son Net:</span>
+                                  <span className="text-sm font-bold text-red-800">
+                                    {detail['Son Alış Net Fiyat'] && detail['Son Alış Net Fiyat'] !== '0.00000' ? detail['Son Alış Net Fiyat'] : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-red-600">Son Birim:</span>
+                                  <span className="text-sm font-bold text-red-800">
+                                    {detail['Son Alış Birim Fiyat'] && detail['Son Alış Birim Fiyat'] !== '0.00000' ? detail['Son Alış Birim Fiyat'] : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-xs text-red-600">Tanımlı Net:</span>
+                                  <span className="text-sm font-bold text-red-800">
+                                    {detail['Tanımlı Alış Net Fiyat'] && detail['Tanımlı Alış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Alış Net Fiyat'] : '-'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Market Fiyatı */}
+                          {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' && (
+                            <div className="mt-3 bg-purple-50 rounded-lg p-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-semibold text-purple-700">MARKET SATIŞ FİYATI</span>
+                                <span className="text-lg font-bold text-purple-800">
+                                  {detail['Market Satış Fiyatı']}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-20">
+                    <svg className="mx-auto h-20 w-20 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <h3 className="mt-6 text-xl font-medium text-gray-900">Fiyat bilgisi bulunamadı</h3>
+                    <p className="mt-3 text-base text-gray-500">Bu malzeme için herhangi bir fiyat bilgisi bulunmuyor.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-gray-50 px-6 py-4 rounded-b-lg">
+                <div className="flex justify-between items-center">
+                  <div className="text-sm text-gray-600">
+                    {itemDetails.length > 0 && (
+                      <span>Toplam {itemDetails.length} işyeri fiyat bilgisi • İşyeri numarasına göre sıralı</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        if (selectedItemRef) {
+                          const itemName = data.find(row => 
+                            (row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref) === selectedItemRef
+                          )?.['Malzeme Adı'] || data.find(row => 
+                            (row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref) === selectedItemRef
+                          )?.NAME || 'Malzeme';
+                          fetchItemDetails(selectedItemRef, itemName, true); // Cache bypass ile yenile
+                        }
+                      }}
+                      disabled={loadingDetails}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <svg className={`w-4 h-4 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      {loadingDetails ? 'Yenileniyor...' : 'Yenile'}
+                    </button>
+                    <button
+                      onClick={closeDetails}
+                      className="px-6 py-2 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium"
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
