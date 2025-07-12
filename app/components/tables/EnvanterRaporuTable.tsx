@@ -111,8 +111,84 @@ export default function EnvanterRaporuTable({
       const result = await response.json();
 
       if (result.success) {
-        setItemDetails(result.data || []);
-        console.log(`📋 ${result.data?.length || 0} adet işyeri fiyat bilgisi yüklendi`);
+        // Fiyat bilgilerini al
+        const priceDetails = result.data || [];
+        
+        // Ana tablodan bu malzemenin stok bilgilerini bul
+        const currentRow = data.find(row => 
+          (row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref) === itemRef
+        );
+        
+        if (currentRow) {
+          console.log('📦 Mevcut stok bilgileri:', currentRow);
+          
+          // Her işyeri için stok miktarını bul ve değer hesapla
+          const detailsWithStock = priceDetails.map((detail: any) => {
+            const isyeriNo = detail['İşyeri No'];
+            const isyeriAdi = detail['İşyeri Adı'];
+            
+            // Ana tablodan bu işyerinin stok miktarını bul
+            const stockAmountRaw = currentRow[isyeriAdi] || 0;
+            const stockAmount = typeof stockAmountRaw === 'number' ? stockAmountRaw : parseFloat(String(stockAmountRaw)) || 0;
+            
+            // Debug için stok bilgisi
+            console.log(`📦 Stok Debug - İşyeri: ${isyeriAdi}`);
+            console.log(`   Raw stok: ${stockAmountRaw} (${typeof stockAmountRaw})`);
+            console.log(`   Parsed stok: ${stockAmount}`);
+            
+            // Fiyatları sayıya çevir - özel parse fonksiyonu
+            const parsePrice = (priceStr: any): number => {
+              if (!priceStr || priceStr === '-' || priceStr === '0.00000' || priceStr === '0.00') return 0;
+              if (typeof priceStr === 'number') return priceStr;
+              
+              // String'i temizle ve parse et
+              const cleaned = String(priceStr).trim();
+              const parsed = parseFloat(cleaned);
+              return isNaN(parsed) ? 0 : parsed;
+            };
+            
+            const sonSatisNetFiyat = parsePrice(detail['Son Satış Net Fiyat']);
+            const sonSatisBirimFiyat = parsePrice(detail['Son Satış Birim Fiyat']);
+            const sonAlisNetFiyat = parsePrice(detail['Son Alış Net Fiyat']);
+            const sonAlisBirimFiyat = parsePrice(detail['Son Alış Birim Fiyat']);
+            const tanimliSatisNetFiyat = parsePrice(detail['Tanımlı Satış Net Fiyat']);
+            const tanimliAlisNetFiyat = parsePrice(detail['Tanımlı Alış Net Fiyat']);
+            const marketSatisFiyati = parsePrice(detail['Market Satış Fiyatı']);
+            
+            // Debug için log
+            console.log(`🔍 Hesaplama Debug - İşyeri: ${isyeriAdi}`);
+            console.log(`   Stok: ${stockAmount}`);
+            console.log(`   Son Satış Net Fiyat: "${detail['Son Satış Net Fiyat']}" -> ${sonSatisNetFiyat}`);
+            console.log(`   Son Satış Net Değer: ${sonSatisNetFiyat} × ${stockAmount} = ${sonSatisNetFiyat * stockAmount}`);
+            
+            // Değer hesaplamaları (fiyat * stok)
+            const sonSatisNetDeger = sonSatisNetFiyat * stockAmount;
+            const sonSatisBirimDeger = sonSatisBirimFiyat * stockAmount;
+            const sonAlisNetDeger = sonAlisNetFiyat * stockAmount;
+            const sonAlisBirimDeger = sonAlisBirimFiyat * stockAmount;
+            const tanimliSatisNetDeger = tanimliSatisNetFiyat * stockAmount;
+            const tanimliAlisNetDeger = tanimliAlisNetFiyat * stockAmount;
+            const marketSatisDegeri = marketSatisFiyati * stockAmount;
+            
+            return {
+              ...detail,
+              'Stok Miktarı': stockAmount,
+              'Son Satış Net Değer': sonSatisNetDeger,
+              'Son Satış Birim Değer': sonSatisBirimDeger,
+              'Son Alış Net Değer': sonAlisNetDeger,
+              'Son Alış Birim Değer': sonAlisBirimDeger,
+              'Tanımlı Satış Net Değer': tanimliSatisNetDeger,
+              'Tanımlı Alış Net Değer': tanimliAlisNetDeger,
+              'Market Satış Değeri': marketSatisDegeri
+            };
+          });
+          
+          setItemDetails(detailsWithStock);
+          console.log(`📋 ${detailsWithStock.length} adet işyeri fiyat ve stok bilgisi yüklendi`);
+        } else {
+          console.warn('⚠️ Ana tabloda malzeme bulunamadı, sadece fiyat bilgileri gösteriliyor');
+          setItemDetails(priceDetails);
+        }
       } else {
         console.error('Detay sorgusu hatası:', result);
         alert('Malzeme detayları yüklenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'));
@@ -1020,44 +1096,76 @@ export default function EnvanterRaporuTable({
                             <tr>
                               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">İşyeri No</th>
                               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">İşyeri Adı</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Stok Miktarı</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Satış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Satış Net Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Satış Birim Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Satış Birim Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Alış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Alış Net Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Alış Birim Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Son Alış Birim Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Satış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Satış Net Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Alış Net Fiyat</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Alış Net Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Fiyatı</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Değeri</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
                             {itemDetails.map((detail, index) => (
-                              <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-red-50 transition-colors`}>
-                                <td className="px-3 py-3 text-sm font-semibold text-blue-700">
+                              <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 transition-colors`}>
+                                <td className="px-3 py-3 text-sm font-semibold text-gray-700">
                                   {detail['İşyeri No']}
                                 </td>
                                 <td className="px-3 py-3 text-sm text-gray-700">
                                   {detail['İşyeri Adı']}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-green-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {formatNumber(detail['Stok Miktarı'] || 0)}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Son Satış Net Fiyat'] && detail['Son Satış Net Fiyat'] !== '0.00000' ? detail['Son Satış Net Fiyat'] : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-green-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Son Satış Net Değer'] && detail['Son Satış Net Değer'] > 0 ? formatNumber(detail['Son Satış Net Değer']) : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Son Satış Birim Fiyat'] && detail['Son Satış Birim Fiyat'] !== '0.00000' ? detail['Son Satış Birim Fiyat'] : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-red-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Son Satış Birim Değer'] && detail['Son Satış Birim Değer'] > 0 ? formatNumber(detail['Son Satış Birim Değer']) : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Son Alış Net Fiyat'] && detail['Son Alış Net Fiyat'] !== '0.00000' ? detail['Son Alış Net Fiyat'] : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-red-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Son Alış Net Değer'] && detail['Son Alış Net Değer'] > 0 ? formatNumber(detail['Son Alış Net Değer']) : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Son Alış Birim Fiyat'] && detail['Son Alış Birim Fiyat'] !== '0.00000' ? detail['Son Alış Birim Fiyat'] : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-blue-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Son Alış Birim Değer'] && detail['Son Alış Birim Değer'] > 0 ? formatNumber(detail['Son Alış Birim Değer']) : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Tanımlı Satış Net Fiyat'] && detail['Tanımlı Satış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Satış Net Fiyat'] : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-blue-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Tanımlı Satış Net Değer'] && detail['Tanımlı Satış Net Değer'] > 0 ? formatNumber(detail['Tanımlı Satış Net Değer']) : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Tanımlı Alış Net Fiyat'] && detail['Tanımlı Alış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Alış Net Fiyat'] : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-purple-800">
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Tanımlı Alış Net Değer'] && detail['Tanımlı Alış Net Değer'] > 0 ? formatNumber(detail['Tanımlı Alış Net Değer']) : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                  {detail['Market Satış Değeri'] && detail['Market Satış Değeri'] > 0 ? formatNumber(detail['Market Satış Değeri']) : '-'}
                                 </td>
                               </tr>
                             ))}
@@ -1073,75 +1181,116 @@ export default function EnvanterRaporuTable({
                           {/* Header Row */}
                           <div className="flex justify-between items-start mb-3 pb-3 border-b border-gray-100">
                             <div>
-                              <h4 className="text-lg font-bold text-blue-700">İşyeri {detail['İşyeri No']}</h4>
+                              <h4 className="text-lg font-bold text-gray-700">İşyeri {detail['İşyeri No']}</h4>
                               <p className="text-sm text-gray-600">{detail['İşyeri Adı']}</p>
                             </div>
                           </div>
 
-                          {/* Fiyat Grid */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {/* Satış Fiyatları */}
-                            <div className="bg-green-50 rounded-lg p-3">
-                              <h5 className="text-xs font-semibold text-green-700 mb-2">SATIŞ FİYATLARI</h5>
+                          {/* Stok Miktarı */}
+                          <div className="mb-3 bg-gray-50 rounded-lg p-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-semibold text-gray-700">STOK MİKTARI</span>
+                              <span className="text-lg font-bold text-gray-700">
+                                {formatNumber(detail['Stok Miktarı'] || 0)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Önemli Değerler */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                            {/* Satış Değerleri */}
+                            <div className="bg-gray-50 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-gray-700 mb-2">SATIŞ DEĞERLERİ</h5>
                               <div className="space-y-2">
                                 <div className="flex justify-between">
-                                  <span className="text-xs text-green-600">Son Net:</span>
-                                  <span className="text-sm font-bold text-green-800">
-                                    {detail['Son Satış Net Fiyat'] && detail['Son Satış Net Fiyat'] !== '0.00000' ? detail['Son Satış Net Fiyat'] : '-'}
+                                  <span className="text-xs text-gray-600">Son Satış Net Değer:</span>
+                                  <span className="text-sm font-bold text-gray-700">
+                                    {detail['Son Satış Net Değer'] && detail['Son Satış Net Değer'] > 0 ? formatNumber(detail['Son Satış Net Değer']) : '-'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span className="text-xs text-green-600">Son Birim:</span>
-                                  <span className="text-sm font-bold text-green-800">
-                                    {detail['Son Satış Birim Fiyat'] && detail['Son Satış Birim Fiyat'] !== '0.00000' ? detail['Son Satış Birim Fiyat'] : '-'}
+                                  <span className="text-xs text-gray-600">Tanımlı Satış Net Değer:</span>
+                                  <span className="text-sm font-bold text-gray-700">
+                                    {detail['Tanımlı Satış Net Değer'] && detail['Tanımlı Satış Net Değer'] > 0 ? formatNumber(detail['Tanımlı Satış Net Değer']) : '-'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span className="text-xs text-green-600">Tanımlı Net:</span>
-                                  <span className="text-sm font-bold text-green-800">
-                                    {detail['Tanımlı Satış Net Fiyat'] && detail['Tanımlı Satış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Satış Net Fiyat'] : '-'}
+                                  <span className="text-xs text-gray-600">Market Satış Değeri:</span>
+                                  <span className="text-sm font-bold text-gray-700">
+                                    {detail['Market Satış Değeri'] && detail['Market Satış Değeri'] > 0 ? formatNumber(detail['Market Satış Değeri']) : '-'}
                                   </span>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Alış Fiyatları */}
-                            <div className="bg-red-50 rounded-lg p-3">
-                              <h5 className="text-xs font-semibold text-red-700 mb-2">ALIŞ FİYATLARI</h5>
+                            {/* Alış Değerleri */}
+                            <div className="bg-gray-50 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-gray-700 mb-2">ALIŞ DEĞERLERİ</h5>
                               <div className="space-y-2">
                                 <div className="flex justify-between">
-                                  <span className="text-xs text-red-600">Son Net:</span>
-                                  <span className="text-sm font-bold text-red-800">
-                                    {detail['Son Alış Net Fiyat'] && detail['Son Alış Net Fiyat'] !== '0.00000' ? detail['Son Alış Net Fiyat'] : '-'}
+                                  <span className="text-xs text-gray-600">Son Alış Net Değer:</span>
+                                  <span className="text-sm font-bold text-gray-700">
+                                    {detail['Son Alış Net Değer'] && detail['Son Alış Net Değer'] > 0 ? formatNumber(detail['Son Alış Net Değer']) : '-'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span className="text-xs text-red-600">Son Birim:</span>
-                                  <span className="text-sm font-bold text-red-800">
-                                    {detail['Son Alış Birim Fiyat'] && detail['Son Alış Birim Fiyat'] !== '0.00000' ? detail['Son Alış Birim Fiyat'] : '-'}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-xs text-red-600">Tanımlı Net:</span>
-                                  <span className="text-sm font-bold text-red-800">
-                                    {detail['Tanımlı Alış Net Fiyat'] && detail['Tanımlı Alış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Alış Net Fiyat'] : '-'}
+                                  <span className="text-xs text-gray-600">Tanımlı Alış Net Değer:</span>
+                                  <span className="text-sm font-bold text-gray-700">
+                                    {detail['Tanımlı Alış Net Değer'] && detail['Tanımlı Alış Net Değer'] > 0 ? formatNumber(detail['Tanımlı Alış Net Değer']) : '-'}
                                   </span>
                                 </div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Market Fiyatı */}
-                          {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' && (
-                            <div className="mt-3 bg-purple-50 rounded-lg p-3">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs font-semibold text-purple-700">MARKET SATIŞ FİYATI</span>
-                                <span className="text-lg font-bold text-purple-800">
-                                  {detail['Market Satış Fiyatı']}
+                          {/* Fiyat Detayları */}
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <h5 className="text-xs font-semibold text-gray-700 mb-2">FİYAT DETAYLARI</h5>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Son Satış Net:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Son Satış Net Fiyat'] && detail['Son Satış Net Fiyat'] !== '0.00000' ? detail['Son Satış Net Fiyat'] : '-'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Son Alış Net:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Son Alış Net Fiyat'] && detail['Son Alış Net Fiyat'] !== '0.00000' ? detail['Son Alış Net Fiyat'] : '-'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Tanımlı Satış Net:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Tanımlı Satış Net Fiyat'] && detail['Tanımlı Satış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Satış Net Fiyat'] : '-'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Tanımlı Alış Net:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Tanımlı Alış Net Fiyat'] && detail['Tanımlı Alış Net Fiyat'] !== '0.00000' ? detail['Tanımlı Alış Net Fiyat'] : '-'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Son Satış Birim:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Son Satış Birim Fiyat'] && detail['Son Satış Birim Fiyat'] !== '0.00000' ? detail['Son Satış Birim Fiyat'] : '-'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Son Alış Birim:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Son Alış Birim Fiyat'] && detail['Son Alış Birim Fiyat'] !== '0.00000' ? detail['Son Alış Birim Fiyat'] : '-'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Market Satış:</span>
+                                <span className="font-medium text-gray-700">
+                                  {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
                                 </span>
                               </div>
                             </div>
-                          )}
+                          </div>
                         </div>
                       ))}
                     </div>
