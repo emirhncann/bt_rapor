@@ -1223,6 +1223,8 @@ const getReportRoute = (reportName: string) => {
     return '/c-bakiye';
   } else if (reportName.toLowerCase().includes('enpos') && reportName.toLowerCase().includes('ciro')) {
     return '/enpos-ciro';
+  } else if (reportName.toLowerCase().includes('stok') || reportName.toLowerCase().includes('envanter')) {
+    return '/envanter-raporu';
   }
   return null; // Henüz route'u olmayan raporlar
 };

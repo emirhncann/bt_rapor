@@ -34,6 +34,8 @@ export default function Settings() {
     newUserPassword: '',
     externalIP: '',
     servicePort: '45678',
+    endpoint: '',
+    logoKurulumDbName: '',
     databases: [
       {
         id: 1,
@@ -78,6 +80,22 @@ export default function Settings() {
     enposDbPassword: ''
   });
   const router = useRouter();
+
+  // IP adresini maskeleme fonksiyonu
+  const maskIPAddress = (ip: string) => {
+    if (!ip) return '';
+    const parts = ip.split('.');
+    if (parts.length !== 4) return ip;
+    return `${parts[0]}.***.***.${parts[3]}`;
+  };
+
+  // Port numarasını maskeleme fonksiyonu
+  const maskPort = (port: string) => {
+    if (!port || port.length < 3) return port;
+    if (port.length === 3) return `${port[0]}*${port[2]}`;
+    if (port.length === 4) return `${port[0]}**${port[3]}`;
+    return `${port[0]}***${port[port.length - 1]}`;
+  };
 
   // Authentication kontrolü
   useEffect(() => {
@@ -250,11 +268,22 @@ export default function Settings() {
         let externalIP = '';
         let servicePort = '45678'; // Varsayılan port
         
+        let endpoint = '';
         if (connectionInfo.public_ip) {
-          const [ip, port] = connectionInfo.public_ip.split(':');
-          externalIP = ip || '';
-          servicePort = port || '45678';
-          console.log('🌐 IP ayırımı:', { ip: externalIP, port: servicePort });
+          // IP:Port/Endpoint formatından ayır
+          const parts = connectionInfo.public_ip.split(':');
+          if (parts.length >= 2) {
+            externalIP = parts[0] || '';
+            const portAndEndpoint = parts[1] || '';
+            
+            // Port ve endpoint'i ayır (ilk sayısal kısım port)
+            const portMatch = portAndEndpoint.match(/^(\d+)/);
+            servicePort = portMatch ? portMatch[1] : '45678';
+            
+            // Endpoint kısmını al (port'tan sonraki kısım)
+            endpoint = portAndEndpoint.replace(/^\d+/, '');
+            console.log('🌐 IP ayırımı:', { ip: externalIP, port: servicePort, endpoint });
+          }
         }
         
         // FormData'yı güncelle - API'den gelen değerleri direkt kullan
@@ -271,6 +300,8 @@ export default function Settings() {
           ...prev,
           externalIP,
           servicePort,
+          endpoint: endpoint || '',
+          logoKurulumDbName: connectionInfo.logoKurulumDbName || '',
           databases: [
             {
               ...prev.databases[0],
@@ -491,10 +522,18 @@ export default function Settings() {
       const connectionData = {
         company_ref: companyRef,
         
-        // Sistem ayarları - IP ve Port birleştirilerek public_ip olarak gönderilir
+        // Sistem ayarları - IP, Port ve Endpoint birleştirilerek public_ip olarak gönderilir
         public_ip: formData.externalIP && formData.servicePort 
-          ? `${formData.externalIP}:${formData.servicePort}` 
+          ? `${formData.externalIP}:${formData.servicePort}${formData.endpoint || ''}` 
           : '',
+        
+        // Endpoint - Port + Endpoint birleştirilmiş
+        endpoint: formData.servicePort && formData.endpoint 
+          ? `${formData.servicePort}${formData.endpoint}` 
+          : formData.endpoint || '',
+        
+        // Logo Kurulum Veritabanı Adı
+        logoKurulumDbName: formData.logoKurulumDbName || '',
         
         // İlk database (index 0)
         first_server_name: formData.databases[0]?.dbHost || '',
@@ -778,7 +817,7 @@ export default function Settings() {
                   {/* Sistem Ayarları - En Üstte */}
                   <div className="border-2 border-blue-300 bg-blue-50 rounded-lg p-4">
                     <h4 className="text-md font-medium text-blue-900 mb-4">BT Service Bağlantı Ayarları</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Dış IP Adresi
@@ -798,7 +837,7 @@ export default function Settings() {
                           Service Port
                         </label>
                         <input
-                          type="number"
+                          type="text"
                           name="servicePort"
                           value={formData.servicePort}
                           onChange={handleInputChange}
@@ -807,8 +846,42 @@ export default function Settings() {
                         />
                         <p className="text-xs text-gray-500 mt-1">BT Service portu</p>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Endpoint
+                        </label>
+                        <input
+                          type="text"
+                          name="endpoint"
+                          value={formData.endpoint}
+                          onChange={handleInputChange}
+                          placeholder="/api/btrapor"
+                          className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">API endpoint</p>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Logo Kurulum Veritabanı Adı */}
+                  <div className="border-2 border-orange-300 bg-orange-50 rounded-lg p-4">
+                    <h4 className="text-md font-medium text-orange-900 mb-4">Logo Kurulum Veritabanı</h4>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        🗄️ Logo Kurulum Veritabanı Adı
+                      </label>
+                      <input
+                        type="text"
+                        name="logoKurulumDbName"
+                        value={formData.logoKurulumDbName}
+                        onChange={handleInputChange}
+                        placeholder="Database bölünmüşse ilk veritabanı adını yazınız. Örn: GOWINGS"
+                        className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Logo kurulum sistemi veritabanı adı</p>
+                    </div>
+                  </div>
+                  
                   {formData.databases.map((db, index) => (
                     <div key={db.id} className={`border rounded-lg p-4 ${
                       db.isCurrent 
