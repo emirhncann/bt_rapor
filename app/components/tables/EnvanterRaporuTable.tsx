@@ -103,6 +103,7 @@ export default function EnvanterRaporuTable({
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Envanter detay API hatası:', response.status, errorText);
+        
         alert('Malzeme detayları yüklenirken hata oluştu.');
         setItemDetails([]);
         return;

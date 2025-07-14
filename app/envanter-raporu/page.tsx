@@ -228,6 +228,8 @@ export default function EnvanterRaporu() {
 
       const firmaNo = connectionInfo.first_firma_no || '009';
       const donemNo = connectionInfo.first_donem_no || '01';
+      const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
+      const specodesTable = `LG_${firmaNo.padStart(3, '0')}_SPECODES`;
 
       console.log(`🔄 Firma No: ${firmaNo}, Dönem No: ${donemNo} ile envanter verileri çekiliyor...`);
 
@@ -254,14 +256,14 @@ export default function EnvanterRaporu() {
         -- 1. Pivot kolonları
         SELECT @kolonlar = STUFF(( 
             SELECT DISTINCT ', ' + QUOTENAME(WH.NAME)
-            FROM GO3..L_CAPIWHOUSE WH
+            FROM ${logoKurulumDbName}..L_CAPIWHOUSE WH
             WHERE WH.FIRMNR = ${firmaNo}
             FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '');
 
         -- 2. ISNULL'lu kolonlar
         SELECT @kolonlarNullsuz = STUFF(( 
             SELECT DISTINCT ', ISNULL(' + QUOTENAME(WH.NAME) + ', 0) AS ' + QUOTENAME(WH.NAME)
-            FROM GO3..L_CAPIWHOUSE WH
+            FROM ${logoKurulumDbName}..L_CAPIWHOUSE WH
             WHERE WH.FIRMNR = ${firmaNo}
             FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '');
 
@@ -305,7 +307,7 @@ export default function EnvanterRaporu() {
             S.ONHAND
           FROM LV_${firmaNo.padStart(3, '0')}_${donemNo}_STINVTOT S WITH(NOLOCK)
           LEFT JOIN LG_${firmaNo.padStart(3, '0')}_ITEMS I WITH(NOLOCK) ON I.LOGICALREF = S.STOCKREF
-          LEFT JOIN GO3..L_CAPIWHOUSE WH WITH(NOLOCK) ON WH.FIRMNR = ${firmaNo} AND WH.NR = S.INVENNO
+          LEFT JOIN ${logoKurulumDbName}..L_CAPIWHOUSE WH WITH(NOLOCK) ON WH.FIRMNR = ${firmaNo} AND WH.NR = S.INVENNO
 
           OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S7 WHERE I.STGRPCODE = S7.SPECODE AND S7.CODETYPE = 4 AND S7.SPECODETYPE = 0) S7
           OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S1 WHERE I.SPECODE = S1.SPECODE AND S1.CODETYPE = 1 AND S1.SPECODETYPE = 1 AND S1.SPETYP1 = 1) S1
@@ -336,7 +338,7 @@ export default function EnvanterRaporu() {
             WH.NAME,
             0
           FROM LG_${firmaNo.padStart(3, '0')}_ITEMS I WITH(NOLOCK)
-          CROSS JOIN GO3..L_CAPIWHOUSE WH WITH(NOLOCK)
+          CROSS JOIN ${logoKurulumDbName}..L_CAPIWHOUSE WH WITH(NOLOCK)
           OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S7 WHERE I.STGRPCODE = S7.SPECODE AND S7.CODETYPE = 4 AND S7.SPECODETYPE = 0) S7
           OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S1 WHERE I.SPECODE = S1.SPECODE AND S1.CODETYPE = 1 AND S1.SPECODETYPE = 1 AND S1.SPETYP1 = 1) S1
           OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES S2 WHERE I.SPECODE2 = S2.SPECODE AND S2.CODETYPE = 1 AND S2.SPECODETYPE = 1 AND S2.SPETYP2 = 1) S2
@@ -453,13 +455,32 @@ export default function EnvanterRaporu() {
         return;
       }
       
+      // Connection bilgilerini al
+      let connectionInfo;
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      if (cachedConnectionInfo) {
+        try {
+          connectionInfo = JSON.parse(cachedConnectionInfo);
+        } catch (e) {
+          console.error('Connection bilgileri parse edilemedi:', e);
+        }
+      }
+      
+      if (!connectionInfo) {
+        console.warn('⚠️ Connection bilgileri bulunamadı, filtreleme kodları yüklenemedi');
+        return;
+      }
+      
+      const firmaNo = connectionInfo.first_firma_no || '009';
+      const specodesTable = `LG_${firmaNo.padStart(3, '0')}_SPECODES`;
+      
       const filterCodesQuery = `
        
         SELECT DISTINCT 
           S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
           'STRGRPCODE' AS [ALAN]
-        FROM LG_009_SPECODES S
+        FROM ${specodesTable} S
         WHERE S.CODETYPE = 4 AND S.SPECODETYPE = 0
 
         UNION ALL
@@ -469,7 +490,7 @@ export default function EnvanterRaporu() {
           S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
           'SPECODE' AS [ALAN]
-        FROM LG_009_SPECODES S
+        FROM ${specodesTable} S
         WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP1 = 1
 
         UNION ALL
@@ -479,7 +500,7 @@ export default function EnvanterRaporu() {
           S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
           'SPECODE2' AS [ALAN]
-        FROM LG_009_SPECODES S
+        FROM ${specodesTable} S
         WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP2 = 1
 
         UNION ALL
@@ -489,7 +510,7 @@ export default function EnvanterRaporu() {
           S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
           'SPECODE3' AS [ALAN]
-        FROM LG_009_SPECODES S
+        FROM ${specodesTable} S
         WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP3 = 1
 
         UNION ALL
@@ -499,7 +520,7 @@ export default function EnvanterRaporu() {
           S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
           'SPECODE4' AS [ALAN]
-        FROM LG_009_SPECODES S
+        FROM ${specodesTable} S
         WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP4 = 1
 
         UNION ALL
@@ -509,7 +530,7 @@ export default function EnvanterRaporu() {
           S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
           'SPECODE5' AS [ALAN]
-        FROM LG_009_SPECODES S
+        FROM ${specodesTable} S
         WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP5 = 1
         
         ORDER BY [ALAN], [KOD]

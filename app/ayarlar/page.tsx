@@ -297,13 +297,18 @@ export default function Settings() {
           user: connectionInfo.first_username
         });
         
+        // Market modülü değerini localStorage'a kaydet
+        const marketModuleValue = connectionInfo.market_module === 1 || connectionInfo.market_module === true;
+        localStorage.setItem('market_module', marketModuleValue ? '1' : '0');
+        console.log('💾 Market modülü localStorage\'a kaydedildi:', marketModuleValue ? '1' : '0');
+
         setFormData(prev => ({
           ...prev,
           externalIP,
           servicePort,
           endpoint: endpoint || '',
           logoKurulumDbName: connectionInfo.logoKurulumDbName || '',
-          hasMarketModule: connectionInfo.market_module === 1 || connectionInfo.market_module === true,
+          hasMarketModule: marketModuleValue,
           databases: [
             {
               ...prev.databases[0],
@@ -606,9 +611,19 @@ export default function Settings() {
         try {
           const jsonResponse = JSON.parse(responseData);
           console.log('✅ Response JSON:', jsonResponse);
+          
+          // Market modülü değerini localStorage'a kaydet
+          localStorage.setItem('market_module', formData.hasMarketModule ? '1' : '0');
+          console.log('💾 Market modülü localStorage\'a kaydedildi:', formData.hasMarketModule ? '1' : '0');
+          
           loadAnimation('success', 'Tüm veritabanı ayarları başarıyla kaydedildi!');
         } catch (e) {
           console.log('⚠️ Response JSON Parse Hatası:', e);
+          
+          // Market modülü değerini localStorage'a kaydet
+          localStorage.setItem('market_module', formData.hasMarketModule ? '1' : '0');
+          console.log('💾 Market modülü localStorage\'a kaydedildi:', formData.hasMarketModule ? '1' : '0');
+          
           loadAnimation('success', 'Tüm veritabanı ayarları başarıyla kaydedildi!');
         }
       } else {

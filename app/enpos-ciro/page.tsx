@@ -477,6 +477,9 @@ export default function EnposCiro() {
         (connectionInfo.enpos_firma_no || '9') : 
         (connectionInfo.second_firma_no || connectionInfo.first_firma_no || '9');
       
+      // Logo kurulum db name'i al
+      const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
+      
       console.log('🔗 Oluşturulan Connection String (Ciro):', connectionString);
       console.log('🏢 Firma No (Ciro):', firmaNo);
       console.log('🏪 ENPOS DB Kullanılıyor:', useEnposDb ? 'EVET' : 'HAYIR');
@@ -495,7 +498,7 @@ export default function EnposCiro() {
     SUM(CASE WHEN B.Belge_Tipi NOT IN ('GPS','XRP','ZRP') THEN CREDITTOTAL+CASHTOTAL ELSE 0 END) + SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CASHTOTAL+CREDITTOTAL ELSE 0 END) AS TOPLAM
 
 FROM BELGE B
-LEFT JOIN GO3..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=${firmaNo}
+        LEFT JOIN ${logoKurulumDbName}..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=${firmaNo}
 WHERE Iptal=0 AND BELGETARIH BETWEEN '${formatToSQLDate(startYYMMDD)} 00:00:00.000' AND '${formatToSQLDate(endYYMMDD)} 23:59:59.000' AND B.Belge_Tipi NOT IN ('XRP','ZRP')
 GROUP BY B.Sube_No,D.NAME
 `;

@@ -57,66 +57,124 @@ export const verifyEncryptedPayload = async (encryptedPayload: string, originalP
   }
 };
 
-// Güvenli proxy request gönder - Gerçek şifreleme ile
+// Güvenli proxy request gönder - Retry mekanizması ile
 export const sendSecureProxyRequest = async (
   companyRef: string, 
   connectionType: string, 
   payload: any,
   endpoint: string = 'https://api.btrapor.com/proxy',
-  timeoutMs: number = 120000 // 2 dakika timeout (büyük raporlar için)
+  timeoutMs: number = 120000, // 2 dakika timeout (büyük raporlar için)
+  maxRetries: number = 3 // Maksimum retry sayısı
 ): Promise<Response> => {
-  try {
-    // Payload'u gerçekten şifrele (AES-GCM ile)
-    const encryptedPayload = await encryptPayloadSecure(payload, companyRef);
-    
-    // Connection type'ı da şifrele
-    const encryptedConnectionType = await encryptPayloadSecure({ type: connectionType }, companyRef);
-    
-    // Güvenli request body'si oluştur
-    const secureBody = {
-      companyRef: companyRef, // Bu açık kalabilir çünkü backend'de gerekli
-      encryptedConnectionType: encryptedConnectionType, // Şifrelenmiş connection type
-      encryptedPayload: encryptedPayload, // Şifrelenmiş payload
-      timestamp: Date.now(),
-      nonce: Math.random().toString(36).substring(2, 15), // Güvenlik için rastgele değer
-      maxResponseSize: 100 * 1024 * 1024, // 100MB maksimum response boyutu
-      timeoutMs: timeoutMs // Timeout ayarı
-    };
-    
-    console.log('🔐 Güvenli proxy request gönderiliyor:', {
-      companyRef,
-      connectionType: 'ŞİFRELİ',
-      payloadSize: JSON.stringify(payload).length,
-      encryptedSize: encryptedPayload.length,
-      timestamp: secureBody.timestamp,
-      timeoutMs: timeoutMs,
-      maxResponseSize: '100MB'
-    });
-    
-    // AbortController ile timeout kontrolü
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    
+  let lastError: any;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(secureBody),
-        signal: controller.signal
+      console.log(`🔄 Proxy request denemesi ${attempt}/${maxRetries}...`);
+      
+      // Payload'u gerçekten şifrele (AES-GCM ile)
+      const encryptedPayload = await encryptPayloadSecure(payload, companyRef);
+      
+      // Connection type'ı da şifrele
+      const encryptedConnectionType = await encryptPayloadSecure({ type: connectionType }, companyRef);
+      
+      // Güvenli request body'si oluştur
+      const secureBody = {
+        companyRef: companyRef, // Bu açık kalabilir çünkü backend'de gerekli
+        encryptedConnectionType: encryptedConnectionType, // Şifrelenmiş connection type
+        encryptedPayload: encryptedPayload, // Şifrelenmiş payload
+        timestamp: Date.now(),
+        nonce: Math.random().toString(36).substring(2, 15), // Güvenlik için rastgele değer
+        maxResponseSize: 100 * 1024 * 1024, // 100MB maksimum response boyutu
+        timeoutMs: timeoutMs // Timeout ayarı
+      };
+      
+      console.log('🔐 Güvenli proxy request gönderiliyor:', {
+        companyRef,
+        connectionType: 'ŞİFRELİ',
+        payloadSize: JSON.stringify(payload).length,
+        encryptedSize: encryptedPayload.length,
+        timestamp: secureBody.timestamp,
+        timeoutMs: timeoutMs,
+        maxResponseSize: '100MB',
+        attempt: `${attempt}/${maxRetries}`
       });
       
-      clearTimeout(timeoutId);
-      return response;
+      // AbortController ile timeout kontrolü
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(secureBody),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // Eğer response başarılı ise direkt döndür
+        if (response.ok) {
+          console.log(`✅ Proxy request başarılı (deneme ${attempt}/${maxRetries})`);
+          return response;
+        }
+        
+        // 502, 503, 504 gibi geçici hatalar için retry yap
+        if (response.status >= 500 && response.status < 600) {
+          console.warn(`⚠️ Proxy sunucu hatası (${response.status}), retry yapılıyor...`);
+          lastError = new Error(`Proxy sunucu hatası: ${response.status}`);
+          
+          // Son deneme değilse bekle ve tekrar dene
+          if (attempt < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff
+            console.log(`⏳ ${delay}ms bekleniyor...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        // Diğer hatalar için direkt döndür
+        return response;
+        
+      } catch (error) {
+        clearTimeout(timeoutId);
+        lastError = error;
+        
+        console.warn(`⚠️ Proxy bağlantı hatası (deneme ${attempt}/${maxRetries}):`, error);
+        
+        // Son deneme değilse bekle ve tekrar dene
+        if (attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff
+          console.log(`⏳ ${delay}ms bekleniyor...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        throw error;
+      }
     } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
+      lastError = error;
+      
+      // Son deneme değilse devam et
+      if (attempt < maxRetries) {
+        console.warn(`⚠️ Proxy request hatası (deneme ${attempt}/${maxRetries}):`, error);
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff
+        console.log(`⏳ ${delay}ms bekleniyor...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // Son deneme başarısız oldu
+      console.error(`❌ Proxy request başarısız (${maxRetries} deneme sonrası):`, error);
+      throw lastError;
     }
-  } catch (error) {
-    console.error('Güvenli proxy request hatası:', error);
-    throw error;
   }
+  
+  // Bu noktaya gelmemeli ama güvenlik için
+  throw lastError || new Error('Proxy request başarısız');
 };
 
 // Daha güvenli şifreleme - payload'u gerçekten şifrele
