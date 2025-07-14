@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
             STR(ISNULL(CASE WHEN TanimliSatis.INCVAT = 1 THEN TanimliSatis.PRICE / (1 + I.VAT / 100.0) ELSE TanimliSatis.PRICE END, 0), 20, 5) AS [Tanımlı Satış Net Fiyat],
             STR(ISNULL(CASE WHEN TanimliAlis.INCVAT = 1 THEN TanimliAlis.PRICE / (1 + I.VAT / 100.0) ELSE TanimliAlis.PRICE END, 0), 20, 5) AS [Tanımlı Alış Net Fiyat],
 
-            -- Market Satış
+            -- Market Satış (sadece market modülü aktifse)
             STR(ISNULL(Market.BUYPRICE, 0), 20, 2) AS [Market Satış Fiyatı]
 
         FROM LG_${firmaNo}_ITEMS I
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.IOCODE = 4 AND SL.TRCODE NOT IN (2,3,4,10,6)
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS Satis
 
         -- Son Alış (Fatura)
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.IOCODE = 1 AND SL.TRCODE NOT IN (2,3,4,10,6)
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS Alis
 
         -- Devir Satış (yedek)
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.TRCODE = 14 AND SL.IOCODE = 4
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS DevirSatis
 
         -- Devir Alış (yedek)
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.TRCODE = 14 AND SL.IOCODE = 1
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS DevirAlis
 
         -- Tanımlı Satış Fiyatı
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
             ORDER BY CASE WHEN P.BRANCH = DIV.NR THEN 0 ELSE 1 END, P.CAPIBLOCK_MODIFIEDDATE DESC
         ) AS TanimliAlis
 
-        -- Market Fiyatı
+        -- Market Fiyatı (sadece market modülü aktifse)
         OUTER APPLY (
             SELECT P.BUYPRICE
             FROM LK_${firmaNo}_PRCLIST P
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.IOCODE = 4 AND SL.TRCODE NOT IN (2,3,4,10,6)
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS Satis
 
         -- Son Alış (Fatura)
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.IOCODE = 1 AND SL.TRCODE NOT IN (2,3,4,10,6)
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS Alis
 
         -- Devir Satış (yedek)
@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.TRCODE = 14 AND SL.IOCODE = 4
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS DevirSatis
 
         -- Devir Alış (yedek)
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
             WHERE SL.STOCKREF = I.LOGICALREF AND SL.LINETYPE = 0 AND SL.CANCELLED = 0
               AND SL.TRCODE = 14 AND SL.IOCODE = 1
               AND WH.DIVISNR = DIV.NR
-            ORDER BY SL.DATE_ DESC
+            ORDER BY SL.DATE_ +dbo.fn_LogoTimetoSystemTime(SL.FTIME) DESC
         ) AS DevirAlis
 
         -- Tanımlı Satış Fiyatı

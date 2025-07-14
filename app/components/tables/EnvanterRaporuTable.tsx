@@ -51,6 +51,7 @@ export default function EnvanterRaporuTable({
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [loadingAnimation, setLoadingAnimation] = useState(null);
+  const [isMarketModule, setIsMarketModule] = useState(false);
 
   // Loading animasyonunu yükle
   useEffect(() => {
@@ -85,6 +86,12 @@ export default function EnvanterRaporuTable({
         return;
       }
       
+      // Market modülü kontrolü
+      const marketModule = localStorage.getItem('market_module');
+      const isMarketModule = marketModule === '1';
+      setIsMarketModule(isMarketModule);
+      console.log('🏪 Market modülü kontrolü:', { marketModule, isMarketModule });
+      
       console.log('🌐 Envanter detay API çağrısı yapılıyor...');
       
       // API çağrısı
@@ -96,7 +103,8 @@ export default function EnvanterRaporuTable({
         body: JSON.stringify({
           itemRef: itemRef,
           connectionInfo: connData,
-          companyRef: companyRef
+          companyRef: companyRef,
+          marketModule: isMarketModule ? 1 : 0
         })
       });
 
@@ -154,7 +162,7 @@ export default function EnvanterRaporuTable({
             const sonAlisBirimFiyat = parsePrice(detail['Son Alış Birim Fiyat']);
             const tanimliSatisNetFiyat = parsePrice(detail['Tanımlı Satış Net Fiyat']);
             const tanimliAlisNetFiyat = parsePrice(detail['Tanımlı Alış Net Fiyat']);
-            const marketSatisFiyati = parsePrice(detail['Market Satış Fiyatı']);
+            const marketSatisFiyati = isMarketModule ? parsePrice(detail['Market Satış Fiyatı']) : 0;
             
             // Debug için log
             console.log(`🔍 Hesaplama Debug - İşyeri: ${isyeriAdi}`);
@@ -169,7 +177,7 @@ export default function EnvanterRaporuTable({
             const sonAlisBirimDeger = sonAlisBirimFiyat * stockAmount;
             const tanimliSatisNetDeger = tanimliSatisNetFiyat * stockAmount;
             const tanimliAlisNetDeger = tanimliAlisNetFiyat * stockAmount;
-            const marketSatisDegeri = marketSatisFiyati * stockAmount;
+            const marketSatisDegeri = isMarketModule ? marketSatisFiyati * stockAmount : 0;
             
             return {
               ...detail,
@@ -180,7 +188,7 @@ export default function EnvanterRaporuTable({
               'Son Alış Birim Değer': sonAlisBirimDeger,
               'Tanımlı Satış Net Değer': tanimliSatisNetDeger,
               'Tanımlı Alış Net Değer': tanimliAlisNetDeger,
-              'Market Satış Değeri': marketSatisDegeri
+              ...(isMarketModule && { 'Market Satış Değeri': marketSatisDegeri })
             };
           });
           

@@ -129,7 +129,7 @@ export const sendSecureProxyRequest = async (
           
           // Son deneme değilse bekle ve tekrar dene
           if (attempt < maxRetries) {
-            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff
+            const delay = Math.min(100 * Math.pow(2, attempt - 1), 5000); // Exponential backoff
             console.log(`⏳ ${delay}ms bekleniyor...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
