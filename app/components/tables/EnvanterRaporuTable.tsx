@@ -86,11 +86,26 @@ export default function EnvanterRaporuTable({
         return;
       }
       
-      // Market modülü kontrolü
-      const marketModule = localStorage.getItem('market_module');
-      const isMarketModule = marketModule === '1';
+      // Market modülü kontrolü - önce localStorage'dan, yoksa connection bilgilerinden
+      let marketModule = localStorage.getItem('market_module');
+      let isMarketModule = false;
+      
+      if (marketModule !== null) {
+        // localStorage'da varsa kullan
+        isMarketModule = marketModule === '1';
+        console.log('🏪 Market modülü localStorage\'dan alındı:', { marketModule, isMarketModule });
+      } else {
+        // localStorage'da yoksa connection bilgilerinden al
+        isMarketModule = connData.market_module === 1 || connData.market_module === true;
+        // localStorage'a kaydet
+        localStorage.setItem('market_module', isMarketModule ? '1' : '0');
+        console.log('🏪 Market modülü connection bilgilerinden alındı ve localStorage\'a kaydedildi:', { 
+          connectionMarketModule: connData.market_module, 
+          isMarketModule 
+        });
+      }
+      
       setIsMarketModule(isMarketModule);
-      console.log('🏪 Market modülü kontrolü:', { marketModule, isMarketModule });
       
       console.log('🌐 Envanter detay API çağrısı yapılıyor...');
       
@@ -1118,8 +1133,12 @@ export default function EnvanterRaporuTable({
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Satış Net Değer</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Alış Net Fiyat</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tanımlı Alış Net Değer</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Fiyatı</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Değeri</th>
+                              {isMarketModule && (
+                                <>
+                                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Fiyatı</th>
+                                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Market Satış Değeri</th>
+                                </>
+                              )}
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -1170,12 +1189,16 @@ export default function EnvanterRaporuTable({
                                 <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
                                   {detail['Tanımlı Alış Net Değer'] && detail['Tanımlı Alış Net Değer'] > 0 ? formatNumber(detail['Tanımlı Alış Net Değer']) : '-'}
                                 </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
-                                  {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
-                                </td>
-                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
-                                  {detail['Market Satış Değeri'] && detail['Market Satış Değeri'] > 0 ? formatNumber(detail['Market Satış Değeri']) : '-'}
-                                </td>
+                                {isMarketModule && (
+                                  <>
+                                    <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                      {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
+                                    </td>
+                                    <td className="px-3 py-3 text-sm text-right font-bold text-gray-700">
+                                      {detail['Market Satış Değeri'] && detail['Market Satış Değeri'] > 0 ? formatNumber(detail['Market Satış Değeri']) : '-'}
+                                    </td>
+                                  </>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -1223,12 +1246,14 @@ export default function EnvanterRaporuTable({
                                     {detail['Tanımlı Satış Net Değer'] && detail['Tanımlı Satış Net Değer'] > 0 ? formatNumber(detail['Tanımlı Satış Net Değer']) : '-'}
                                   </span>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-xs text-gray-600">Market Satış Değeri:</span>
-                                  <span className="text-sm font-bold text-gray-700">
-                                    {detail['Market Satış Değeri'] && detail['Market Satış Değeri'] > 0 ? formatNumber(detail['Market Satış Değeri']) : '-'}
-                                  </span>
-                                </div>
+                                {isMarketModule && (
+                                  <div className="flex justify-between">
+                                    <span className="text-xs text-gray-600">Market Satış Değeri:</span>
+                                    <span className="text-sm font-bold text-gray-700">
+                                      {detail['Market Satış Değeri'] && detail['Market Satış Değeri'] > 0 ? formatNumber(detail['Market Satış Değeri']) : '-'}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1292,12 +1317,14 @@ export default function EnvanterRaporuTable({
                                   {detail['Son Alış Birim Fiyat'] && detail['Son Alış Birim Fiyat'] !== '0.00000' ? detail['Son Alış Birim Fiyat'] : '-'}
                                 </span>
                               </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Market Satış:</span>
-                                <span className="font-medium text-gray-700">
-                                  {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
-                                </span>
-                              </div>
+                              {isMarketModule && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Market Satış:</span>
+                                  <span className="font-medium text-gray-700">
+                                    {detail['Market Satış Fiyatı'] && detail['Market Satış Fiyatı'] !== '0.00' ? detail['Market Satış Fiyatı'] : '-'}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
