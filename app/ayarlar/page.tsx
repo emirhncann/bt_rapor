@@ -36,6 +36,7 @@ export default function Settings() {
     servicePort: '45678',
     endpoint: '',
     logoKurulumDbName: '',
+    hasMarketModule: false,
     databases: [
       {
         id: 1,
@@ -302,6 +303,7 @@ export default function Settings() {
           servicePort,
           endpoint: endpoint || '',
           logoKurulumDbName: connectionInfo.logoKurulumDbName || '',
+          hasMarketModule: connectionInfo.market_module === 1 || connectionInfo.market_module === true,
           databases: [
             {
               ...prev.databases[0],
@@ -535,6 +537,9 @@ export default function Settings() {
         // Logo Kurulum Veritabanı Adı
         logoKurulumDbName: formData.logoKurulumDbName || '',
         
+        // Market Modülü
+        market_module: formData.hasMarketModule ? 1 : 0,
+        
         // İlk database (index 0)
         first_server_name: formData.databases[0]?.dbHost || '',
         first_db_name: formData.databases[0]?.dbName || '',
@@ -688,7 +693,7 @@ export default function Settings() {
 
   const tabs = [
     { id: 'profile', name: 'Profil & Şifre', icon: '👤' },
-    { id: 'database', name: 'Veritabanı', icon: '🗄️', adminOnly: true },
+    { id: 'database', name: 'Veritabanı ve Sistem Ayarları', icon: '🗄️', adminOnly: true },
     { id: 'users', name: 'Kullanıcı Yönetimi', icon: '👥', adminOnly: true },
     { id: 'permissions', name: 'Rapor Yetkilendirme', icon: '📊', adminOnly: true },
     { id: 'system', name: 'Sistem', icon: '⚙️', adminOnly: true }
@@ -814,6 +819,26 @@ export default function Settings() {
                 <p className="text-gray-600 text-sm mb-6">Sistem bağlantı ayarları ve firma bazlı veritabanı konfigürasyonları</p>
                 
                 <form onSubmit={handleDatabaseSave} className="space-y-6">
+                  {/* Market Modülü Checkbox */}
+                  <div className="border-2 border-green-300 bg-green-50 rounded-lg p-4">
+                    <h4 className="text-md font-medium text-green-900 mb-4">Market Modülü Ayarları</h4>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="hasMarketModule"
+                        name="hasMarketModule"
+                        checked={formData.hasMarketModule}
+                        onChange={(e) => setFormData(prev => ({...prev, hasMarketModule: e.target.checked}))}
+                        className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="hasMarketModule" className="ml-3 text-sm font-medium text-green-800">
+                        Market modülü varsa işaretleyin
+                      </label>
+                    </div>
+                    <p className="text-xs text-green-600 mt-2">
+                      Bu seçenek market modülü kullanan müşteriler için gereklidir
+                    </p>
+                  </div>
                   {/* Sistem Ayarları - En Üstte */}
                   <div className="border-2 border-blue-300 bg-blue-50 rounded-lg p-4">
                     <h4 className="text-md font-medium text-blue-900 mb-4">BT Service Bağlantı Ayarları</h4>
