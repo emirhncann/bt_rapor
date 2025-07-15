@@ -108,7 +108,8 @@ export const sendSecureProxyRequest = async (
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Company-Ref': companyRef // Proxy API için gerekli header
           },
           body: JSON.stringify(secureBody),
           signal: controller.signal
