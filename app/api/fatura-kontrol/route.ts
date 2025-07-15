@@ -74,6 +74,61 @@ function convertDateFormat(dateValue: any): string {
   return `${year}-${month}-${day} 03:00:00`;
 }
 
+// Test modu işleyici
+async function handleTestMode(testData: any) {
+  try {
+    console.log('🧪 Test verileri işleniyor...');
+    
+    const testInvoices = testData.testData || [];
+    const faturaNumbers = testInvoices.map((invoice: any) => invoice['Fatura No']);
+    
+    // Test için sabit değerler
+    const firmaNo = '005';
+    const donemNo = '01';
+    const logoDb = 'GOWINGS';
+    const companyRef = '1';
+    
+    console.log('🔍 Test faturaları:', faturaNumbers);
+    
+    // LOGO'da kontrol et (test için boş döndür)
+    const existingInvoices: string[] = [];
+    
+    // Eksik faturaları bul
+    const missingInvoices = testInvoices.filter((invoice: any) => 
+      !existingInvoices.includes(invoice['Fatura No'])
+    );
+    
+    const result = {
+      success: true,
+      totalInvoices: testInvoices.length,
+      existingInvoices: existingInvoices.length,
+      missingInvoices: missingInvoices.length,
+      missingInvoiceNumbers: missingInvoices.map((invoice: any) => invoice['Fatura No']),
+      summary: {
+        totalExcelRows: testInvoices.length,
+        totalLogoInvoices: existingInvoices.length,
+        missingInvoices: missingInvoices.length,
+        processedAt: new Date().toLocaleString('tr-TR'),
+        firmaNo,
+        donemNo,
+        logoDb,
+        companyRef
+      },
+      message: `Test: ${testInvoices.length} fatura bulundu. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
+    };
+    
+    console.log('✅ Test tamamlandı:', result);
+    return NextResponse.json(result);
+    
+  } catch (error) {
+    console.error('❌ Test hatası:', error);
+    return NextResponse.json(
+      { error: 'Test sırasında hata oluştu' },
+      { status: 500 }
+    );
+  }
+}
+
 // LOGO'da fatura kontrolü
 async function checkInvoicesInLogo(faturaNumbers: string[], firmaNo: string, donemNo: string, logoDb: string, companyRef: string): Promise<string[]> {
   try {
@@ -87,13 +142,22 @@ async function checkInvoicesInLogo(faturaNumbers: string[], firmaNo: string, don
     
     const sqlQuery = `
       SELECT FICHENO 
-      FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo}_INVOICE 
+      FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
       WHERE TRCODE IN (1,2,3,4) 
         AND FICHENO IN (${faturaList})
     `;
 
     console.log('🔍 LOGO sorgusu:', sqlQuery);
-    console.log('🔐 Proxy ayarları:', { companyRef, firmaNo, donemNo, logoDb });
+    console.log('🔐 === PROXY İSTEĞİ DETAYLARI ===');
+    console.log('📍 Company Ref:', companyRef);
+    console.log('🏭 Firma No:', firmaNo);
+    console.log('📅 Dönem No:', donemNo);
+    console.log('🗄️ Logo DB:', logoDb);
+    console.log('🔗 Proxy URL:', 'https://api.btrapor.com/proxy');
+    console.log('🔐 Connection Type:', 'first_db_key');
+    console.log('⏱️ Timeout:', '120000ms (2 dakika)');
+    console.log('📊 Fatura sayısı:', faturaNumbers.length);
+    console.log('================================');
 
     // Proxy isteği gönder - connectionType'ı 'first_db_key' olarak değiştir
     const response = await sendSecureProxyRequest(
@@ -128,8 +192,18 @@ export async function POST(request: NextRequest) {
   try {
     console.log('🚀 Excel karşılaştırma API başlatıldı');
     
+    // Test modu kontrolü
+    const contentType = request.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      const testData = await request.json();
+      if (testData.test) {
+        console.log('🧪 Test modu aktif');
+        return handleTestMode(testData);
+      }
+    }
+    
     const formData = await request.formData();
-    const excelFile = formData.get('excelFile') as File;
+    const excelFile = formData.get('file') as File;
     
     if (!excelFile) {
       console.log('❌ Excel dosyası bulunamadı');
@@ -210,14 +284,34 @@ export async function POST(request: NextRequest) {
       tur: headers.indexOf('Tür')
     };
 
-    // Request headers'dan firma bilgilerini al
-    const firmaNo = request.headers.get('firma-no') || '005';
-    const donemNo = request.headers.get('donem-no') || '01';
-    const logoDb = request.headers.get('logo-db') || 'GO3';
-    const companyRef = request.headers.get('company-ref') || '01';
+    // Frontend'den gelen localStorage değerlerini al
+    const companyRef = request.headers.get('company-ref') || '2';
+    
+    // Firma bilgilerini frontend'den al
+    let firmaNo = request.headers.get('firma-no') || '009'; // localStorage'dan gelen
+    let donemNo = request.headers.get('donem-no') || '01';  // localStorage'dan gelen
+    let logoDb = request.headers.get('logo-db') || 'LOGODB'; // localStorage'dan gelen
+    
+    // Firma no'yu 3 haneli yap
+    firmaNo = firmaNo.padStart(3, '0');
+    
+    // Dönem no'yu 2 haneli yap
+    donemNo = donemNo.padStart(2, '0');
     
     console.log('📊 Excel\'den', jsonData.length - 1, 'satır okundu');
-    console.log('🏢 Firma bilgileri:', { firmaNo, donemNo, logoDb, companyRef });
+    
+    // DB ayarlarını detaylı olarak konsola yazdır
+    console.log('🏢 === VERİTABANI AYARLARI (LOCALSTORAGE) ===');
+    console.log('📍 Company Ref:', companyRef, '(localStorage: company_ref)');
+    console.log('🏭 Firma No:', firmaNo, '(localStorage: first_firma_no)');
+    console.log('📅 Dönem No:', donemNo, '(localStorage: first_donem_no)');
+    console.log('🗄️ Logo DB:', logoDb, '(localStorage: first_db_name)');
+    console.log('🔗 Proxy URL:', 'https://api.btrapor.com/proxy');
+    console.log('🔐 Connection Type:', 'first_db_key');
+    console.log('⏱️ Timeout:', '120000ms (2 dakika)');
+    console.log('🔄 Max Retries:', '3');
+    console.log('📏 Max Response Size:', '100MB');
+    console.log('================================');
     
     // Excel'den fatura numaralarını çıkar
     const faturaNumbers: string[] = [];
@@ -284,13 +378,21 @@ export async function POST(request: NextRequest) {
 
     const result = {
       success: true,
+      totalInvoices: jsonData.length - 1,
+      existingInvoices: existingInvoices.length,
+      missingInvoices: missingInvoices.length,
+      missingInvoiceNumbers: missingInvoices.map(invoice => invoice['Fatura No']),
       summary: {
         totalExcelRows: jsonData.length - 1,
         totalLogoInvoices: existingInvoices.length,
         missingInvoices: missingInvoices.length,
-        processedAt: new Date().toLocaleString('tr-TR')
+        processedAt: new Date().toLocaleString('tr-TR'),
+        firmaNo,
+        donemNo,
+        logoDb,
+        companyRef
       },
-      missingInvoices,
+      missingInvoicesDetails: missingInvoices,
       message: `Excel'de ${jsonData.length - 1} fatura bulundu. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
     };
 

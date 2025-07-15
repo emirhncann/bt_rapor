@@ -188,7 +188,7 @@ export default function ExcelUploader({
     <div className="space-y-6">
       {/* Dosya Yükleme Alanı */}
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
           dragActive 
             ? 'border-blue-400 bg-blue-50' 
             : 'border-gray-300 hover:border-gray-400'
@@ -197,6 +197,13 @@ export default function ExcelUploader({
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
+        onClick={(e) => {
+          // Eğer tıklanan element button ise, event'i durdur
+          if ((e.target as HTMLElement).tagName === 'BUTTON') {
+            return;
+          }
+          fileInputRef.current?.click();
+        }}
       >
         <div className="mb-4">
           <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
@@ -220,7 +227,10 @@ export default function ExcelUploader({
           disabled={isLoading}
         />
         <button
-          onClick={() => fileInputRef.current?.click()}
+          onClick={(e) => {
+            e.stopPropagation();
+            fileInputRef.current?.click();
+          }}
           disabled={isLoading}
           className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >

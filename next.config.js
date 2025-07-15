@@ -1,24 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Production build için static export
-  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+  // API route'ları için static export'u kaldır
   trailingSlash: true,
   images: {
     unoptimized: true
   },
   
-  // Development için rewrites (CORS problemini çözer)
+  // API route'ları için rewrites
   async rewrites() {
-    // Sadece development ortamında rewrites kullan
-    if (process.env.NODE_ENV === 'development') {
-      return [
-        {
-          source: '/api/btrapor/:path*',
-          destination: 'https://btrapor.boluteknoloji.tr/:path*',
-        }
-      ];
-    }
-    return [];
+    return [
+      {
+        source: '/api/btrapor/:path*',
+        destination: 'https://btrapor.boluteknoloji.tr/:path*',
+      }
+    ];
   }
 }
 

@@ -256,26 +256,16 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
           {/* Ayarlar ve Test */}
           <div className="border-t border-gray-200 pt-4 mt-4 space-y-2">
-            {/* Excel Yükleme */}
-            <a
-              href="/excel-upload"
-              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-green-600 hover:bg-green-50 rounded-lg group"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span className="ml-3">📊 Excel Yükleme</span>
-            </a>
             
-            {/* Excel Karşılaştırma */}
+            {/* Fatura Kontrol */}
             <a
-              href="/excel-compare"
+              href="/fatura-kontrol"
               className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg group"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              <span className="ml-3">🔍 Excel-LOGO Karşılaştırma</span>
+              <span className="ml-3">🔍 Fatura Kontrol</span>
             </a>
             
             {/* Test API - Sadece development'ta göster */}
@@ -290,15 +280,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   </svg>
                   <span className="ml-3">API Test</span>
                 </a>
-                <a
-                  href="/test-excel-compare"
-                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600 hover:bg-purple-50 rounded-lg group"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="ml-3">Excel Compare Test</span>
-                </a>
+
               </>
             )}
             
