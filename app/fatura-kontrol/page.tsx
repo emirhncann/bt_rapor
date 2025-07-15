@@ -126,6 +126,89 @@ export default function ExcelCompare() {
     });
   };
 
+  // LOGO veritabanından fatura bilgilerini çek
+  const fetchLogoInvoices = async (faturaNumbers: string[]) => {
+    try {
+      const companyRef = connectionInfo.company_ref?.toString() || '';
+      const firmaNo = connectionInfo.first_firma_no?.toString() || '';
+      const donemNo = connectionInfo.first_donem_no?.toString() || '';
+      const logoDb = connectionInfo.first_db_name?.toString() || '';
+
+      // LOGO veritabanından fatura bilgilerini çek
+      const response = await fetch('/api/sql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'company-ref': companyRef,
+          'firma-no': firmaNo,
+          'donem-no': donemNo,
+          'logo-db': logoDb,
+        },
+        body: JSON.stringify({
+          query: `
+            SELECT 
+              FICHENO as fatura_no,
+              DATE_ as tarih,
+              ARP_CODE as musteri_kodu,
+              ARP_NAME as musteri_adi,
+              GROSSTOTAL as toplam_tutar,
+              VATAMOUNT as kdv_tutari,
+              NETTOTAL as vergi_haric_tutar,
+              TYPE_ as fatura_tipi
+            FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
+            WHERE TRCODE IN (1,2,3,4) 
+              AND FICHENO IN (${faturaNumbers.map(() => '?').join(',')})
+          `,
+          params: faturaNumbers
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.status === 'success') {
+        return data.data || [];
+      } else {
+        throw new Error(data.error || 'LOGO veritabanından fatura bilgileri alınamadı');
+      }
+    } catch (error) {
+      console.error('❌ LOGO veritabanı hatası:', error);
+      throw error;
+    }
+  };
+
+  // Fatura karşılaştırma işlemi
+  const compareInvoices = (excelInvoices: any[], logoInvoices: any[]) => {
+    const excelFaturaNumbers = new Set(
+      excelInvoices
+        .map(invoice => invoice['Fatura No']?.toString().trim())
+        .filter(faturaNo => faturaNo && faturaNo !== '')
+    );
+
+    const logoFaturaNumbers = new Set(
+      logoInvoices.map(invoice => invoice.fatura_no?.toString().trim())
+    );
+
+    // LOGO'da olmayan faturalar
+    const missingInvoices = excelInvoices.filter(invoice => {
+      const faturaNo = invoice['Fatura No']?.toString().trim();
+      return faturaNo && faturaNo !== '' && !logoFaturaNumbers.has(faturaNo);
+    });
+
+    // LOGO'da olan faturalar
+    const existingInvoices = excelInvoices.filter(invoice => {
+      const faturaNo = invoice['Fatura No']?.toString().trim();
+      return faturaNo && faturaNo !== '' && logoFaturaNumbers.has(faturaNo);
+    });
+
+    return {
+      totalInvoices: excelInvoices.length,
+      existingInvoices: existingInvoices.length,
+      missingInvoices: missingInvoices.length,
+      missingInvoicesDetails: missingInvoices,
+      existingInvoicesDetails: existingInvoices
+    };
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
@@ -159,100 +242,53 @@ export default function ExcelCompare() {
       return;
     }
 
+    if (!connectionInfo) {
+      setError('Connection bilgileri bulunamadı. Lütfen önce connection bilgilerini yükleyin.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setResult(null);
 
-    // State'deki connection bilgilerini kullan
-    let companyRef = '';
-    let firmaNo = '';
-    let donemNo = '';
-    let logoDb = '';
-    
-    if (connectionInfo) {
-      companyRef = connectionInfo.company_ref?.toString() || '';
-      firmaNo = connectionInfo.first_firma_no?.toString() || '';
-      donemNo = connectionInfo.first_donem_no?.toString() || '';
-      logoDb = connectionInfo.first_db_name?.toString() || '';
-      
-      console.log('🔗 Connection bilgileri state\'den alındı:', {
-        company_ref: companyRef,
-        first_firma_no: firmaNo,
-        first_donem_no: donemNo,
-        first_db_name: logoDb
-      });
-    } else {
-      console.log('⚠️ Connection bilgileri bulunamadı, lütfen önce connection bilgilerini yükleyin');
-      setError('Connection bilgileri bulunamadı. Lütfen önce connection bilgilerini yükleyin.');
-      setLoading(false);
-      return;
-    }
-    
-    // Gerekli alanların kontrolü
-    if (!companyRef || !firmaNo || !donemNo || !logoDb) {
-      console.log('❌ Eksik connection bilgileri:', { companyRef, firmaNo, donemNo, logoDb });
-      
-      let errorMessage = 'Connection bilgileri eksik. ';
-      if (!companyRef) errorMessage += 'Company Ref bulunamadı. ';
-      if (!firmaNo) errorMessage += 'Firma No bulunamadı. ';
-      if (!donemNo) errorMessage += 'Dönem No bulunamadı. ';
-      if (!logoDb) errorMessage += 'Logo DB bulunamadı. ';
-      
-      errorMessage += 'Lütfen "Connection Bilgilerini Yenile" butonuna tıklayın veya anasayfaya gidip connection bilgilerinin yüklenmesini bekleyin.';
-      
-      setError(errorMessage);
-      setLoading(false);
-      return;
-    }
-
-    console.log('🏢 === LOCALSTORAGE AYARLARI ===');
-    console.log('📍 Company Ref:', companyRef);
-    console.log('🏭 Firma No:', firmaNo);
-    console.log('📅 Dönem No:', donemNo);
-    console.log('🗄️ Logo DB:', logoDb);
-    console.log('================================');
-
     try {
-      // Excel dosyasını client-side'da işle
+      // Excel dosyasını işle
       console.log('📊 Excel dosyası işleniyor...');
-      const invoices = await processExcelFile(file);
-      console.log('✅ Excel işlendi, fatura sayısı:', invoices.length);
+      const excelInvoices = await processExcelFile(file);
+      console.log('✅ Excel işlendi, fatura sayısı:', excelInvoices.length);
 
       // Fatura numaralarını çıkar
-      const faturaNumbers = invoices
+      const faturaNumbers = excelInvoices
         .map(invoice => invoice['Fatura No'])
         .filter(faturaNo => faturaNo && faturaNo.toString().trim() !== '');
 
       console.log('🔍 Fatura numaraları:', faturaNumbers);
 
-      // API'ye sadece gerekli verileri gönder
-      const response = await fetch('https://api.btrapor.com/fatura-kontrol', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'company-ref': companyRef,
-          'firma-no': firmaNo,
-          'donem-no': donemNo,
-          'logo-db': logoDb,
-        },
-        body: JSON.stringify({
-          faturaNumbers: faturaNumbers,
-          invoices: invoices,
-          fileName: file.name,
-          fileSize: file.size
-        }),
+      if (faturaNumbers.length === 0) {
+        setError('Excel dosyasında geçerli fatura numarası bulunamadı.');
+        setLoading(false);
+        return;
+      }
+
+      // LOGO veritabanından fatura bilgilerini çek
+      console.log('🗄️ LOGO veritabanından fatura bilgileri çekiliyor...');
+      const logoInvoices = await fetchLogoInvoices(faturaNumbers);
+      console.log('✅ LOGO veritabanından fatura bilgileri alındı:', logoInvoices.length);
+
+      // Faturaları karşılaştır
+      console.log('🔍 Faturalar karşılaştırılıyor...');
+      const comparisonResult = compareInvoices(excelInvoices, logoInvoices);
+
+      setResult({
+        success: true,
+        ...comparisonResult
       });
 
-      const data = await response.json();
+      console.log('✅ Karşılaştırma tamamlandı:', comparisonResult);
 
-      if (response.ok) {
-        setResult(data);
-      } else {
-        setError(data.error || 'Fatura karşılaştırılırken bir hata oluştu.');
-      }
     } catch (err) {
       console.error('❌ İşlem hatası:', err);
-      setError('Dosya işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      setError(err instanceof Error ? err.message : 'Dosya işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
     }

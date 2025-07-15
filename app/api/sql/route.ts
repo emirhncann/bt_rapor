@@ -1,40 +1,69 @@
 import { NextResponse } from 'next/server';
-
+import { sendSecureProxyRequest } from '../../utils/api';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const { query, params = [] } = body;
     
-    console.log('Gönderilen request body:', body);
+    console.log('🔍 SQL Sorgusu:', query);
+    console.log('📊 Parametreler:', params);
     
-    // localhost:45678 adresine SQL isteği gönder
-    const response = await fetch('http://localhost:45678/sql', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body)
+    // Header'lardan connection bilgilerini al
+    const companyRef = request.headers.get('company-ref');
+    const firmaNo = request.headers.get('firma-no');
+    const donemNo = request.headers.get('donem-no');
+    const logoDb = request.headers.get('logo-db');
+    
+    console.log('🔗 Connection Bilgileri:', {
+      companyRef,
+      firmaNo,
+      donemNo,
+      logoDb
     });
-
-    console.log('localhost:45678 response status:', response.status);
+    
+    if (!companyRef || !firmaNo || !donemNo || !logoDb) {
+      return NextResponse.json(
+        { 
+          status: 'error', 
+          message: 'Connection bilgileri eksik. company-ref, firma-no, donem-no, logo-db header\'ları gerekli.' 
+        },
+        { status: 400 }
+      );
+    }
+    
+    // Proxy isteği gönder
+    const response = await sendSecureProxyRequest(
+      companyRef,
+      'first_db_key',
+      { query, params },
+      'https://api.btrapor.com/proxy',
+      120000
+    );
+    
+    console.log('📊 Proxy response status:', response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('localhost:45678 error response:', errorText);
+      console.error('❌ Proxy error response:', errorText);
       return NextResponse.json(
-        { status: 'error', message: `Server hatası: ${response.status}` },
+        { status: 'error', message: `Proxy hatası: ${response.status} - ${errorText}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    console.log('localhost:45678 response data:', data);
+    console.log('✅ Proxy response data:', data);
     
-    return NextResponse.json(data);
+    return NextResponse.json({
+      status: 'success',
+      data: data.results || data.data || []
+    });
+    
   } catch (error) {
-    console.error('SQL Hatası:', error);
+    console.error('❌ SQL Hatası:', error);
     return NextResponse.json(
-      { error: 'Veritabanı hatası' },
+      { status: 'error', message: 'Veritabanı hatası: ' + (error as Error).message },
       { status: 500 }
     );
   }
