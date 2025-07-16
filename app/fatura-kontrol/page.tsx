@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import DashboardLayout from '../components/DashboardLayout';
+import { sendSecureProxyRequest } from '../utils/api';
 import * as XLSX from 'xlsx';
 
 export default function ExcelCompare() {
@@ -105,13 +106,17 @@ export default function ExcelCompare() {
           const headers = jsonData[0] as string[];
           const rows = jsonData.slice(1);
           
-          // Fatura verilerini işle
-          const invoices = rows.map((row: unknown) => {
+          // Fatura verilerini işle - B kolonu (index 1) fatura numarası
+          const invoices = rows.map((row: unknown, rowIndex: number) => {
             const rowArray = row as any[];
             const invoice: any = {};
             headers.forEach((header, index) => {
               invoice[header] = rowArray[index] || '';
             });
+            
+            // B kolonu (index 1) fatura numarası olarak ata
+            invoice['Fatura No'] = rowArray[1] || '';
+            
             return invoice;
           });
           
@@ -126,7 +131,7 @@ export default function ExcelCompare() {
     });
   };
 
-  // LOGO veritabanından fatura bilgilerini çek
+  // LOGO veritabanından fatura bilgilerini çek (Proxy üzerinden)
   const fetchLogoInvoices = async (faturaNumbers: string[]) => {
     try {
       const companyRef = connectionInfo.company_ref?.toString() || '';
@@ -134,41 +139,56 @@ export default function ExcelCompare() {
       const donemNo = connectionInfo.first_donem_no?.toString() || '';
       const logoDb = connectionInfo.first_db_name?.toString() || '';
 
-      // LOGO veritabanından fatura bilgilerini çek
-      const response = await fetch('/api/sql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'company-ref': companyRef,
-          'firma-no': firmaNo,
-          'donem-no': donemNo,
-          'logo-db': logoDb,
+      if (!companyRef) {
+        throw new Error('Company reference bulunamadı');
+      }
+
+      // Fatura numaralarını SQL için hazırla (SQL injection'a karşı escape)
+      const faturaList = faturaNumbers.map(fn => `'${fn.toString().replace(/'/g, "''")}'`).join(',');
+      
+      // SQL sorgusunu hazırla
+      const sqlQuery = `
+        SELECT 
+          FICHENO as fatura_no,
+          DATE_ as tarih
+        FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
+        WHERE TRCODE IN (1,2,3,4) 
+          AND FICHENO IN (${faturaList})
+      `;
+
+      console.log('🔍 SQL Sorgusu:', sqlQuery);
+      console.log('📊 Fatura sayısı:', faturaNumbers.length);
+
+      // Güvenli proxy request gönder
+      const response = await sendSecureProxyRequest(
+        companyRef,
+        'first_db_key',
+        {
+          query: sqlQuery
         },
-        body: JSON.stringify({
-          query: `
-            SELECT 
-              FICHENO as fatura_no,
-              DATE_ as tarih,
-              ARP_CODE as musteri_kodu,
-              ARP_NAME as musteri_adi,
-              GROSSTOTAL as toplam_tutar,
-              VATAMOUNT as kdv_tutari,
-              NETTOTAL as vergi_haric_tutar,
-              TYPE_ as fatura_tipi
-            FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
-            WHERE TRCODE IN (1,2,3,4) 
-              AND FICHENO IN (${faturaNumbers.map(() => '?').join(',')})
-          `,
-          params: faturaNumbers
-        }),
-      });
+        'https://api.btrapor.com/proxy',
+        120000 // 2 dakika timeout
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`LOGO veritabanından fatura bilgileri alınamadı: ${response.status} - ${errorText}`);
+      }
 
       const data = await response.json();
       
-      if (response.ok && data.status === 'success') {
-        return data.data || [];
+      // Proxy'den gelen yanıtı işle
+      if (Array.isArray(data)) {
+        return data;
+      } else if (data.results && Array.isArray(data.results)) {
+        return data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        return data.data;
+      } else if (data.status === 'success' && data.data) {
+        return Array.isArray(data.data) ? data.data : [];
       } else {
-        throw new Error(data.error || 'LOGO veritabanından fatura bilgileri alınamadı');
+        console.warn('Beklenmeyen veri formatı:', data);
+        return [];
       }
     } catch (error) {
       console.error('❌ LOGO veritabanı hatası:', error);
@@ -188,13 +208,13 @@ export default function ExcelCompare() {
       logoInvoices.map(invoice => invoice.fatura_no?.toString().trim())
     );
 
-    // LOGO'da olmayan faturalar
+    // LOGO'da olmayan faturalar (B kolonu fatura numarası)
     const missingInvoices = excelInvoices.filter(invoice => {
       const faturaNo = invoice['Fatura No']?.toString().trim();
       return faturaNo && faturaNo !== '' && !logoFaturaNumbers.has(faturaNo);
     });
 
-    // LOGO'da olan faturalar
+    // LOGO'da olan faturalar (B kolonu fatura numarası)
     const existingInvoices = excelInvoices.filter(invoice => {
       const faturaNo = invoice['Fatura No']?.toString().trim();
       return faturaNo && faturaNo !== '' && logoFaturaNumbers.has(faturaNo);
@@ -257,7 +277,7 @@ export default function ExcelCompare() {
       const excelInvoices = await processExcelFile(file);
       console.log('✅ Excel işlendi, fatura sayısı:', excelInvoices.length);
 
-      // Fatura numaralarını çıkar
+      // Fatura numaralarını çıkar (B kolonu - index 1)
       const faturaNumbers = excelInvoices
         .map(invoice => invoice['Fatura No'])
         .filter(faturaNo => faturaNo && faturaNo.toString().trim() !== '');
