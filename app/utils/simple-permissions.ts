@@ -52,6 +52,11 @@ const REPORT_CATEGORIES: {[key: string]: {name: string, icon: string, route: str
     name: 'Finansal Raporlar',
     icon: 'chart-line', 
     route: '/gelir-gider'
+  },
+  'Fatura Kontrol': {
+    name: 'Finansal Raporlar',
+    icon: 'calculator',
+    route: '/fatura-kontrol'
   }
 };
 

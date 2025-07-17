@@ -359,7 +359,7 @@ export default function ExcelCompare() {
               </div>
             </div>
             <button
-              onClick={() => window.open('http://dosya.btrapor.com/fatura_karsilastirma_sablon.xlsx', '_blank')}
+              onClick={() => window.open('https://www.dosya.btrapor.com/fatura_karsilastirma_sablon.xlsx', '_blank')}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

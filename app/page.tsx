@@ -176,7 +176,7 @@ export default function Dashboard() {
   const togglePinnedReport = async (reportId: string) => {
     const newPinned = pinnedReports.includes(reportId) 
       ? pinnedReports.filter(id => id !== reportId)
-      : pinnedReports.length < 3 
+      : pinnedReports.length < 6 
         ? [...pinnedReports, reportId]
         : pinnedReports;
     
@@ -707,7 +707,7 @@ export default function Dashboard() {
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-xs sm:text-sm text-gray-500">
-                {pinnedReports.length > 0 ? `${pinnedReports.length}/3 favori` : 'Tüm servisler hazır'}
+                {pinnedReports.length > 0 ? `${pinnedReports.length}/6 favori` : 'Tüm servisler hazır'}
               </span>
             </div>
           </div>
@@ -727,7 +727,7 @@ export default function Dashboard() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-gray-600 mb-4">En fazla 3 rapor seçebilirsiniz. Sık kullandığınız raporları favorilere ekleyin.</p>
+                <p className="text-gray-600 mb-4">En fazla 6 rapor seçebilirsiniz. Sık kullandığınız raporları favorilere ekleyin.</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                   {userReports.map((report) => (
@@ -737,7 +737,7 @@ export default function Dashboard() {
                            type="checkbox"
                            checked={pinnedReports.includes(report.id.toString())}
                            onChange={() => togglePinnedReport(report.id.toString())}
-                           disabled={!pinnedReports.includes(report.id.toString()) && pinnedReports.length >= 3}
+                           disabled={!pinnedReports.includes(report.id.toString()) && pinnedReports.length >= 6}
                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                          />
                         <div>
@@ -779,11 +779,11 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 items-stretch">
             {/* Dinamik Rapor Kartları */}
             {loadingReports ? (
               // Loading kartları
-              Array.from({length: 3}).map((_, index) => (
+              Array.from({length: 6}).map((_, index) => (
                 <div key={index} className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-200 animate-pulse h-full flex flex-col">
                   <div className="flex items-center justify-between mb-3 sm:mb-4">
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-xl"></div>
@@ -803,8 +803,8 @@ export default function Dashboard() {
                 const reportsToShow = pinnedReports.length > 0 
                   ? pinnedReports.map(pinnedId => 
                       userReports.find(report => report.id.toString() === pinnedId)
-                    ).filter(Boolean).slice(0, 3)
-                  : userReports.slice(0, 3);
+                    ).filter(Boolean).slice(0, 6)
+                  : userReports.slice(0, 6);
                 
                 return reportsToShow.map((report) => {
                   if (!report) return null;
@@ -872,16 +872,16 @@ export default function Dashboard() {
               })()
             )}
 
-            {/* Eğer 3'ten az rapor varsa boş kartları doldur */}
+            {/* Eğer 6'dan az rapor varsa boş kartları doldur */}
             {!loadingReports && (() => {
               const reportsToShow = pinnedReports.length > 0 
                 ? pinnedReports.map(pinnedId => 
                     userReports.find(report => report.id.toString() === pinnedId)
-                  ).filter(Boolean).slice(0, 3)
-                : userReports.slice(0, 3);
+                  ).filter(Boolean).slice(0, 6)
+                : userReports.slice(0, 6);
               
-              return reportsToShow.length < 3 && (
-                Array.from({length: 3 - reportsToShow.length}).map((_, index) => (
+              return reportsToShow.length < 6 && (
+                Array.from({length: 6 - reportsToShow.length}).map((_, index) => (
                   <div key={`empty-${index}`} className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-200 opacity-50 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-3 sm:mb-4">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-xl flex items-center justify-center">
@@ -911,11 +911,11 @@ export default function Dashboard() {
               const reportsToShow = pinnedReports.length > 0 
                 ? pinnedReports.map(pinnedId => 
                     userReports.find(report => report.id.toString() === pinnedId)
-                  ).filter(Boolean).slice(0, 3)
-                : userReports.slice(0, 3);
+                  ).filter(Boolean).slice(0, 6)
+                : userReports.slice(0, 6);
               
               return reportsToShow.length === 0 && (
-                <div className="md:col-span-3 text-center py-8 sm:py-12">
+                <div className="md:col-span-3 lg:col-span-3 xl:col-span-6 text-center py-8 sm:py-12">
                   <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
                     <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1225,6 +1225,8 @@ const getReportRoute = (reportName: string) => {
     return '/enpos-ciro';
   } else if (reportName.toLowerCase().includes('stok') || reportName.toLowerCase().includes('envanter')) {
     return '/envanter-raporu';
+  } else if (reportName.toLowerCase().includes('fatura') && reportName.toLowerCase().includes('kontrol')) {
+    return '/fatura-kontrol';
   }
   return null; // Henüz route'u olmayan raporlar
 };
