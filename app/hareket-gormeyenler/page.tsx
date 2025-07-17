@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import DashboardLayout from '../components/DashboardLayout';
@@ -95,14 +95,16 @@ const SIGN_CODES = [
 ];
 
 export default function HareketGormeyenler() {
+  // Ana veriler
   const [data, setData] = useState<any[]>([]);
+  const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [hasAccess, setHasAccess] = useState<boolean>(false);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   
-  // Filtre parametreleri
+  // SQL Filtre parametreleri 
   const [lastDate, setLastDate] = useState('2025-06-01');
   const [allModules, setAllModules] = useState(true);
   const [selectedModules, setSelectedModules] = useState<number[]>([]);
@@ -111,15 +113,173 @@ export default function HareketGormeyenler() {
   const [allSigns, setAllSigns] = useState(true);
   const [selectedSigns, setSelectedSigns] = useState<number[]>([]);
   
+  // Frontend Cari Filtreleri
+  const [cariFilters, setCariFilters] = useState({
+    cariKoduInclude: '',
+    cariKoduExclude: '',
+    unvanInclude: '',
+    unvanExclude: '',
+    ozelKod1Include: [] as string[],
+    ozelKod1Exclude: [] as string[],
+    ozelKod1IncludePattern: '',
+    ozelKod1ExcludePattern: '',
+    ozelKod2Include: [] as string[],
+    ozelKod2Exclude: [] as string[],
+    ozelKod2IncludePattern: '',
+    ozelKod2ExcludePattern: '',
+    ozelKod3Include: [] as string[],
+    ozelKod3Exclude: [] as string[],
+    ozelKod3IncludePattern: '',
+    ozelKod3ExcludePattern: '',
+    ozelKod4Include: [] as string[],
+    ozelKod4Exclude: [] as string[],
+    ozelKod4IncludePattern: '',
+    ozelKod4ExcludePattern: '',
+    ozelKod5Include: [] as string[],
+    ozelKod5Exclude: [] as string[],
+    ozelKod5IncludePattern: '',
+    ozelKod5ExcludePattern: ''
+  });
+  
+  const [showCariFilters, setShowCariFilters] = useState(false);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [hasFetched, setHasFetched] = useState(false);
+  
+  // Sayfalama state'leri
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   
   const router = useRouter();
   
   // Animation data'ları
   const [animationData, setAnimationData] = useState(null);
   const [failedAnimationData, setFailedAnimationData] = useState(null);
+
+  // Benzersiz özel kod değerlerini çıkar
+  const uniqueSpecialCodes = useMemo(() => {
+    const codes = {
+      ozelKod1: new Set<string>(),
+      ozelKod2: new Set<string>(),
+      ozelKod3: new Set<string>(),
+      ozelKod4: new Set<string>(),
+      ozelKod5: new Set<string>()
+    };
+
+    data.forEach(row => {
+      if (row['Ozel Kod 1']) codes.ozelKod1.add(row['Ozel Kod 1']);
+      if (row['Ozel Kod 2']) codes.ozelKod2.add(row['Ozel Kod 2']);
+      if (row['Ozel Kod 3']) codes.ozelKod3.add(row['Ozel Kod 3']);
+      if (row['Ozel Kod 4']) codes.ozelKod4.add(row['Ozel Kod 4']);
+      if (row['Ozel Kod 5']) codes.ozelKod5.add(row['Ozel Kod 5']);
+    });
+
+    return {
+      ozelKod1: Array.from(codes.ozelKod1).sort(),
+      ozelKod2: Array.from(codes.ozelKod2).sort(),
+      ozelKod3: Array.from(codes.ozelKod3).sort(),
+      ozelKod4: Array.from(codes.ozelKod4).sort(),
+      ozelKod5: Array.from(codes.ozelKod5).sort()
+    };
+  }, [data]);
+
+  // Frontend filtreleme
+  useEffect(() => {
+    if (!data.length) {
+      setFilteredData([]);
+      return;
+    }
+
+    let filtered = data.filter(row => {
+      // Cari kodu filtreleri
+      if (cariFilters.cariKoduExclude && row.CODE?.toLowerCase().includes(cariFilters.cariKoduExclude.toLowerCase())) {
+        return false;
+      }
+      if (cariFilters.cariKoduInclude && !row.CODE?.toLowerCase().includes(cariFilters.cariKoduInclude.toLowerCase())) {
+        return false;
+      }
+
+      // Ünvan filtreleri
+      if (cariFilters.unvanExclude && row.DEFINITION_?.toLowerCase().includes(cariFilters.unvanExclude.toLowerCase())) {
+        return false;
+      }
+      if (cariFilters.unvanInclude && !row.DEFINITION_?.toLowerCase().includes(cariFilters.unvanInclude.toLowerCase())) {
+        return false;
+      }
+
+      // Özel kod filtreleri - hem checkbox hem pattern desteği
+      const matchesPattern = (value: string, pattern: string): boolean => {
+        if (!pattern) return true;
+        
+        // Wildcard (*) desteği
+        if (pattern.includes('*')) {
+          const regexPattern = pattern
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
+            .replace(/\\\*/g, '.*'); // Convert * to .*
+          const regex = new RegExp(`^${regexPattern}$`, 'i');
+          return regex.test(value);
+        }
+        
+        // Normal string içerme kontrolü
+        return value.toLowerCase().includes(pattern.toLowerCase());
+      };
+
+      const checkSpecialCode = (
+        codeValue: string, 
+        includeList: string[], 
+        excludeList: string[],
+        includePattern: string,
+        excludePattern: string
+      ) => {
+        if (!codeValue) return true;
+        
+        // Önce exclude pattern kontrolü
+        if (excludePattern && matchesPattern(codeValue, excludePattern)) {
+          return false;
+        }
+        
+        // Sonra exclude list kontrolü
+        if (excludeList.length > 0 && excludeList.includes(codeValue)) {
+          return false;
+        }
+        
+        // Include pattern kontrolü
+        if (includePattern && !matchesPattern(codeValue, includePattern)) {
+          return false;
+        }
+        
+        // Include list kontrolü
+        if (includeList.length > 0 && !includeList.includes(codeValue)) {
+          return false;
+        }
+
+        return true; // Hiçbir filtre yoksa veya tüm filtreler geçerse dahil et
+      };
+
+      if (!checkSpecialCode(row['Ozel Kod 1'], cariFilters.ozelKod1Include, cariFilters.ozelKod1Exclude, cariFilters.ozelKod1IncludePattern, cariFilters.ozelKod1ExcludePattern)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 2'], cariFilters.ozelKod2Include, cariFilters.ozelKod2Exclude, cariFilters.ozelKod2IncludePattern, cariFilters.ozelKod2ExcludePattern)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 3'], cariFilters.ozelKod3Include, cariFilters.ozelKod3Exclude, cariFilters.ozelKod3IncludePattern, cariFilters.ozelKod3ExcludePattern)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 4'], cariFilters.ozelKod4Include, cariFilters.ozelKod4Exclude, cariFilters.ozelKod4IncludePattern, cariFilters.ozelKod4ExcludePattern)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 5'], cariFilters.ozelKod5Include, cariFilters.ozelKod5Exclude, cariFilters.ozelKod5IncludePattern, cariFilters.ozelKod5ExcludePattern)) return false;
+
+      return true;
+    });
+
+    setFilteredData(filtered);
+    setCurrentPage(1); // Filtre değiştiğinde sayfa 1'e dön
+  }, [data, cariFilters]);
+
+  // Sayfalanmış veri hesaplama
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  }, [filteredData, currentPage, itemsPerPage]);
+
+  // Sayfalama bilgileri
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const startItem = filteredData.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, filteredData.length);
 
   // Authentication kontrolü
   useEffect(() => {
@@ -531,6 +691,79 @@ export default function HareketGormeyenler() {
       .flatMap(cat => cat.trCodes);
   };
 
+  // Cari filtre helper fonksiyonları
+  const updateCariFilter = (field: keyof typeof cariFilters, value: any) => {
+    setCariFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const toggleSpecialCodeFilter = (codeType: 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5', filterType: 'Include' | 'Exclude', value: string) => {
+    const fieldName = `${codeType}${filterType}` as keyof typeof cariFilters;
+    const currentList = cariFilters[fieldName] as string[];
+    
+    updateCariFilter(fieldName, 
+      currentList.includes(value) 
+        ? currentList.filter(v => v !== value)
+        : [...currentList, value]
+    );
+  };
+
+  // Filtreleri temizle
+  const clearCariFilters = () => {
+    setCariFilters({
+      cariKoduInclude: '',
+      cariKoduExclude: '',
+      unvanInclude: '',
+      unvanExclude: '',
+      ozelKod1Include: [],
+      ozelKod1Exclude: [],
+      ozelKod1IncludePattern: '',
+      ozelKod1ExcludePattern: '',
+      ozelKod2Include: [],
+      ozelKod2Exclude: [],
+      ozelKod2IncludePattern: '',
+      ozelKod2ExcludePattern: '',
+      ozelKod3Include: [],
+      ozelKod3Exclude: [],
+      ozelKod3IncludePattern: '',
+      ozelKod3ExcludePattern: '',
+      ozelKod4Include: [],
+      ozelKod4Exclude: [],
+      ozelKod4IncludePattern: '',
+      ozelKod4ExcludePattern: '',
+      ozelKod5Include: [],
+      ozelKod5Exclude: [],
+      ozelKod5IncludePattern: '',
+      ozelKod5ExcludePattern: ''
+    });
+  };
+
+  // Aktif filtre sayısı
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (cariFilters.cariKoduInclude) count++;
+    if (cariFilters.cariKoduExclude) count++;
+    if (cariFilters.unvanInclude) count++;
+    if (cariFilters.unvanExclude) count++;
+    
+    Object.entries(cariFilters).forEach(([key, value]) => {
+      if (!['cariKoduInclude', 'cariKoduExclude', 'unvanInclude', 'unvanExclude'].includes(key)) {
+        // Array filtreleri (checkbox lists)
+        if (Array.isArray(value) && value.length > 0) {
+          count++;
+        }
+        // String filtreleri (pattern fields)
+        else if (typeof value === 'string' && value.trim()) {
+          count++;
+        }
+      }
+    });
+    
+    return count;
+  };
+
   if (isCheckingAuth || isCheckingAccess) {
     return (
       <DashboardLayout title="Hareket Görmeyen Cariler">
@@ -564,7 +797,9 @@ export default function HareketGormeyenler() {
               <div>
                 <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Hareket Görmeyen Cariler</h2>
                 <p className="text-red-100 text-sm">
-                  {lastDate} tarihinden sonra hareket görmemiş cariler | Toplam: {data.length}
+                  {lastDate} tarihinden sonra hareket görmemiş cariler | 
+                  Ham Veri: {data.length} | 
+                  Filtrelenmiş: {filteredData.length}
                 </p>
               </div>
             </div>
@@ -582,15 +817,29 @@ export default function HareketGormeyenler() {
                   <span>📊</span>
                   Raporu Getir
                 </button>
+                {data.length > 0 && (
+                  <button
+                    onClick={() => setShowCariFilters(!showCariFilters)}
+                    className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium flex items-center gap-2"
+                  >
+                    <span>🔍</span>
+                    Cari Filtreleri
+                    {getActiveFilterCount() > 0 && (
+                      <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded-full">
+                        {getActiveFilterCount()}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Filtre Parametreleri */}
+        {/* SQL Filtre Parametreleri */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-            <span>🔍</span>
+            <span>🎯</span>
             Filtre Parametreleri
           </h3>
           
@@ -663,7 +912,7 @@ export default function HareketGormeyenler() {
               {/* TR Code Seçimi */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  İşlem Türleri (TR Codes)
+                  İşlem Türleri
                 </label>
                 <div className="space-y-2">
                   <label className="flex items-center">
@@ -745,6 +994,135 @@ export default function HareketGormeyenler() {
           </div>
         </div>
 
+        {/* Frontend Cari Filtreleri */}
+        {showCariFilters && data.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                <span>🔍</span>
+                Cari Filtreleri
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={clearCariFilters}
+                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Filtreleri Temizle
+                </button>
+                <button
+                  onClick={() => setShowCariFilters(false)}
+                  className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Metin Filtreleri */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cari Kodu Filtreleri
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-xs text-green-700 font-medium mb-1">Dahil Et:</div>
+                      <input
+                        type="text"
+                        value={cariFilters.cariKoduInclude}
+                        onChange={(e) => updateCariFilter('cariKoduInclude', e.target.value)}
+                        placeholder="Cari kodunda ara..."
+                        className="w-full px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs text-red-700 font-medium mb-1">Hariç Tut:</div>
+                      <input
+                        type="text"
+                        value={cariFilters.cariKoduExclude}
+                        onChange={(e) => updateCariFilter('cariKoduExclude', e.target.value)}
+                        placeholder="Hariç tutulacak kodlar..."
+                        className="w-full px-2 py-1 text-sm border border-red-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cari Ünvan Filtreleri
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-xs text-green-700 font-medium mb-1">Dahil Et:</div>
+                      <input
+                        type="text"
+                        value={cariFilters.unvanInclude}
+                        onChange={(e) => updateCariFilter('unvanInclude', e.target.value)}
+                        placeholder="Ünvanda ara..."
+                        className="w-full px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs text-red-700 font-medium mb-1">Hariç Tut:</div>
+                      <input
+                        type="text"
+                        value={cariFilters.unvanExclude}
+                        onChange={(e) => updateCariFilter('unvanExclude', e.target.value)}
+                        placeholder="Hariç tutulacak ünvanlar..."
+                        className="w-full px-2 py-1 text-sm border border-red-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Özel Kod Filtreleri */}
+              <div className="space-y-4">
+                {[1, 2, 3, 4, 5].map(codeNum => {
+                  const codeType = `ozelKod${codeNum}` as 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5';
+                  const availableCodes = uniqueSpecialCodes[codeType];
+                  
+                  if (availableCodes.length === 0) return null;
+
+                  return (
+                    <div key={codeNum}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Özel Kod {codeNum}
+                      </label>
+                      
+                      {/* Pattern Filtreleri */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-xs text-green-700 font-medium mb-1">Dahil Et Pattern (*, abc*):</div>
+                          <input
+                            type="text"
+                            value={cariFilters[`${codeType}IncludePattern` as keyof typeof cariFilters] as string}
+                            onChange={(e) => updateCariFilter(`${codeType}IncludePattern` as keyof typeof cariFilters, e.target.value)}
+                            placeholder="abc* veya *xyz"
+                            className="w-full px-2 py-1 text-xs border border-green-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500"
+                          />
+                        </div>
+                        <div>
+                          <div className="text-xs text-red-700 font-medium mb-1">Hariç Tut Pattern (*, abcd*):</div>
+                          <input
+                            type="text"
+                            value={cariFilters[`${codeType}ExcludePattern` as keyof typeof cariFilters] as string}
+                            onChange={(e) => updateCariFilter(`${codeType}ExcludePattern` as keyof typeof cariFilters, e.target.value)}
+                            placeholder="abcd* veya *test"
+                            className="w-full px-2 py-1 text-xs border border-red-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Aktif Filtreler Gösterimi */}
         {hasFetched && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -778,6 +1156,18 @@ export default function HareketGormeyenler() {
                 </span>
               </div>
             </div>
+            
+            {/* Frontend Filtre Özeti */}
+            {getActiveFilterCount() > 0 && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium text-blue-800">Frontend Filtreleri:</span>
+                  <span className="text-blue-700">{getActiveFilterCount()} aktif filtre</span>
+                  <span className="text-blue-600">→</span>
+                  <span className="font-medium text-blue-800">{filteredData.length} / {data.length} kayıt gösteriliyor</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -787,7 +1177,8 @@ export default function HareketGormeyenler() {
             <div className="flex items-center gap-2 text-green-800">
               <span>✅</span>
               <span className="font-medium">
-                {data.length} hareket görmeyen cari bulundu
+                Toplam {data.length} hareket görmeyen cari bulundu
+                {getActiveFilterCount() > 0 && `, ${filteredData.length} tanesi filtreleme sonrası gösteriliyor`}
               </span>
             </div>
           </div>
@@ -817,6 +1208,11 @@ export default function HareketGormeyenler() {
             <div>
               <h3 className="text-lg font-medium text-gray-900">Hareket Görmeyen Cariler Raporu</h3>
               <p className="text-sm text-gray-500">Belirtilen tarihten sonra hareket görmemiş cari hesapları görüntüleyin</p>
+              {data.length > 0 && (
+                <p className="text-sm text-blue-600 mt-1">
+                  💡 Rapor geldikten sonra "Cari Filtreleri" butonu ile ek filtreleme yapabilirsiniz
+                </p>
+              )}
             </div>
             <button
               onClick={handleFetchReport}
@@ -855,7 +1251,7 @@ export default function HareketGormeyenler() {
               <p className="text-gray-600 font-medium">Hareket görmeyen cariler yükleniyor...</p>
             </div>
           </div>
-        ) : data.length > 0 ? (
+        ) : filteredData.length > 0 ? (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -888,7 +1284,7 @@ export default function HareketGormeyenler() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {data.map((row, index) => (
+                  {paginatedData.map((row, index) => (
                     <tr key={index} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {row.CODE}
@@ -949,6 +1345,164 @@ export default function HareketGormeyenler() {
                 </tbody>
               </table>
             </div>
+            
+            {/* Sayfalama ve Özet Bilgi */}
+            {filteredData.length > 0 && (
+              <div className="bg-white border-t px-4 py-3 flex items-center justify-between sm:px-6">
+                <div className="flex-1 flex justify-between sm:hidden">
+                  <button
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Önceki
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="relative ml-3 inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Sonraki
+                  </button>
+                </div>
+                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                  <div className="flex items-center space-x-4">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">{startItem}</span> - <span className="font-medium">{endItem}</span> arası, 
+                      toplam <span className="font-medium">{filteredData.length}</span> kayıt
+                    </p>
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm text-gray-700">Sayfa başına:</label>
+                      <select
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                          setItemsPerPage(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                      <button
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">İlk sayfa</span>
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M15.707 15.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 010 1.414zm-6 0a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 1.414L5.414 10l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Önceki sayfa</span>
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      
+                      {/* Sayfa numaraları */}
+                      {(() => {
+                        const pages = [];
+                        const showRange = 2; // Her iki tarafta gösterilecek sayfa sayısı
+                        let startPage = Math.max(1, currentPage - showRange);
+                        let endPage = Math.min(totalPages, currentPage + showRange);
+                        
+                        // İlk sayfalar
+                        if (startPage > 1) {
+                          pages.push(
+                            <button
+                              key={1}
+                              onClick={() => setCurrentPage(1)}
+                              className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              1
+                            </button>
+                          );
+                          if (startPage > 2) {
+                            pages.push(
+                              <span key="start-ellipsis" className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                ...
+                              </span>
+                            );
+                          }
+                        }
+                        
+                        // Orta sayfalar
+                        for (let i = startPage; i <= endPage; i++) {
+                          pages.push(
+                            <button
+                              key={i}
+                              onClick={() => setCurrentPage(i)}
+                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                                i === currentPage
+                                  ? 'z-10 bg-red-50 border-red-500 text-red-600'
+                                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              {i}
+                            </button>
+                          );
+                        }
+                        
+                        // Son sayfalar
+                        if (endPage < totalPages) {
+                          if (endPage < totalPages - 1) {
+                            pages.push(
+                              <span key="end-ellipsis" className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                ...
+                              </span>
+                            );
+                          }
+                          pages.push(
+                            <button
+                              key={totalPages}
+                              onClick={() => setCurrentPage(totalPages)}
+                              className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              {totalPages}
+                            </button>
+                          );
+                        }
+                        
+                        return pages;
+                      })()}
+                      
+                      <button
+                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Sonraki sayfa</span>
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="sr-only">Son sayfa</span>
+                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10.293 15.707a1 1 0 010-1.414L14.586 10l-4.293-4.293a1 1 0 111.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0zm-6 0a1 1 0 010-1.414L8.586 10 4.293 5.707a1 1 0 011.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : hasFetched ? (
           <div className="bg-white rounded-lg shadow p-12">
@@ -956,8 +1510,15 @@ export default function HareketGormeyenler() {
               <svg className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
               </svg>
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Hareket görmeyen cari bulunamadı</h3>
-              <p className="text-gray-500">Seçilen kriterlere göre hareket görmeyen cari bulunmuyor</p>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                {data.length > 0 ? 'Filtre sonucu kayıt bulunamadı' : 'Hareket görmeyen cari bulunamadı'}
+              </h3>
+              <p className="text-gray-500">
+                {data.length > 0 
+                  ? 'Filtreleri değiştirip tekrar deneyin veya filtreleri temizleyin'
+                  : 'Seçilen kriterlere göre hareket görmeyen cari bulunmuyor'
+                }
+              </p>
             </div>
           </div>
         ) : (
