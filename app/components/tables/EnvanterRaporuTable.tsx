@@ -339,8 +339,8 @@ export default function EnvanterRaporuTable({
     const codes = filterCodes
       .filter(code => code.ALAN === selectedCodeType)
       .filter(code => 
-        code.KOD.toLowerCase().includes(codeSearchTerm.toLowerCase()) ||
-        code.AÇIKLAMA.toLowerCase().includes(codeSearchTerm.toLowerCase())
+        code.KOD.toLocaleLowerCase('tr-TR').includes(codeSearchTerm.toLocaleLowerCase('tr-TR')) ||
+        code.AÇIKLAMA.toLocaleLowerCase('tr-TR').includes(codeSearchTerm.toLocaleLowerCase('tr-TR'))
       );
     
     return codes.sort((a, b) => a.KOD.localeCompare(b.KOD));
@@ -391,7 +391,7 @@ export default function EnvanterRaporuTable({
   const filteredData = dataWithTotal.filter(item => {
     // Arama filtresi
     const matchesSearch = Object.values(item).some(value => 
-      String(value).toLowerCase().includes(searchTerm.toLowerCase())
+      String(value).toLocaleLowerCase('tr-TR').includes(searchTerm.toLocaleLowerCase('tr-TR'))
     );
     
     // Sayı filtresi
@@ -426,8 +426,8 @@ export default function EnvanterRaporuTable({
     }
     
     // Metin sütunları için
-    const aStr = String(aValue || '').toLowerCase();
-    const bStr = String(bValue || '').toLowerCase();
+    const aStr = String(aValue || '').toLocaleLowerCase('tr-TR');
+    const bStr = String(bValue || '').toLocaleLowerCase('tr-TR');
     
     return sortDirection === 'asc' ? 
       aStr.localeCompare(bStr, 'tr') : 

@@ -34,9 +34,18 @@ export default function Dashboard() {
   // Animation data'yı yükleyelim
   const [animationData, setAnimationData] = useState(null);
   
-  // Saat güncellemesi - sadece dashboard yüklendiğinde
+  // Saat güncellemesi - gerçek zamanlı olarak her saniye güncelle
   useEffect(() => {
+    // İlk yüklenmede saati ayarla
     setCurrentTime(new Date());
+    
+    // Her saniye saati güncelle
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    // Component unmount olduğunda timer'ı temizle
+    return () => clearInterval(timer);
   }, []);
 
   // Stats güncellemesi - sadece dashboard yüklendiğinde
@@ -70,7 +79,8 @@ export default function Dashboard() {
     if (error === 'access_denied' && report) {
       const reportNames: {[key: string]: string} = {
         'enpos-ciro': 'Enpos Ciro Raporu',
-        'c-bakiye': 'Cari Bakiye Raporu'
+        'c-bakiye': 'Cari Bakiye Raporu',
+        'hareket-gormeyen-cariler': 'Hareket Görmeyen Cariler'
       };
       
       setAccessDeniedInfo({
@@ -1167,7 +1177,7 @@ const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
     };
   }
 
-  if (reportName.toLowerCase().includes('cari') || reportName.toLowerCase().includes('bakiye')) {
+  if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
     return {
       bgGradient: 'from-red-50 to-red-100',
       border: 'border-red-200',
@@ -1179,7 +1189,7 @@ const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
       textColor: 'text-gray-900',
       opacity: 'opacity-100'
     };
-  } else if (reportName.toLowerCase().includes('ciro') || reportName.toLowerCase().includes('satış')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('ciro') || reportName.toLocaleLowerCase('tr-TR').includes('satış')) {
     return {
       bgGradient: 'from-blue-50 to-blue-100',
       border: 'border-blue-200',
@@ -1191,7 +1201,7 @@ const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
       textColor: 'text-gray-900',
       opacity: 'opacity-100'
     };
-  } else if (reportName.toLowerCase().includes('stok') || reportName.toLowerCase().includes('envanter')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('stok') || reportName.toLocaleLowerCase('tr-TR').includes('envanter')) {
     return {
       bgGradient: 'from-emerald-50 to-emerald-100',
       border: 'border-emerald-200',
@@ -1219,24 +1229,25 @@ const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
 };
 
 const getReportRoute = (reportName: string) => {
-  if (reportName.toLowerCase().includes('cari') || reportName.toLowerCase().includes('bakiye')) {
+  if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
     return '/c-bakiye';
-  } else if (reportName.toLowerCase().includes('enpos') && reportName.toLowerCase().includes('ciro')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('enpos') && reportName.toLocaleLowerCase('tr-TR').includes('ciro')) {
     return '/enpos-ciro';
-  } else if (reportName.toLowerCase().includes('stok') || reportName.toLowerCase().includes('envanter')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('stok') || reportName.toLocaleLowerCase('tr-TR').includes('envanter')) {
     return '/envanter-raporu';
-  } else if (reportName.toLowerCase().includes('fatura') && reportName.toLowerCase().includes('kontrol')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('fatura') && reportName.toLocaleLowerCase('tr-TR').includes('kontrol')) {
     return '/fatura-kontrol';
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('hareket') && reportName.toLocaleLowerCase('tr-TR').includes('gormeyen')) {
   }
   return null; // Henüz route'u olmayan raporlar
 };
 
 const getReportIcon = (reportName: string) => {
-  if (reportName.toLowerCase().includes('cari') || reportName.toLowerCase().includes('bakiye')) {
+  if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
     return "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z";
-  } else if (reportName.toLowerCase().includes('ciro') || reportName.toLowerCase().includes('satış')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('ciro') || reportName.toLocaleLowerCase('tr-TR').includes('satış')) {
     return "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1";
-  } else if (reportName.toLowerCase().includes('stok') || reportName.toLowerCase().includes('envanter')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('stok') || reportName.toLocaleLowerCase('tr-TR').includes('envanter')) {
     return "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4";
   } else {
     return "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z";

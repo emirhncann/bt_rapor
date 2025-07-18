@@ -18,11 +18,12 @@ interface CBakiyeTableProps {
   data: any[];
   preloadedDetails?: {[key: string]: any[]};
   onPageChange?: (pageData: any[], currentPage: number, itemsPerPage: number) => void;
+  selectedCurrencies?: number[];
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange }: CBakiyeTableProps) {
+export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange, selectedCurrencies = [] }: CBakiyeTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -103,6 +104,24 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     return isNaN(parsed) ? 0 : parsed;
   };
 
+  // Currency No'yu TRCURR değerine map et
+  const mapCurrencyNoToTRCURR = (currencyNo: number): number => {
+    switch(currencyNo) {
+      case 53: return 0;  // TL -> TRCURR 0
+      case 1: return 1;   // USD -> TRCURR 1
+      case 20: return 20; // EUR -> TRCURR 20
+      default: return currencyNo; // Diğer kurlar için aynı değer
+    }
+  };
+
+  // Seçili kurları TRCURR değerlerine çevir
+  const getSelectedTRCURRValues = (): number[] => {
+    if (!selectedCurrencies || selectedCurrencies.length === 0) {
+      return []; // Hiç kur seçilmemişse tüm kurları göster
+    }
+    return selectedCurrencies.map(mapCurrencyNoToTRCURR);
+  };
+
   // Müşteri detaylarını getir
   const fetchClientDetails = async (clientRef: string, clientName: string, bypassCache: boolean = false) => {
     setSelectedClientRef(clientRef);
@@ -151,7 +170,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       
       // SQL sorgusu - detay sorgusu
       const detailQuery = `
-         SELECT 
+        SELECT 
           CLIENTREF,
           DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) AS [Tarih],
           TRANNO AS [Fiş No],
@@ -215,19 +234,42 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
             ELSE 'Diğer'
           END AS [Fiş Türü],
           LINEEXP AS [Açıklama],
-          FORMAT(DEBIT, 'N', 'tr-TR') AS [Borç],
-          FORMAT(CREDIT, 'N', 'tr-TR') AS [Alacak],
+          CASE 
+            WHEN SIGN=0 THEN 
+              CASE TRCURR
+                WHEN 0 THEN AMOUNT  -- TL ise TL tutarı
+                ELSE TRNET          -- Başka döviz ise orijinal döviz tutarı
+              END
+            WHEN SIGN=1 THEN 0
+          END AS [Borç],
+          CASE 
+            WHEN SIGN=0 THEN 0
+            WHEN SIGN=1 THEN 
+              CASE TRCURR
+                WHEN 0 THEN AMOUNT  -- TL ise TL tutarı
+                ELSE TRNET          -- Başka döviz ise orijinal döviz tutarı
+              END
+          END AS [Alacak],
           CASE TRCURR
             WHEN 0 THEN 'TL'
             WHEN 1 THEN 'USD'
             WHEN 20 THEN 'EURO'
           END AS [Döviz],
+          TRRATE [Kur],
+          AMOUNT [Tutar(TL)],
           CASE CANCELLED
             WHEN 0 THEN 'İptal Edilmemiş'
             WHEN 1 THEN 'İptal Edilmiş'
           END AS [İptal Durumu]
-        FROM LV_${firmaNo}_${donemNo}_CLEKSTRE 
-        WHERE CLIENTREF=${clientRef}
+        FROM LG_${firmaNo}_${donemNo}_CLFLINE CLFLINE
+        WHERE CLIENTREF = ${clientRef}
+        ${(() => {
+          const selectedTRCURRValues = getSelectedTRCURRValues();
+          if (selectedTRCURRValues.length > 0) {
+            return `AND TRCURR IN (${selectedTRCURRValues.join(',')})`;
+          }
+          return '';
+        })()}
         ORDER BY DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) ASC
       `;
 
@@ -811,8 +853,8 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
   // Arama fonksiyonu
   const filteredData = data.filter((item) =>
     Object.entries(item).some(([key, value]) => {
-      const valueStr = String(value).toLowerCase();
-      const searchStr = searchTerm.toLowerCase();
+      const valueStr = String(value).toLocaleLowerCase('tr-TR');
+      const searchStr = searchTerm.toLocaleLowerCase('tr-TR');
       
       // Özel arama desenleri
       if (searchStr.endsWith('*') && !searchStr.startsWith('*')) {
@@ -958,8 +1000,8 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     }
     
     // String değerler için
-    const aStr = String(aValue || '').toLowerCase();
-    const bStr = String(bValue || '').toLowerCase();
+    const aStr = String(aValue || '').toLocaleLowerCase('tr-TR');
+    const bStr = String(bValue || '').toLocaleLowerCase('tr-TR');
     
     if (sortDirection === 'asc') {
       return aStr.localeCompare(bStr, 'tr');
@@ -1869,6 +1911,21 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                     <h3 className="text-xl font-bold">📋 Müşteri Hesap Hareketleri</h3>
                     <p className="text-red-100 text-sm mt-2">
                       Müşteri Kodu: {selectedClientRef} {clientDetails.length > 0 && `• ${clientDetails.length} hareket bulundu`}
+                      {(() => {
+                        const selectedTRCURRValues = getSelectedTRCURRValues();
+                        if (selectedTRCURRValues.length > 0) {
+                          const currencyNames = selectedTRCURRValues.map(trcurr => {
+                            switch(trcurr) {
+                              case 0: return 'TL';
+                              case 1: return 'USD';
+                              case 20: return 'EUR';
+                              default: return `Kur-${trcurr}`;
+                            }
+                          });
+                          return ` • Sadece: ${currencyNames.join(', ')}`;
+                        }
+                        return ' • Tüm kurlar';
+                      })()}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1934,6 +1991,8 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Borç</th>
                               <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Alacak</th>
                               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Döviz</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Kur</th>
+                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Tutar</th>
                               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Durum</th>
                             </tr>
                           </thead>
@@ -1986,6 +2045,20 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                                     {detail.Döviz}
                                   </span>
                                 </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-700 w-20">
+                                  <div className="text-xs">
+                                    {detail.Döviz !== 'TL' && detail.Kur && detail.Kur > 0 ? 
+                                      safeParseFloat(detail.Kur).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                                      : '-'}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-sm text-right font-bold text-gray-900 w-20">
+                                  <div className="text-xs">
+                                    {detail['Tutar(TL)'] ? 
+                                      `${safeParseFloat(detail['Tutar(TL)']).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
+                                      : '-'}
+                                  </div>
+                                </td>
                                 <td className="px-3 py-3 text-sm text-center w-20">
                                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                     detail['İptal Durumu'] === 'İptal Edilmiş' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
@@ -2019,7 +2092,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                                 {detail.Tarih ? new Date(detail.Tarih).toLocaleDateString('tr-TR') : ''}
                               </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col items-end gap-1">
                               <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                                 detail.Döviz === 'TL' ? 'bg-red-100 text-red-800' :
                                 detail.Döviz === 'USD' ? 'bg-green-100 text-green-800' :
@@ -2028,6 +2101,11 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                               }`}>
                                 {detail.Döviz}
                               </span>
+                              {detail.Döviz !== 'TL' && detail.Kur && detail.Kur > 0 && (
+                                <span className="text-xs text-gray-500">
+                                  Kur: {safeParseFloat(detail.Kur).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -2054,19 +2132,33 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                           )}
 
                           {/* Amount Row */}
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3 mb-3">
                             <div className="bg-red-50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 mb-1">BORÇ</p>
+                              <p className="text-xs text-gray-600 mb-1">BORÇ ({detail.Döviz})</p>
                               <p className="text-lg font-bold text-red-800">
-                                {detail.Borç && detail.Borç !== '0,00' ? detail.Borç : '-'}
+                                {detail.Borç && detail.Borç !== '0,00' ? 
+                                  `${safeParseFloat(detail.Borç).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                  : '-'}
                               </p>
                             </div>
                             <div className="bg-green-50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 mb-1">ALACAK</p>
+                              <p className="text-xs text-gray-600 mb-1">ALACAK ({detail.Döviz})</p>
                               <p className="text-lg font-bold text-green-800">
-                                {detail.Alacak && detail.Alacak !== '0,00' ? detail.Alacak : '-'}
+                                {detail.Alacak && detail.Alacak !== '0,00' ? 
+                                  `${safeParseFloat(detail.Alacak).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                  : '-'}
                               </p>
                             </div>
+                          </div>
+
+                          {/* Tutar Row */}
+                          <div className="bg-blue-50 rounded-lg p-3">
+                            <p className="text-xs text-gray-600 mb-1">TUTAR (TL)</p>
+                            <p className="text-lg font-bold text-blue-800">
+                              {detail['Tutar(TL)'] ? 
+                                `${safeParseFloat(detail['Tutar(TL)']).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
+                                : '-'}
+                            </p>
                           </div>
                         </div>
                       ))}

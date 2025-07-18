@@ -80,8 +80,8 @@ export default function CBakiye() {
         
         // Cari Bakiye raporu şirketin paketinde var mı kontrol et
         const cariBakiyeReport = allReports.find(report => 
-          report.report_name.toLowerCase().includes('cari') && 
-          report.report_name.toLowerCase().includes('bakiye')
+                  report.report_name.toLocaleLowerCase('tr-TR').includes('cari') &&
+        report.report_name.toLocaleLowerCase('tr-TR').includes('bakiye')
         );
         
         if (!cariBakiyeReport) {
@@ -1257,6 +1257,7 @@ export default function CBakiye() {
           data={data} 
           preloadedDetails={preloadedDetails}
           onPageChange={handlePageChange}
+          selectedCurrencies={selectedCurrencies}
         />
       ) : (
           <div className="bg-white rounded-lg shadow p-12">

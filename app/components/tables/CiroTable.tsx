@@ -439,8 +439,8 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
   // Arama fonksiyonu
   const filteredData = data.filter((item) =>
     Object.entries(item).some(([key, value]) => {
-      const valueStr = String(value).toLowerCase();
-      const searchStr = searchTerm.toLowerCase();
+      const valueStr = String(value).toLocaleLowerCase('tr-TR');
+      const searchStr = searchTerm.toLocaleLowerCase('tr-TR');
       
       // Özel arama desenleri
       if (searchStr.endsWith('*') && !searchStr.startsWith('*')) {
@@ -486,8 +486,8 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
     }
     
     // String değerler için
-    const aStr = String(aValue).toLowerCase();
-    const bStr = String(bValue).toLowerCase();
+    const aStr = String(aValue).toLocaleLowerCase('tr-TR');
+    const bStr = String(bValue).toLocaleLowerCase('tr-TR');
     
     if (sortDirection === 'asc') {
       return aStr.localeCompare(bStr, 'tr');

@@ -75,8 +75,8 @@ export default function EnposCiro() {
         
         // Enpos Ciro raporu şirketin paketinde var mı kontrol et
         const enposCiroReport = allReports.find(report => 
-          report.report_name.toLowerCase().includes('enpos') && 
-          report.report_name.toLowerCase().includes('ciro')
+                  report.report_name.toLocaleLowerCase('tr-TR').includes('enpos') &&
+        report.report_name.toLocaleLowerCase('tr-TR').includes('ciro')
         );
         
         if (!enposCiroReport) {

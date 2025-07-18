@@ -15,8 +15,8 @@ export default function CurrencySelector({ selectedCurrencies, onCurrencyChange,
 
   // Filtreleme için arama terimi
   const filteredCurrencies = CURRENCIES.filter(currency => 
-    currency.Adı.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    currency.Kodu.toLowerCase().includes(searchTerm.toLowerCase())
+    currency.Adı.toLocaleLowerCase('tr-TR').includes(searchTerm.toLocaleLowerCase('tr-TR')) ||
+    currency.Kodu.toLocaleLowerCase('tr-TR').includes(searchTerm.toLocaleLowerCase('tr-TR'))
   );
 
   const handleCurrencyToggle = (currencyNo: number) => {

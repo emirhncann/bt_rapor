@@ -83,8 +83,8 @@ export default function EnvanterRaporu() {
         
         // Envanter raporu şirketin paketinde var mı kontrol et
         const envanterRaporu = allReports.find(report => 
-          report.report_name.toLowerCase().includes('envanter') || 
-          report.report_name.toLowerCase().includes('stok')
+                  report.report_name.toLocaleLowerCase('tr-TR').includes('envanter') ||
+        report.report_name.toLocaleLowerCase('tr-TR').includes('stok')
         );
         
         if (!envanterRaporu) {

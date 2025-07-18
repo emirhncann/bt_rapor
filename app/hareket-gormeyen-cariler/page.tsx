@@ -192,18 +192,18 @@ export default function HareketGormeyenler() {
 
     let filtered = data.filter(row => {
       // Cari kodu filtreleri
-      if (cariFilters.cariKoduExclude && row.CODE?.toLowerCase().includes(cariFilters.cariKoduExclude.toLowerCase())) {
+      if (cariFilters.cariKoduExclude && row.CODE?.toLocaleLowerCase('tr-TR').includes(cariFilters.cariKoduExclude.toLocaleLowerCase('tr-TR'))) {
         return false;
       }
-      if (cariFilters.cariKoduInclude && !row.CODE?.toLowerCase().includes(cariFilters.cariKoduInclude.toLowerCase())) {
+      if (cariFilters.cariKoduInclude && !row.CODE?.toLocaleLowerCase('tr-TR').includes(cariFilters.cariKoduInclude.toLocaleLowerCase('tr-TR'))) {
         return false;
       }
 
       // Ünvan filtreleri
-      if (cariFilters.unvanExclude && row.DEFINITION_?.toLowerCase().includes(cariFilters.unvanExclude.toLowerCase())) {
+      if (cariFilters.unvanExclude && row.DEFINITION_?.toLocaleLowerCase('tr-TR').includes(cariFilters.unvanExclude.toLocaleLowerCase('tr-TR'))) {
         return false;
       }
-      if (cariFilters.unvanInclude && !row.DEFINITION_?.toLowerCase().includes(cariFilters.unvanInclude.toLowerCase())) {
+      if (cariFilters.unvanInclude && !row.DEFINITION_?.toLocaleLowerCase('tr-TR').includes(cariFilters.unvanInclude.toLocaleLowerCase('tr-TR'))) {
         return false;
       }
 
@@ -220,8 +220,8 @@ export default function HareketGormeyenler() {
           return regex.test(value);
         }
         
-        // Normal string içerme kontrolü
-        return value.toLowerCase().includes(pattern.toLowerCase());
+        // Normal string içerme kontrolü - Türkçe karakterler için düzeltildi
+        return value.toLocaleLowerCase('tr-TR').includes(pattern.toLocaleLowerCase('tr-TR'));
       };
 
       const checkSpecialCode = (
@@ -231,29 +231,43 @@ export default function HareketGormeyenler() {
         includePattern: string,
         excludePattern: string
       ) => {
-        if (!codeValue) return true;
+        // Eğer değer yoksa
+        if (!codeValue) {
+          // Dahil et listesi varsa ve boş değer dahil değilse, gösterme
+          if (includeList.length > 0) {
+            return false;
+          }
+          // Dahil et pattern'i varsa, gösterme
+          if (includePattern) {
+            return false;
+          }
+          // Diğer durumlarda göster (exclude filtresi boş değeri etkilemez)
+          return true;
+        }
         
-        // Önce exclude pattern kontrolü
+        // Önce EXCLUDE kontrolü - eğer hariç tutulacaksa direkt false
         if (excludePattern && matchesPattern(codeValue, excludePattern)) {
           return false;
         }
         
-        // Sonra exclude list kontrolü
         if (excludeList.length > 0 && excludeList.includes(codeValue)) {
           return false;
         }
         
-        // Include pattern kontrolü
-        if (includePattern && !matchesPattern(codeValue, includePattern)) {
-          return false;
+        // Sonra INCLUDE kontrolü - eğer dahil edilecek liste/pattern varsa, onları kontrol et
+        let shouldInclude = true;
+        
+        // Dahil et listesi varsa, değer listede olmalı
+        if (includeList.length > 0) {
+          shouldInclude = includeList.includes(codeValue);
         }
         
-        // Include list kontrolü
-        if (includeList.length > 0 && !includeList.includes(codeValue)) {
-          return false;
+        // Dahil et pattern'i varsa, değer pattern'e uymalı
+        if (includePattern && shouldInclude) {
+          shouldInclude = matchesPattern(codeValue, includePattern);
         }
 
-        return true; // Hiçbir filtre yoksa veya tüm filtreler geçerse dahil et
+        return shouldInclude;
       };
 
       if (!checkSpecialCode(row['Ozel Kod 1'], cariFilters.ozelKod1Include, cariFilters.ozelKod1Exclude, cariFilters.ozelKod1IncludePattern, cariFilters.ozelKod1ExcludePattern)) return false;
@@ -324,10 +338,10 @@ export default function HareketGormeyenler() {
         
         // Hareket görmeyen cariler raporu şirketin paketinde var mı kontrol et
         const hareketGormeyenlerReport = allReports.find(report => 
-          report.report_name.toLowerCase().includes('hareket') && 
-          report.report_name.toLowerCase().includes('görmeyen') ||
-          report.report_name.toLowerCase().includes('cari') && 
-          report.report_name.toLowerCase().includes('hareket')
+                  report.report_name.toLocaleLowerCase('tr-TR').includes('hareket') &&
+        report.report_name.toLocaleLowerCase('tr-TR').includes('görmeyen') ||
+        report.report_name.toLocaleLowerCase('tr-TR').includes('cari') &&
+        report.report_name.toLocaleLowerCase('tr-TR').includes('hareket')
         );
         
         if (!hareketGormeyenlerReport) {
@@ -785,47 +799,51 @@ export default function HareketGormeyenler() {
   return (
     <DashboardLayout title="Hareket Görmeyen Cariler">
       <div className="space-y-6">
-        {/* Header Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Hareket Görmeyen Cariler</h2>
-                <p className="text-red-100 text-sm">
-                  {lastDate} tarihinden sonra hareket görmemiş cariler | 
-                  Ham Veri: {data.length} | 
-                  Filtrelenmiş: {filteredData.length}
-                </p>
+        {/* Modern Header Section */}
+        <div className="bg-gradient-to-r from-gray-900 via-red-900 to-red-800 rounded-xl shadow-lg border border-red-800">
+          <div className="p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center">
+                <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center mr-6 shadow-lg">
+                  <img 
+                    src="/img/btRapor.png" 
+                    alt="btRapor Logo" 
+                    className="h-10 w-auto"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-white mb-2">Hareket Görmeyen Cariler</h1>
+                  <div className="flex flex-wrap items-center gap-4 text-red-100 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span>📅</span>
+                      <span>Son Tarih: {lastDate}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>📊</span>
+                      <span>Ham Veri: {data.length}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>🔍</span>
+                      <span>Filtrelenmiş: {filteredData.length}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-lg lg:text-xl font-semibold text-white">{new Date().toLocaleDateString('tr-TR')}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={handleFetchReport}
-                  disabled={loading}
-                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <span>📊</span>
-                  Raporu Getir
-                </button>
+              
+              <div className="mt-6 lg:mt-0 flex flex-col space-y-3">
+                <div className="text-right">
+                  <p className="text-red-100 text-sm">Rapor Tarihi</p>
+                  <p className="text-xl font-semibold text-white">{new Date().toLocaleDateString('tr-TR')}</p>
+                </div>
                 {data.length > 0 && (
                   <button
                     onClick={() => setShowCariFilters(!showCariFilters)}
-                    className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium flex items-center gap-2"
+                    className="px-6 py-2.5 bg-white bg-opacity-10 backdrop-blur-sm text-white rounded-lg hover:bg-opacity-20 transition-all duration-200 font-medium flex items-center justify-center gap-2 border border-white border-opacity-20"
                   >
                     <span>🔍</span>
                     Cari Filtreleri
                     {getActiveFilterCount() > 0 && (
-                      <span className="bg-yellow-500 text-white text-xs px-2 py-1 rounded-full">
+                      <span className="bg-yellow-500 text-black text-xs px-2 py-1 rounded-full font-bold">
                         {getActiveFilterCount()}
                       </span>
                     )}
@@ -836,37 +854,70 @@ export default function HareketGormeyenler() {
           </div>
         </div>
 
-        {/* SQL Filtre Parametreleri */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-            <span>🎯</span>
-            Filtre Parametreleri
-          </h3>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Sol taraf: Tarih ve Modül */}
-            <div className="space-y-6">
-              {/* Tarih Seçimi */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Son Hareket Tarihi
-                </label>
+        {/* Modern Filtre Paneli */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          {/* Filtre Başlığı */}
+          <div className="px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                  <span className="text-red-600 text-lg">🎯</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Filtre Parametreleri</h3>
+                  <p className="text-sm text-gray-500">Raporlama kriterlerinizi belirleyin</p>
+                </div>
+              </div>
+              <button
+                onClick={handleFetchReport}
+                disabled={loading}
+                className="px-6 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Yükleniyor...
+                  </>
+                ) : (
+                  <>
+                    <span>📊</span>
+                    Raporu Getir
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Filtre İçeriği */}
+          <div className="p-6">
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+              {/* Tarih Kartı */}
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-white text-sm">📅</span>
+                  </div>
+                  <h4 className="text-sm font-semibold text-blue-900">Son Hareket Tarihi</h4>
+                </div>
                 <input
                   type="date"
                   value={lastDate}
                   onChange={(e) => setLastDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Bu tarihten sonra hareket görmemiş cariler gösterilecek
+                <p className="text-xs text-blue-600 mt-2">
+                  Bu tarihten sonra hareket görmemiş cariler
                 </p>
               </div>
 
-              {/* Modül Seçimi */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  İşlem Modülleri
-                </label>
+              {/* Modül Kartı */}
+              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-white text-sm">⚙️</span>
+                  </div>
+                  <h4 className="text-sm font-semibold text-green-900">İşlem Modülleri</h4>
+                </div>
                 <div className="space-y-2">
                   <label className="flex items-center">
                     <input
@@ -880,24 +931,24 @@ export default function HareketGormeyenler() {
                           setSelectedTRCodes([]);
                         }
                       }}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      className="rounded border-green-300 text-green-600 focus:ring-green-500"
                     />
-                    <span className="ml-2 text-sm text-gray-700 font-medium">Tüm Modüller</span>
+                    <span className="ml-2 text-sm text-green-800 font-medium">Tüm Modüller</span>
                   </label>
                   
                   {!allModules && (
-                    <div className="max-h-40 overflow-y-auto space-y-2 border rounded p-3">
+                    <div className="max-h-32 overflow-y-auto space-y-1 bg-white rounded border border-green-200 p-2">
                       {MODULE_CATEGORIES.map(module => (
-                        <label key={module.moduleNr} className="flex items-start">
+                        <label key={module.moduleNr} className="flex items-start text-xs">
                           <input
                             type="checkbox"
                             checked={selectedModules.includes(module.moduleNr)}
                             onChange={() => toggleModule(module.moduleNr)}
-                            className="rounded border-gray-300 text-red-600 focus:ring-red-500 mt-0.5"
+                            className="rounded border-green-300 text-green-600 focus:ring-green-500 mt-0.5 mr-2"
                           />
-                          <div className="ml-2">
-                            <div className="text-sm font-medium text-gray-800">{module.name}</div>
-                            <div className="text-xs text-gray-500">{module.description}</div>
+                          <div>
+                            <div className="font-medium text-gray-800">{module.name}</div>
+                            <div className="text-gray-500">{module.description}</div>
                           </div>
                         </label>
                       ))}
@@ -905,15 +956,15 @@ export default function HareketGormeyenler() {
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* Sağ taraf: TR Kodları ve İşaretler */}
-            <div className="space-y-6">
-              {/* TR Code Seçimi */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  İşlem Türleri
-                </label>
+              {/* İşlem Türleri Kartı */}
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-white text-sm">📋</span>
+                  </div>
+                  <h4 className="text-sm font-semibold text-purple-900">İşlem Türleri</h4>
+                </div>
                 <div className="space-y-2">
                   <label className="flex items-center">
                     <input
@@ -925,22 +976,22 @@ export default function HareketGormeyenler() {
                           setSelectedTRCodes([]);
                         }
                       }}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
                     />
-                    <span className="ml-2 text-sm text-gray-700 font-medium">Tüm İşlem Türleri</span>
+                    <span className="ml-2 text-sm text-purple-800 font-medium">Tüm Türler</span>
                   </label>
                   
                   {!allTRCodes && (
-                    <div className="max-h-40 overflow-y-auto space-y-1 border rounded p-2">
+                    <div className="max-h-32 overflow-y-auto bg-white rounded border border-purple-200 p-2">
                       {getAvailableTRCodes().map(trCode => (
-                        <label key={`${trCode.code}`} className="flex items-center">
+                        <label key={`${trCode.code}`} className="flex items-center text-xs">
                           <input
                             type="checkbox"
                             checked={selectedTRCodes.includes(trCode.code)}
                             onChange={() => toggleTRCode(trCode.code)}
-                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                            className="rounded border-purple-300 text-purple-600 focus:ring-purple-500 mr-2"
                           />
-                          <span className="ml-2 text-xs text-gray-600">
+                          <span className="text-gray-600">
                             {trCode.code} - {trCode.description}
                           </span>
                         </label>
@@ -950,11 +1001,14 @@ export default function HareketGormeyenler() {
                 </div>
               </div>
 
-              {/* Sign Seçimi */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  İşaret Türü
-                </label>
+              {/* İşaret Türü Kartı */}
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-white text-sm">⚖️</span>
+                  </div>
+                  <h4 className="text-sm font-semibold text-orange-900">İşaret Türü</h4>
+                </div>
                 <div className="space-y-2">
                   <label className="flex items-center">
                     <input
@@ -966,24 +1020,22 @@ export default function HareketGormeyenler() {
                           setSelectedSigns([]);
                         }
                       }}
-                      className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      className="rounded border-orange-300 text-orange-600 focus:ring-orange-500"
                     />
-                    <span className="ml-2 text-sm text-gray-700 font-medium">Tüm İşaretler</span>
+                    <span className="ml-2 text-sm text-orange-800 font-medium">Tüm İşaretler</span>
                   </label>
                   
                   {!allSigns && (
                     <div className="space-y-1">
                       {SIGN_CODES.map(signCode => (
-                        <label key={signCode.code} className="flex items-center">
+                        <label key={signCode.code} className="flex items-center text-sm">
                           <input
                             type="checkbox"
                             checked={selectedSigns.includes(signCode.code)}
                             onChange={() => toggleSign(signCode.code)}
-                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                            className="rounded border-orange-300 text-orange-600 focus:ring-orange-500 mr-2"
                           />
-                          <span className="ml-2 text-sm text-gray-600">
-                            {signCode.description}
-                          </span>
+                          <span className="text-orange-800">{signCode.description}</span>
                         </label>
                       ))}
                     </div>
@@ -994,130 +1046,215 @@ export default function HareketGormeyenler() {
           </div>
         </div>
 
-        {/* Frontend Cari Filtreleri */}
+        {/* Modern Cari Filtreleri */}
         {showCariFilters && data.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
-                <span>🔍</span>
-                Cari Filtreleri
-              </h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={clearCariFilters}
-                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-                >
-                  Filtreleri Temizle
-                </button>
-                <button
-                  onClick={() => setShowCariFilters(false)}
-                  className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
-                >
-                  Kapat
-                </button>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+            {/* Filtre Başlığı */}
+            <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <span className="text-white text-lg">🔍</span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-blue-900">Cari Filtreleri</h3>
+                    <div className="text-sm text-blue-600 space-y-1">
+                      <p>Mevcut veriler üzerinde detaylı filtreleme</p>
+                      <p className="text-xs">
+                        💡 <span className="font-medium text-green-700">Dahil Et:</span> Sadece seçilen/eşleşen değerleri gösterir | 
+                        <span className="font-medium text-red-700 ml-2">Hariç Tut:</span> Seçilen/eşleşen değerleri gizler
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={clearCariFilters}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+                  >
+                    <span>🧹</span>
+                    Temizle
+                  </button>
+                  <button
+                    onClick={() => setShowCariFilters(false)}
+                    className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+                  >
+                    <span>✕</span>
+                    Kapat
+                  </button>
+                </div>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Metin Filtreleri */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Cari Kodu Filtreleri
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-xs text-green-700 font-medium mb-1">Dahil Et:</div>
-                      <input
-                        type="text"
-                        value={cariFilters.cariKoduInclude}
-                        onChange={(e) => updateCariFilter('cariKoduInclude', e.target.value)}
-                        placeholder="Cari kodunda ara..."
-                        className="w-full px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-xs text-red-700 font-medium mb-1">Hariç Tut:</div>
-                      <input
-                        type="text"
-                        value={cariFilters.cariKoduExclude}
-                        onChange={(e) => updateCariFilter('cariKoduExclude', e.target.value)}
-                        placeholder="Hariç tutulacak kodlar..."
-                        className="w-full px-2 py-1 text-sm border border-red-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Cari Ünvan Filtreleri
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-xs text-green-700 font-medium mb-1">Dahil Et:</div>
-                      <input
-                        type="text"
-                        value={cariFilters.unvanInclude}
-                        onChange={(e) => updateCariFilter('unvanInclude', e.target.value)}
-                        placeholder="Ünvanda ara..."
-                        className="w-full px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-xs text-red-700 font-medium mb-1">Hariç Tut:</div>
-                      <input
-                        type="text"
-                        value={cariFilters.unvanExclude}
-                        onChange={(e) => updateCariFilter('unvanExclude', e.target.value)}
-                        placeholder="Hariç tutulacak ünvanlar..."
-                        className="w-full px-2 py-1 text-sm border border-red-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Özel Kod Filtreleri */}
-              <div className="space-y-4">
-                {[1, 2, 3, 4, 5].map(codeNum => {
-                  const codeType = `ozelKod${codeNum}` as 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5';
-                  const availableCodes = uniqueSpecialCodes[codeType];
-                  
-                  if (availableCodes.length === 0) return null;
-
-                  return (
-                    <div key={codeNum}>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Özel Kod {codeNum}
-                      </label>
-                      
-                      {/* Pattern Filtreleri */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <div className="text-xs text-green-700 font-medium mb-1">Dahil Et Pattern (*, abc*):</div>
-                          <input
-                            type="text"
-                            value={cariFilters[`${codeType}IncludePattern` as keyof typeof cariFilters] as string}
-                            onChange={(e) => updateCariFilter(`${codeType}IncludePattern` as keyof typeof cariFilters, e.target.value)}
-                            placeholder="abc* veya *xyz"
-                            className="w-full px-2 py-1 text-xs border border-green-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500"
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs text-red-700 font-medium mb-1">Hariç Tut Pattern (*, abcd*):</div>
-                          <input
-                            type="text"
-                            value={cariFilters[`${codeType}ExcludePattern` as keyof typeof cariFilters] as string}
-                            onChange={(e) => updateCariFilter(`${codeType}ExcludePattern` as keyof typeof cariFilters, e.target.value)}
-                            placeholder="abcd* veya *test"
-                            className="w-full px-2 py-1 text-xs border border-red-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500"
-                          />
-                        </div>
+            {/* Filtre İçeriği */}
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Metin Filtreleri */}
+                <div className="space-y-6">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                    <h4 className="text-sm font-semibold text-green-900 mb-3 flex items-center gap-2">
+                      <span className="w-6 h-6 bg-green-600 rounded text-white text-xs flex items-center justify-center">📝</span>
+                      Cari Kodu Filtreleri
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-green-700 font-medium mb-1 block">Dahil Et:</label>
+                        <input
+                          type="text"
+                          value={cariFilters.cariKoduInclude}
+                          onChange={(e) => updateCariFilter('cariKoduInclude', e.target.value)}
+                          placeholder="Cari kodunda ara..."
+                          className="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-red-700 font-medium mb-1 block">Hariç Tut:</label>
+                        <input
+                          type="text"
+                          value={cariFilters.cariKoduExclude}
+                          onChange={(e) => updateCariFilter('cariKoduExclude', e.target.value)}
+                          placeholder="Hariç tutulacak kodlar..."
+                          className="w-full px-3 py-2 text-sm border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                        />
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+
+                  <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-lg p-4 border border-purple-200">
+                    <h4 className="text-sm font-semibold text-purple-900 mb-3 flex items-center gap-2">
+                      <span className="w-6 h-6 bg-purple-600 rounded text-white text-xs flex items-center justify-center">🏢</span>
+                      Cari Ünvan Filtreleri
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-green-700 font-medium mb-1 block">Dahil Et:</label>
+                        <input
+                          type="text"
+                          value={cariFilters.unvanInclude}
+                          onChange={(e) => updateCariFilter('unvanInclude', e.target.value)}
+                          placeholder="Ünvanda ara..."
+                          className="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-red-700 font-medium mb-1 block">Hariç Tut:</label>
+                        <input
+                          type="text"
+                          value={cariFilters.unvanExclude}
+                          onChange={(e) => updateCariFilter('unvanExclude', e.target.value)}
+                          placeholder="Hariç tutulacak ünvanlar..."
+                          className="w-full px-3 py-2 text-sm border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Özel Kod Filtreleri */}
+                <div className="space-y-4">
+                  <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                    <span className="w-8 h-8 bg-indigo-600 rounded-lg text-white text-sm flex items-center justify-center">🏷️</span>
+                    Özel Kod Filtreleri
+                  </h4>
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {[1, 2, 3, 4, 5].map(codeNum => {
+                      const codeType = `ozelKod${codeNum}` as 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5';
+                      const availableCodes = uniqueSpecialCodes[codeType];
+                      
+                      if (availableCodes.length === 0) return null;
+
+                      return (
+                        <div key={codeNum} className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg p-4 border border-gray-200">
+                          <h5 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <span className="w-6 h-6 bg-gray-600 rounded text-white text-xs flex items-center justify-center">{codeNum}</span>
+                            Özel Kod {codeNum} 
+                            <span className="text-xs text-gray-500">({availableCodes.length} değer)</span>
+                          </h5>
+                          
+                          <div className="space-y-3">
+                            {/* Pattern Filtreleri */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-green-700 font-medium mb-1 block">
+                                  Dahil Et Pattern:
+                                  <span className="text-green-600 font-normal ml-1">(Sadece eşleşenleri göster)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={cariFilters[`${codeType}IncludePattern` as keyof typeof cariFilters] as string}
+                                  onChange={(e) => updateCariFilter(`${codeType}IncludePattern` as keyof typeof cariFilters, e.target.value)}
+                                  placeholder="abc* veya *xyz"
+                                  className="w-full px-2 py-1.5 text-xs border border-green-300 rounded-md focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-red-700 font-medium mb-1 block">
+                                  Hariç Tut Pattern:
+                                  <span className="text-red-600 font-normal ml-1">(Eşleşenleri gösterme)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={cariFilters[`${codeType}ExcludePattern` as keyof typeof cariFilters] as string}
+                                  onChange={(e) => updateCariFilter(`${codeType}ExcludePattern` as keyof typeof cariFilters, e.target.value)}
+                                  placeholder="abcd* veya *test"
+                                  className="w-full px-2 py-1.5 text-xs border border-red-300 rounded-md focus:ring-1 focus:ring-red-500 focus:border-red-500 bg-white"
+                                />
+                              </div>
+                            </div>
+                            
+                            {/* Checkbox Filtreleri */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-green-700 font-medium mb-2 block">
+                                  Dahil Et Değerler:
+                                  <span className="text-green-600 font-normal ml-1">(Sadece seçilenleri göster)</span>
+                                </label>
+                                <div className="max-h-24 overflow-y-auto bg-white border border-green-300 rounded-md p-2 space-y-1">
+                                  {availableCodes.map(code => (
+                                    <label key={`${codeType}-include-${code}`} className="flex items-center text-xs">
+                                      <input
+                                        type="checkbox"
+                                        checked={(cariFilters[`${codeType}Include` as keyof typeof cariFilters] as string[]).includes(code)}
+                                        onChange={() => toggleSpecialCodeFilter(codeType, 'Include', code)}
+                                        className="rounded border-green-300 text-green-600 focus:ring-green-500 mr-1.5"
+                                      />
+                                      <span className="text-gray-700">{code}</span>
+                                    </label>
+                                  ))}
+                                  {availableCodes.length === 0 && (
+                                    <span className="text-xs text-gray-400">Değer bulunamadı</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-xs text-red-700 font-medium mb-2 block">
+                                  Hariç Tut Değerler:
+                                  <span className="text-red-600 font-normal ml-1">(Seçilenleri gösterme)</span>
+                                </label>
+                                <div className="max-h-24 overflow-y-auto bg-white border border-red-300 rounded-md p-2 space-y-1">
+                                  {availableCodes.map(code => (
+                                    <label key={`${codeType}-exclude-${code}`} className="flex items-center text-xs">
+                                      <input
+                                        type="checkbox"
+                                        checked={(cariFilters[`${codeType}Exclude` as keyof typeof cariFilters] as string[]).includes(code)}
+                                        onChange={() => toggleSpecialCodeFilter(codeType, 'Exclude', code)}
+                                        className="rounded border-red-300 text-red-600 focus:ring-red-500 mr-1.5"
+                                      />
+                                      <span className="text-gray-700">{code}</span>
+                                    </label>
+                                  ))}
+                                  {availableCodes.length === 0 && (
+                                    <span className="text-xs text-gray-400">Değer bulunamadı</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

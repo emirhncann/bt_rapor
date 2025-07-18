@@ -45,7 +45,7 @@ export default function ExcelUploader({
     }
 
     // Dosya türü kontrolü
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    const fileExtension = file.name.toLocaleLowerCase('tr-TR').substring(file.name.lastIndexOf('.'));
     if (!acceptedFormats.includes(fileExtension)) {
       return `Sadece ${acceptedFormats.join(', ')} dosyaları kabul edilir.`;
     }

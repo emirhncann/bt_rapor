@@ -297,7 +297,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             
             {/* Hareket Görmeyen Cariler */}
             <a
-              href="/hareket-gormeyenler"
+              href="/hareket-gormeyen-cariler"
               className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600 hover:bg-purple-50 rounded-lg group transition-colors duration-200"
               title="Belirli bir süre hareket görmeyen cari hesapları listeler"
             >
