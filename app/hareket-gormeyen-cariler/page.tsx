@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
+import * as XLSX from 'xlsx';
 import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
@@ -121,24 +122,14 @@ export default function HareketGormeyenler() {
     unvanExclude: '',
     ozelKod1Include: [] as string[],
     ozelKod1Exclude: [] as string[],
-    ozelKod1IncludePattern: '',
-    ozelKod1ExcludePattern: '',
     ozelKod2Include: [] as string[],
     ozelKod2Exclude: [] as string[],
-    ozelKod2IncludePattern: '',
-    ozelKod2ExcludePattern: '',
     ozelKod3Include: [] as string[],
     ozelKod3Exclude: [] as string[],
-    ozelKod3IncludePattern: '',
-    ozelKod3ExcludePattern: '',
     ozelKod4Include: [] as string[],
     ozelKod4Exclude: [] as string[],
-    ozelKod4IncludePattern: '',
-    ozelKod4ExcludePattern: '',
     ozelKod5Include: [] as string[],
-    ozelKod5Exclude: [] as string[],
-    ozelKod5IncludePattern: '',
-    ozelKod5ExcludePattern: ''
+    ozelKod5Exclude: [] as string[]
   });
   
   const [showCariFilters, setShowCariFilters] = useState(false);
@@ -156,30 +147,40 @@ export default function HareketGormeyenler() {
   const [animationData, setAnimationData] = useState(null);
   const [failedAnimationData, setFailedAnimationData] = useState(null);
 
-  // Benzersiz özel kod değerlerini çıkar
+  // Benzersiz özel kod değerlerini ve açıklamalarını çıkar
   const uniqueSpecialCodes = useMemo(() => {
     const codes = {
-      ozelKod1: new Set<string>(),
-      ozelKod2: new Set<string>(),
-      ozelKod3: new Set<string>(),
-      ozelKod4: new Set<string>(),
-      ozelKod5: new Set<string>()
+      ozelKod1: new Map<string, string>(),
+      ozelKod2: new Map<string, string>(),
+      ozelKod3: new Map<string, string>(),
+      ozelKod4: new Map<string, string>(),
+      ozelKod5: new Map<string, string>()
     };
 
     data.forEach(row => {
-      if (row['Ozel Kod 1']) codes.ozelKod1.add(row['Ozel Kod 1']);
-      if (row['Ozel Kod 2']) codes.ozelKod2.add(row['Ozel Kod 2']);
-      if (row['Ozel Kod 3']) codes.ozelKod3.add(row['Ozel Kod 3']);
-      if (row['Ozel Kod 4']) codes.ozelKod4.add(row['Ozel Kod 4']);
-      if (row['Ozel Kod 5']) codes.ozelKod5.add(row['Ozel Kod 5']);
+      if (row['Ozel Kod 1']) {
+        codes.ozelKod1.set(row['Ozel Kod 1'], row['Ozel Kod 1 Açıklama'] || '');
+      }
+      if (row['Ozel Kod 2']) {
+        codes.ozelKod2.set(row['Ozel Kod 2'], row['Ozel Kod 2 Açıklama'] || '');
+      }
+      if (row['Ozel Kod 3']) {
+        codes.ozelKod3.set(row['Ozel Kod 3'], row['Ozel Kod 3 Açıklama'] || '');
+      }
+      if (row['Ozel Kod 4']) {
+        codes.ozelKod4.set(row['Ozel Kod 4'], row['Ozel Kod 4 Açıklama'] || '');
+      }
+      if (row['Ozel Kod 5']) {
+        codes.ozelKod5.set(row['Ozel Kod 5'], row['Ozel Kod 5 Açıklama'] || '');
+      }
     });
 
     return {
-      ozelKod1: Array.from(codes.ozelKod1).sort(),
-      ozelKod2: Array.from(codes.ozelKod2).sort(),
-      ozelKod3: Array.from(codes.ozelKod3).sort(),
-      ozelKod4: Array.from(codes.ozelKod4).sort(),
-      ozelKod5: Array.from(codes.ozelKod5).sort()
+      ozelKod1: Array.from(codes.ozelKod1.entries()).sort(([a], [b]) => a.localeCompare(b, 'tr-TR')),
+      ozelKod2: Array.from(codes.ozelKod2.entries()).sort(([a], [b]) => a.localeCompare(b, 'tr-TR')),
+      ozelKod3: Array.from(codes.ozelKod3.entries()).sort(([a], [b]) => a.localeCompare(b, 'tr-TR')),
+      ozelKod4: Array.from(codes.ozelKod4.entries()).sort(([a], [b]) => a.localeCompare(b, 'tr-TR')),
+      ozelKod5: Array.from(codes.ozelKod5.entries()).sort(([a], [b]) => a.localeCompare(b, 'tr-TR'))
     };
   }, [data]);
 
@@ -207,29 +208,11 @@ export default function HareketGormeyenler() {
         return false;
       }
 
-      // Özel kod filtreleri - hem checkbox hem pattern desteği
-      const matchesPattern = (value: string, pattern: string): boolean => {
-        if (!pattern) return true;
-        
-        // Wildcard (*) desteği
-        if (pattern.includes('*')) {
-          const regexPattern = pattern
-            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
-            .replace(/\\\*/g, '.*'); // Convert * to .*
-          const regex = new RegExp(`^${regexPattern}$`, 'i');
-          return regex.test(value);
-        }
-        
-        // Normal string içerme kontrolü - Türkçe karakterler için düzeltildi
-        return value.toLocaleLowerCase('tr-TR').includes(pattern.toLocaleLowerCase('tr-TR'));
-      };
-
+      // Özel kod filtreleri - sadece checkbox desteği
       const checkSpecialCode = (
         codeValue: string, 
         includeList: string[], 
-        excludeList: string[],
-        includePattern: string,
-        excludePattern: string
+        excludeList: string[]
       ) => {
         // Eğer değer yoksa
         if (!codeValue) {
@@ -237,44 +220,28 @@ export default function HareketGormeyenler() {
           if (includeList.length > 0) {
             return false;
           }
-          // Dahil et pattern'i varsa, gösterme
-          if (includePattern) {
-            return false;
-          }
           // Diğer durumlarda göster (exclude filtresi boş değeri etkilemez)
           return true;
         }
         
         // Önce EXCLUDE kontrolü - eğer hariç tutulacaksa direkt false
-        if (excludePattern && matchesPattern(codeValue, excludePattern)) {
-          return false;
-        }
-        
         if (excludeList.length > 0 && excludeList.includes(codeValue)) {
           return false;
         }
         
-        // Sonra INCLUDE kontrolü - eğer dahil edilecek liste/pattern varsa, onları kontrol et
-        let shouldInclude = true;
-        
-        // Dahil et listesi varsa, değer listede olmalı
+        // Sonra INCLUDE kontrolü - eğer dahil edilecek liste varsa, değer listede olmalı
         if (includeList.length > 0) {
-          shouldInclude = includeList.includes(codeValue);
-        }
-        
-        // Dahil et pattern'i varsa, değer pattern'e uymalı
-        if (includePattern && shouldInclude) {
-          shouldInclude = matchesPattern(codeValue, includePattern);
+          return includeList.includes(codeValue);
         }
 
-        return shouldInclude;
+        return true;
       };
 
-      if (!checkSpecialCode(row['Ozel Kod 1'], cariFilters.ozelKod1Include, cariFilters.ozelKod1Exclude, cariFilters.ozelKod1IncludePattern, cariFilters.ozelKod1ExcludePattern)) return false;
-      if (!checkSpecialCode(row['Ozel Kod 2'], cariFilters.ozelKod2Include, cariFilters.ozelKod2Exclude, cariFilters.ozelKod2IncludePattern, cariFilters.ozelKod2ExcludePattern)) return false;
-      if (!checkSpecialCode(row['Ozel Kod 3'], cariFilters.ozelKod3Include, cariFilters.ozelKod3Exclude, cariFilters.ozelKod3IncludePattern, cariFilters.ozelKod3ExcludePattern)) return false;
-      if (!checkSpecialCode(row['Ozel Kod 4'], cariFilters.ozelKod4Include, cariFilters.ozelKod4Exclude, cariFilters.ozelKod4IncludePattern, cariFilters.ozelKod4ExcludePattern)) return false;
-      if (!checkSpecialCode(row['Ozel Kod 5'], cariFilters.ozelKod5Include, cariFilters.ozelKod5Exclude, cariFilters.ozelKod5IncludePattern, cariFilters.ozelKod5ExcludePattern)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 1'], cariFilters.ozelKod1Include, cariFilters.ozelKod1Exclude)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 2'], cariFilters.ozelKod2Include, cariFilters.ozelKod2Exclude)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 3'], cariFilters.ozelKod3Include, cariFilters.ozelKod3Exclude)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 4'], cariFilters.ozelKod4Include, cariFilters.ozelKod4Exclude)) return false;
+      if (!checkSpecialCode(row['Ozel Kod 5'], cariFilters.ozelKod5Include, cariFilters.ozelKod5Exclude)) return false;
 
       return true;
     });
@@ -733,24 +700,14 @@ export default function HareketGormeyenler() {
       unvanExclude: '',
       ozelKod1Include: [],
       ozelKod1Exclude: [],
-      ozelKod1IncludePattern: '',
-      ozelKod1ExcludePattern: '',
       ozelKod2Include: [],
       ozelKod2Exclude: [],
-      ozelKod2IncludePattern: '',
-      ozelKod2ExcludePattern: '',
       ozelKod3Include: [],
       ozelKod3Exclude: [],
-      ozelKod3IncludePattern: '',
-      ozelKod3ExcludePattern: '',
       ozelKod4Include: [],
       ozelKod4Exclude: [],
-      ozelKod4IncludePattern: '',
-      ozelKod4ExcludePattern: '',
       ozelKod5Include: [],
-      ozelKod5Exclude: [],
-      ozelKod5IncludePattern: '',
-      ozelKod5ExcludePattern: ''
+      ozelKod5Exclude: []
     });
   };
 
@@ -768,14 +725,331 @@ export default function HareketGormeyenler() {
         if (Array.isArray(value) && value.length > 0) {
           count++;
         }
-        // String filtreleri (pattern fields)
-        else if (typeof value === 'string' && value.trim()) {
-          count++;
-        }
       }
     });
     
     return count;
+  };
+
+  // Excel Export fonksiyonu
+  const exportToExcel = () => {
+    try {
+      if (filteredData.length === 0) {
+        alert('Export edilecek veri bulunamadı.');
+        return;
+      }
+
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+
+      // Export verilerini hazırla
+      const exportData = filteredData.map(row => ({
+        'Cari Kodu': row.CODE || '',
+        'Cari Ünvanı': row.DEFINITION_ || '',
+        'Özel Kod 1': row['Ozel Kod 1'] || '',
+        'Özel Kod 1 Açıklama': row['Ozel Kod 1 Açıklama'] || '',
+        'Özel Kod 2': row['Ozel Kod 2'] || '',
+        'Özel Kod 2 Açıklama': row['Ozel Kod 2 Açıklama'] || '',
+        'Özel Kod 3': row['Ozel Kod 3'] || '',
+        'Özel Kod 3 Açıklama': row['Ozel Kod 3 Açıklama'] || '',
+        'Özel Kod 4': row['Ozel Kod 4'] || '',
+        'Özel Kod 4 Açıklama': row['Ozel Kod 4 Açıklama'] || '',
+        'Özel Kod 5': row['Ozel Kod 5'] || '',
+        'Özel Kod 5 Açıklama': row['Ozel Kod 5 Açıklama'] || '',
+        'Yetki Kodu': row['Yetki Kodu'] || '',
+        'Yetki Kodu Açıklama': row['Yetki Kodu Açıklama'] || ''
+      }));
+
+      // Filtre bilgilerini ayrı bir sheet'e ekle
+      const filterInfo = [
+        ['Hareket Görmeyen Cariler Raporu - Filtre Bilgileri'],
+        [''],
+        ['Rapor Tarihi:', new Date().toLocaleString('tr-TR')],
+        ['Son Hareket Tarihi:', lastDate],
+        [''],
+        ['SQL Filtreleri:'],
+        ['Modüller:', allModules ? 'Tüm Modüller' : `${selectedModules.length} Modül Seçili`],
+        ['İşlem Türleri:', allTRCodes ? 'Tüm Türler' : `${selectedTRCodes.length} Tür Seçili`],
+        ['İşaret Türü:', allSigns ? 'Tüm İşaretler' : `${selectedSigns.length} İşaret Seçili`],
+        [''],
+        ['Frontend Filtreleri:'],
+        ['Cari Kodu (Dahil):', cariFilters.cariKoduInclude || 'Boş'],
+        ['Cari Kodu (Hariç):', cariFilters.cariKoduExclude || 'Boş'],
+        ['Ünvan (Dahil):', cariFilters.unvanInclude || 'Boş'],
+        ['Ünvan (Hariç):', cariFilters.unvanExclude || 'Boş'],
+        [''],
+        ['Özel Kod Filtreleri:']
+      ];
+
+      // Özel kod filtrelerini ekle
+      [1, 2, 3, 4, 5].forEach(num => {
+        const codeType = `ozelKod${num}` as 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5';
+        const includeList = cariFilters[`${codeType}Include` as keyof typeof cariFilters] as string[];
+        const excludeList = cariFilters[`${codeType}Exclude` as keyof typeof cariFilters] as string[];
+        
+        if (includeList.length > 0 || excludeList.length > 0) {
+          filterInfo.push([`Özel Kod ${num}:`]);
+          if (includeList.length > 0) {
+            filterInfo.push([`  Dahil Et: ${includeList.join(', ')}`]);
+          }
+          if (excludeList.length > 0) {
+            filterInfo.push([`  Hariç Tut: ${excludeList.join(', ')}`]);
+          }
+        }
+      });
+
+      filterInfo.push([''], [`Toplam Kayıt: ${data.length} / Filtrelenmiş: ${filteredData.length}`], [''], ['Rapor Notu:'], [`Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde`], [`${userName} tarafından BT Rapor sistemi üzerinden alınmıştır.`], [`${lastDate} tarihinden sonra hiç hareket görmeyen cari hesaplar listelenmektedir.`]);
+
+      // Workbook oluştur
+      const workbook = XLSX.utils.book_new();
+      
+      // Ana veri sheet'i
+      const dataWorksheet = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(workbook, dataWorksheet, 'Hareket Görmeyen Cariler');
+
+      // Filtre bilgileri sheet'i
+      const filterWorksheet = XLSX.utils.aoa_to_sheet(filterInfo);
+      XLSX.utils.book_append_sheet(workbook, filterWorksheet, 'Filtre Bilgileri');
+
+      // Sütun genişliklerini ayarla
+      dataWorksheet['!cols'] = [
+        { wch: 15 }, // Cari Kodu
+        { wch: 40 }, // Cari Ünvanı
+        { wch: 12 }, // Özel Kod 1
+        { wch: 25 }, // Özel Kod 1 Açıklama
+        { wch: 12 }, // Özel Kod 2
+        { wch: 25 }, // Özel Kod 2 Açıklama
+        { wch: 12 }, // Özel Kod 3
+        { wch: 25 }, // Özel Kod 3 Açıklama
+        { wch: 12 }, // Özel Kod 4
+        { wch: 25 }, // Özel Kod 4 Açıklama
+        { wch: 12 }, // Özel Kod 5
+        { wch: 25 }, // Özel Kod 5 Açıklama
+        { wch: 12 }, // Yetki Kodu
+        { wch: 25 }  // Yetki Kodu Açıklama
+      ];
+
+      filterWorksheet['!cols'] = [
+        { wch: 30 },
+        { wch: 50 }
+      ];
+
+      // Dosyayı indir
+      const fileName = `Hareket_Görmeyen_Cariler_${new Date().toLocaleDateString('tr-TR').replace(/\//g, '_')}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+
+      console.log('✅ Excel export tamamlandı:', fileName);
+    } catch (error) {
+      console.error('❌ Excel export hatası:', error);
+      alert('Excel dosyası oluşturulurken hata oluştu.');
+    }
+  };
+
+  // PDF Export fonksiyonu
+  const exportToPDF = () => {
+    try {
+      if (filteredData.length === 0) {
+        alert('Yazdırılacak veri bulunamadı.');
+        return;
+      }
+
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+
+      // Yazdırma için HTML oluştur
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Pop-up engelleyici nedeniyle PDF yazdırma penceresi açılamıyor.');
+        return;
+      }
+
+      // Filtre bilgilerini hazırla
+      const activeFilters = [];
+      if (cariFilters.cariKoduInclude) activeFilters.push(`Cari Kodu (Dahil): ${cariFilters.cariKoduInclude}`);
+      if (cariFilters.cariKoduExclude) activeFilters.push(`Cari Kodu (Hariç): ${cariFilters.cariKoduExclude}`);
+      if (cariFilters.unvanInclude) activeFilters.push(`Ünvan (Dahil): ${cariFilters.unvanInclude}`);
+      if (cariFilters.unvanExclude) activeFilters.push(`Ünvan (Hariç): ${cariFilters.unvanExclude}`);
+      
+      [1, 2, 3, 4, 5].forEach(num => {
+        const codeType = `ozelKod${num}` as 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5';
+        const includeList = cariFilters[`${codeType}Include` as keyof typeof cariFilters] as string[];
+        const excludeList = cariFilters[`${codeType}Exclude` as keyof typeof cariFilters] as string[];
+        
+        if (includeList.length > 0) {
+          activeFilters.push(`Özel Kod ${num} (Dahil): ${includeList.join(', ')}`);
+        }
+        if (excludeList.length > 0) {
+          activeFilters.push(`Özel Kod ${num} (Hariç): ${excludeList.join(', ')}`);
+        }
+      });
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Hareket Görmeyen Cariler Raporu</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
+            .header { margin-bottom: 30px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+            .header-top { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
+            .logo { width: 100px; height: auto; flex-shrink: 0; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .header-content { flex: 1; }
+            .header h1 { color: white; margin: 0 0 8px 0; font-size: 22px; text-align: left; font-weight: bold; letter-spacing: 0.5px; }
+            .header p { margin: 3px 0; color: rgba(255,255,255,0.9); font-size: 12px; text-align: left; }
+            .pdf-info { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 10px; margin-bottom: 25px; border-radius: 4px; }
+            .pdf-info strong { color: #92400e; }
+            
+            /* İstatistik Kutuları */
+            .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+            .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
+            .stat-box.primary { border-color: #991b1b; background-color: #fef2f2; }
+            .stat-box.success { border-color: #059669; background-color: #ecfdf5; }
+            .stat-box.warning { border-color: #d97706; background-color: #fffbeb; }
+            .stat-title { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
+            .stat-value { font-size: 14px; font-weight: bold; color: #1f2937; }
+            .stat-subtitle { font-size: 8px; color: #9ca3af; margin-top: 2px; }
+            
+            /* Filtre Bilgileri */
+            .filter-info { background-color: #f0f9ff; border: 1px solid #0ea5e9; padding: 12px; margin-bottom: 20px; border-radius: 6px; }
+            .filter-info h3 { margin: 0 0 8px 0; color: #0c4a6e; font-size: 12px; }
+            .filter-item { font-size: 9px; color: #374151; margin: 2px 0; }
+            
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 8px; }
+            th, td { border: 1px solid #ddd; padding: 3px; text-align: left; }
+            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 8px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .center { text-align: center; }
+            
+            @media print {
+              body { margin: 0; font-size: 10px; }
+              .pdf-info { display: none; }
+              .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
+              .stat-box { padding: 8px; }
+              table { font-size: 7px; }
+              th, td { padding: 2px; }
+              .header { margin-bottom: 20px; padding: 15px; }
+              .header-top { gap: 15px; margin-bottom: 10px; }
+              .logo { width: 75px; }
+              .header h1 { font-size: 16px; margin: 0 0 3px 0; }
+              .header p { font-size: 9px; margin: 1px 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+              <div class="header-content">
+                <h1>HAREKET GÖRMEYEN CARİLER RAPORU</h1>
+                <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleString('tr-TR')}</p>
+                <p><strong>Son Hareket Tarihi:</strong> ${lastDate}</p>
+                <p><strong>Sistem:</strong> BT Rapor - Cari Hesap Analiz Sistemi</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="pdf-info">
+            <strong>PDF Raporu:</strong> Bu rapor yazdırma için optimize edilmiştir. Tarayıcınızın yazdır menüsünden "PDF olarak kaydet" seçeneğini kullanabilirsiniz.
+          </div>
+
+          <!-- İstatistikler -->
+          <div class="stats-grid">
+                         <div class="stat-box primary">
+               <div class="stat-title">TOPLAM HAM VERİ</div>
+               <div class="stat-value">${data.length}</div>
+               <div class="stat-subtitle">Veritabanından çekilen</div>
+             </div>
+                         <div class="stat-box success">
+               <div class="stat-title">FİLTRELENMİŞ VERİ</div>
+               <div class="stat-value">${filteredData.length}</div>
+               <div class="stat-subtitle">Gösterilen kayıt</div>
+             </div>
+                                      <div class="stat-box warning">
+                <div class="stat-title">AKTİF FİLTRELER</div>
+                <div class="stat-value">${getActiveFilterCount()}</div>
+                <div class="stat-subtitle">Ekran filtresi</div>
+               </div>
+          </div>
+
+          <!-- Filtre Bilgileri -->
+          ${activeFilters.length > 0 ? `
+          <div class="filter-info">
+            <h3>Aktif Filtreler:</h3>
+            ${activeFilters.map(filter => `<div class="filter-item">• ${filter}</div>`).join('')}
+          </div>
+          ` : ''}
+
+          <!-- SQL Filtre Parametreleri -->
+          <div class="filter-info">
+            <h3>Filtre Parametreleri:</h3>
+            <div class="filter-item">• Modüller: ${allModules ? 'Tüm Modüller' : `${selectedModules.length} Modül Seçili`}</div>
+            <div class="filter-item">• İşlem Türleri: ${allTRCodes ? 'Tüm Türler' : `${selectedTRCodes.length} Tür Seçili`}</div>
+            <div class="filter-item">• İşaret Türü: ${allSigns ? 'Tüm İşaretler' : `${selectedSigns.length} İşaret Seçili`}</div>
+          </div>
+
+          <!-- Veri Tablosu -->
+          <table>
+            <thead>
+              <tr>
+                <th>Cari Kodu</th>
+                <th>Cari Ünvanı</th>
+                <th>Özel Kod 1</th>
+                <th>Özel Kod 2</th>
+                <th>Özel Kod 3</th>
+                <th>Özel Kod 4</th>
+                <th>Özel Kod 5</th>
+                <th>Yetki Kodu</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredData.map(row => `
+                <tr>
+                  <td>${row.CODE || ''}</td>
+                  <td>${row.DEFINITION_ || ''}</td>
+                  <td>${row['Ozel Kod 1'] || ''}</td>
+                  <td>${row['Ozel Kod 2'] || ''}</td>
+                  <td>${row['Ozel Kod 3'] || ''}</td>
+                  <td>${row['Ozel Kod 4'] || ''}</td>
+                  <td>${row['Ozel Kod 5'] || ''}</td>
+                  <td>${row['Yetki Kodu'] || ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+                     <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
+             <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
+             ${lastDate} tarihinden sonra hiç hareket görmeyen cari hesaplar listelenmektedir.
+           </div>
+          
+          <script>
+            // Sayfa yüklendiğinde otomatik yazdırma diyaloğunu aç
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+            
+            // Yazdırma tamamlandığında veya iptal edildiğinde pencereyi kapat
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+
+      console.log('✅ PDF export (yazdır) başlatıldı');
+    } catch (error) {
+      console.error('❌ PDF export hatası:', error);
+      alert('PDF yazdırma işlemi sırasında hata oluştu.');
+    }
   };
 
   if (isCheckingAuth || isCheckingAccess) {
@@ -1061,8 +1335,8 @@ export default function HareketGormeyenler() {
                     <div className="text-sm text-blue-600 space-y-1">
                       <p>Mevcut veriler üzerinde detaylı filtreleme</p>
                       <p className="text-xs">
-                        💡 <span className="font-medium text-green-700">Dahil Et:</span> Sadece seçilen/eşleşen değerleri gösterir | 
-                        <span className="font-medium text-red-700 ml-2">Hariç Tut:</span> Seçilen/eşleşen değerleri gizler
+                        💡 <span className="font-medium text-green-700">Dahil Et:</span> Sadece seçilen değerleri gösterir | 
+                        <span className="font-medium text-red-700 ml-2">Hariç Tut:</span> Seçilen değerleri gizler
                       </p>
                     </div>
                   </div>
@@ -1153,10 +1427,10 @@ export default function HareketGormeyenler() {
                 {/* Özel Kod Filtreleri */}
                 <div className="space-y-4">
                   <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
-                    <span className="w-8 h-8 bg-indigo-600 rounded-lg text-white text-sm flex items-center justify-center">🏷️</span>
+                    <span className="w-8 h-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg text-white text-sm flex items-center justify-center shadow-md">🏷️</span>
                     Özel Kod Filtreleri
                   </h4>
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
                     {[1, 2, 3, 4, 5].map(codeNum => {
                       const codeType = `ozelKod${codeNum}` as 'ozelKod1' | 'ozelKod2' | 'ozelKod3' | 'ozelKod4' | 'ozelKod5';
                       const availableCodes = uniqueSpecialCodes[codeType];
@@ -1164,90 +1438,72 @@ export default function HareketGormeyenler() {
                       if (availableCodes.length === 0) return null;
 
                       return (
-                        <div key={codeNum} className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg p-4 border border-gray-200">
+                        <div key={codeNum} className="bg-gradient-to-br from-gray-50 via-white to-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
                           <h5 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                            <span className="w-6 h-6 bg-gray-600 rounded text-white text-xs flex items-center justify-center">{codeNum}</span>
-                            Özel Kod {codeNum} 
-                            <span className="text-xs text-gray-500">({availableCodes.length} değer)</span>
+                            <span className="w-7 h-7 bg-gradient-to-r from-gray-600 to-gray-700 rounded-lg text-white text-xs flex items-center justify-center shadow-sm font-bold">{codeNum}</span>
+                            <span className="text-gray-800">Özel Kod {codeNum}</span>
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                              {availableCodes.length} değer
+                            </span>
                           </h5>
                           
-                          <div className="space-y-3">
-                            {/* Pattern Filtreleri */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-xs text-green-700 font-medium mb-1 block">
-                                  Dahil Et Pattern:
-                                  <span className="text-green-600 font-normal ml-1">(Sadece eşleşenleri göster)</span>
-                                </label>
-                                <input
-                                  type="text"
-                                  value={cariFilters[`${codeType}IncludePattern` as keyof typeof cariFilters] as string}
-                                  onChange={(e) => updateCariFilter(`${codeType}IncludePattern` as keyof typeof cariFilters, e.target.value)}
-                                  placeholder="abc* veya *xyz"
-                                  className="w-full px-2 py-1.5 text-xs border border-green-300 rounded-md focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-red-700 font-medium mb-1 block">
-                                  Hariç Tut Pattern:
-                                  <span className="text-red-600 font-normal ml-1">(Eşleşenleri gösterme)</span>
-                                </label>
-                                <input
-                                  type="text"
-                                  value={cariFilters[`${codeType}ExcludePattern` as keyof typeof cariFilters] as string}
-                                  onChange={(e) => updateCariFilter(`${codeType}ExcludePattern` as keyof typeof cariFilters, e.target.value)}
-                                  placeholder="abcd* veya *test"
-                                  className="w-full px-2 py-1.5 text-xs border border-red-300 rounded-md focus:ring-1 focus:ring-red-500 focus:border-red-500 bg-white"
-                                />
-                              </div>
-                            </div>
-                            
-                            {/* Checkbox Filtreleri */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-xs text-green-700 font-medium mb-2 block">
-                                  Dahil Et Değerler:
-                                  <span className="text-green-600 font-normal ml-1">(Sadece seçilenleri göster)</span>
-                                </label>
-                                <div className="max-h-24 overflow-y-auto bg-white border border-green-300 rounded-md p-2 space-y-1">
-                                  {availableCodes.map(code => (
-                                    <label key={`${codeType}-include-${code}`} className="flex items-center text-xs">
+                          {/* Sadece Checkbox Filtreleri */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                              <label className="text-xs text-green-800 font-medium mb-2 block flex items-center gap-1">
+                                <span className="w-4 h-4 bg-green-600 rounded text-white text-xs flex items-center justify-center">✓</span>
+                                Dahil Et
+                                <span className="text-green-600 font-normal">(Seçilenleri göster)</span>
+                              </label>
+                                                             <div className="max-h-28 overflow-y-auto bg-white border border-green-300 rounded-md p-2 space-y-1.5">
+                                  {availableCodes.map(([code, description]) => (
+                                    <label key={`${codeType}-include-${code}`} className="flex items-start text-xs group hover:bg-green-50 p-1 rounded transition-colors cursor-pointer">
                                       <input
                                         type="checkbox"
                                         checked={(cariFilters[`${codeType}Include` as keyof typeof cariFilters] as string[]).includes(code)}
                                         onChange={() => toggleSpecialCodeFilter(codeType, 'Include', code)}
-                                        className="rounded border-green-300 text-green-600 focus:ring-green-500 mr-1.5"
+                                        className="rounded border-green-300 text-green-600 focus:ring-green-500 mr-2 mt-0.5 transition-colors flex-shrink-0"
                                       />
-                                      <span className="text-gray-700">{code}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-gray-800 group-hover:text-green-800 font-medium">{code}</div>
+                                        {description && (
+                                          <div className="text-gray-500 group-hover:text-green-700 text-xs mt-0.5 truncate">{description}</div>
+                                        )}
+                                      </div>
                                     </label>
                                   ))}
                                   {availableCodes.length === 0 && (
-                                    <span className="text-xs text-gray-400">Değer bulunamadı</span>
+                                    <span className="text-xs text-gray-400 italic">Değer bulunamadı</span>
                                   )}
                                 </div>
-                              </div>
-                              <div>
-                                <label className="text-xs text-red-700 font-medium mb-2 block">
-                                  Hariç Tut Değerler:
-                                  <span className="text-red-600 font-normal ml-1">(Seçilenleri gösterme)</span>
-                                </label>
-                                <div className="max-h-24 overflow-y-auto bg-white border border-red-300 rounded-md p-2 space-y-1">
-                                  {availableCodes.map(code => (
-                                    <label key={`${codeType}-exclude-${code}`} className="flex items-center text-xs">
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+                              <label className="text-xs text-red-800 font-medium mb-2 block flex items-center gap-1">
+                                <span className="w-4 h-4 bg-red-600 rounded text-white text-xs flex items-center justify-center">✕</span>
+                                Hariç Tut
+                                <span className="text-red-600 font-normal">(Seçilenleri gizle)</span>
+                              </label>
+                                                             <div className="max-h-28 overflow-y-auto bg-white border border-red-300 rounded-md p-2 space-y-1.5">
+                                  {availableCodes.map(([code, description]) => (
+                                    <label key={`${codeType}-exclude-${code}`} className="flex items-start text-xs group hover:bg-red-50 p-1 rounded transition-colors cursor-pointer">
                                       <input
                                         type="checkbox"
                                         checked={(cariFilters[`${codeType}Exclude` as keyof typeof cariFilters] as string[]).includes(code)}
                                         onChange={() => toggleSpecialCodeFilter(codeType, 'Exclude', code)}
-                                        className="rounded border-red-300 text-red-600 focus:ring-red-500 mr-1.5"
+                                        className="rounded border-red-300 text-red-600 focus:ring-red-500 mr-2 mt-0.5 transition-colors flex-shrink-0"
                                       />
-                                      <span className="text-gray-700">{code}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-gray-800 group-hover:text-red-800 font-medium">{code}</div>
+                                        {description && (
+                                          <div className="text-gray-500 group-hover:text-red-700 text-xs mt-0.5 truncate">{description}</div>
+                                        )}
+                                      </div>
                                     </label>
                                   ))}
                                   {availableCodes.length === 0 && (
-                                    <span className="text-xs text-gray-400">Değer bulunamadı</span>
+                                    <span className="text-xs text-gray-400 italic">Değer bulunamadı</span>
                                   )}
                                 </div>
-                              </div>
                             </div>
                           </div>
                         </div>
@@ -1298,7 +1554,7 @@ export default function HareketGormeyenler() {
             {getActiveFilterCount() > 0 && (
               <div className="mt-3 pt-3 border-t border-blue-200">
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium text-blue-800">Frontend Filtreleri:</span>
+                  <span className="font-medium text-blue-800">Ekran Filtreleri:</span>
                   <span className="text-blue-700">{getActiveFilterCount()} aktif filtre</span>
                   <span className="text-blue-600">→</span>
                   <span className="font-medium text-blue-800">{filteredData.length} / {data.length} kayıt gösteriliyor</span>
@@ -1308,15 +1564,43 @@ export default function HareketGormeyenler() {
           </div>
         )}
 
-        {/* Sonuç Bilgi Kartı */}
+        {/* Sonuç Bilgi ve Export Kartı */}
         {hasFetched && data.length > 0 && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-green-800">
-              <span>✅</span>
-              <span className="font-medium">
-                Toplam {data.length} hareket görmeyen cari bulundu
-                {getActiveFilterCount() > 0 && `, ${filteredData.length} tanesi filtreleme sonrası gösteriliyor`}
-              </span>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-green-800">
+                <span>✅</span>
+                <span className="font-medium">
+                  Toplam {data.length} hareket görmeyen cari bulundu
+                  {getActiveFilterCount() > 0 && `, ${filteredData.length} tanesi filtreleme sonrası gösteriliyor`}
+                </span>
+              </div>
+              
+              {/* Export Butonları */}
+              {filteredData.length > 0 && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={exportToExcel}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
+                    title="Excel olarak indir (Filtre bilgileri dahil)"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    Excel
+                  </button>
+                  <button
+                    onClick={exportToPDF}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-200 flex items-center gap-2 shadow-sm"
+                    title="PDF olarak yazdır (Filtre bilgileri dahil)"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    PDF
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1375,6 +1659,73 @@ export default function HareketGormeyenler() {
             </button>
           </div>
         </div>
+
+        {/* Export Seçenekleri */}
+        {filteredData.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <span className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                      </svg>
+                    </span>
+                    Rapor Export İşlemleri
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Filtrelenmiş verileri Excel veya PDF formatında indirebilirsiniz
+                  </p>
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={exportToExcel}
+                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    Excel İndir
+                    <span className="bg-white bg-opacity-20 px-2 py-1 rounded text-xs">
+                      {filteredData.length} kayıt
+                    </span>
+                  </button>
+                  <button
+                    onClick={exportToPDF}
+                    className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    PDF Yazdır
+                    <span className="bg-white bg-opacity-20 px-2 py-1 rounded text-xs">
+                      {filteredData.length} kayıt
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-3 bg-gray-50">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span className="text-gray-600">Excel: 2 sheet (Veri + Filtre Bilgileri)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  <span className="text-gray-600">PDF: Yazdırma optimizasyonlu</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  <span className="text-gray-600">Filtreler: Tüm aktif filtreler dahil</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Data Table */}
         {loading ? (
