@@ -177,7 +177,7 @@ export default function CBakiye() {
   };
 
   // Birden fazla müşteri için hareket detaylarını çek (IN operatörü ile)
-  const fetchMultipleClientDetails = async (clientRefs: string[], connectionInfo: any): Promise<{[key: string]: any[]}> => {
+  const fetchMultipleClientDetails = async (clientRefs: string[], connectionInfo: any, selectedCurrencies: number[] = []): Promise<{[key: string]: any[]}> => {
     try {
       if (!Array.isArray(clientRefs) || clientRefs.length === 0) {
         return {};
@@ -197,7 +197,25 @@ export default function CBakiye() {
       // ClientRef'leri IN sorgusu için hazırla
       const clientRefList = clientRefs.map(ref => `'${ref}'`).join(', ');
       
-      // SQL sorgusu - IN operatörü ile birden fazla müşteri
+      // Currency No'yu TRCURR değerine map et
+      const mapCurrencyNoToTRCURR = (currencyNo: number): number => {
+        switch(currencyNo) {
+          case 53: return 0;  // TL -> TRCURR 0
+          case 1: return 1;   // USD -> TRCURR 1
+          case 20: return 20; // EUR -> TRCURR 20
+          default: return currencyNo; // Diğer kurlar için aynı değer
+        }
+      };
+
+      // Seçili kurları TRCURR değerlerine çevir
+      const getSelectedTRCURRValues = (): number[] => {
+        if (!selectedCurrencies || selectedCurrencies.length === 0) {
+          return []; // Hiç kur seçilmemişse tüm kurları göster
+        }
+        return selectedCurrencies.map(mapCurrencyNoToTRCURR);
+      };
+
+      // SQL sorgusu - detay sorgusu (CBakiyeTable.tsx ile aynı)
       const detailQuery = `
         SELECT 
           CLIENTREF,
@@ -263,19 +281,42 @@ export default function CBakiye() {
             ELSE 'Diğer'
           END AS [Fiş Türü],
           LINEEXP AS [Açıklama],
-          FORMAT(DEBIT, 'N', 'tr-TR') AS [Borç],
-          FORMAT(CREDIT, 'N', 'tr-TR') AS [Alacak],
+          CASE 
+            WHEN SIGN=0 THEN 
+              CASE TRCURR
+                WHEN 0 THEN AMOUNT  -- TL ise TL tutarı
+                ELSE TRNET          -- Başka döviz ise orijinal döviz tutarı
+              END
+            WHEN SIGN=1 THEN 0
+          END AS [Borç],
+          CASE 
+            WHEN SIGN=0 THEN 0
+            WHEN SIGN=1 THEN 
+              CASE TRCURR
+                WHEN 0 THEN AMOUNT  -- TL ise TL tutarı
+                ELSE TRNET          -- Başka döviz ise orijinal döviz tutarı
+              END
+          END AS [Alacak],
           CASE TRCURR
             WHEN 0 THEN 'TL'
             WHEN 1 THEN 'USD'
             WHEN 20 THEN 'EURO'
           END AS [Döviz],
+          TRRATE [Kur],
+          AMOUNT [Tutar(TL)],
           CASE CANCELLED
             WHEN 0 THEN 'İptal Edilmemiş'
             WHEN 1 THEN 'İptal Edilmiş'
           END AS [İptal Durumu]
-        FROM LV_${firmaNo}_${donemNo}_CLEKSTRE 
+        FROM LG_${firmaNo}_${donemNo}_CLFLINE CLFLINE
         WHERE CLIENTREF IN (${clientRefList})
+        ${(() => {
+          const selectedTRCURRValues = getSelectedTRCURRValues();
+          if (selectedTRCURRValues.length > 0) {
+            return `AND TRCURR IN (${selectedTRCURRValues.join(',')})`;
+          }
+          return '';
+        })()}
         ORDER BY CLIENTREF, DATE_ + [dbo].[fn_LogoTimetoSystemTime](FTIME) ASC
       `;
 
@@ -438,7 +479,7 @@ export default function CBakiye() {
       const newPreloadedData = { ...preloadedDetailsRef.current };
       
       // Artık tek sorguda tüm müşterilerin verilerini çekiyoruz (çok daha verimli!)
-      const groupedDetails = await fetchMultipleClientDetails(missingRefs, connectionInfo);
+      const groupedDetails = await fetchMultipleClientDetails(missingRefs, connectionInfo, selectedCurrencies);
       
       // Sonuçları mevcut preloaded data'ya ekle
       Object.keys(groupedDetails).forEach(clientRef => {

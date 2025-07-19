@@ -533,7 +533,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
             .stat-subtitle { font-size: 8px; color: #9ca3af; margin-top: 2px; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
             th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
-            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            th { background-color: #1f2937 !important; color: white !important; font-weight: bold; font-size: 9px; border: 1px solid #000 !important; }
             tr:nth-child(even) { background-color: #f9f9f9; }
             .number { text-align: right; }
             .currency { font-weight: bold; }
@@ -546,6 +546,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
               .stat-box { padding: 8px; }
               table { font-size: 8px; }
               th, td { padding: 3px; }
+              th { background-color: #000000 !important; color: white !important; font-weight: bold !important; border: 1px solid #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               .header { margin-bottom: 20px; padding: 15px; }
               .header-top { gap: 15px; margin-bottom: 10px; }
               .logo { width: 75px; }
@@ -714,6 +715,235 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     }
   };
 
+  // Müşteri detayları Excel export fonksiyonu
+  const exportClientDetailsToExcel = () => {
+    try {
+      if (!clientDetails || clientDetails.length === 0) {
+        alert('İndirilecek müşteri hareketi bulunamadı.');
+        return;
+      }
+
+      // Müşteri bilgilerini al
+      const clientName = data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.['Cari Ünvanı'] || data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.ÜNVANI || 'Müşteri';
+
+      const clientCode = data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.['Cari Kodu'] || data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.KODU || selectedClientRef;
+
+      // Excel verisini hazırla
+      const exportData = clientDetails.map(detail => ({
+        'Tarih': detail.Tarih ? new Date(detail.Tarih).toLocaleDateString('tr-TR') : '',
+        'Fiş No': detail['Fiş No'] || '',
+        'Fiş Türü': detail['Fiş Türü'] || '',
+        'Açıklama': detail.Açıklama || '',
+        'Borç': detail.Borç && detail.Borç !== '0,00' ? 
+          `${safeParseFloat(detail.Borç).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '',
+        'Alacak': detail.Alacak && detail.Alacak !== '0,00' ? 
+          `${safeParseFloat(detail.Alacak).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '',
+        'Döviz': detail.Döviz || '',
+        'Kur': detail.Döviz !== 'TL' && detail.Kur && detail.Kur > 0 ? 
+          safeParseFloat(detail.Kur).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '',
+        'Tutar (TL)': detail['Tutar(TL)'] ? 
+          `${safeParseFloat(detail['Tutar(TL)']).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : '',
+        'İptal Durumu': detail['İptal Durumu'] || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Müşteri Hareketleri');
+
+      // Sütun genişliklerini ayarla
+      const columnWidths = [
+        { wch: 12 }, // Tarih
+        { wch: 15 }, // Fiş No
+        { wch: 30 }, // Fiş Türü
+        { wch: 40 }, // Açıklama
+        { wch: 15 }, // Borç
+        { wch: 15 }, // Alacak
+        { wch: 8 },  // Döviz
+        { wch: 12 }, // Kur
+        { wch: 15 }, // Tutar
+        { wch: 15 }  // İptal Durumu
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      // Dosyayı indir
+      const fileName = `Musteri_Hareketleri_${clientCode}_${new Date().toLocaleDateString('tr-TR').replace(/\//g, '_')}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+    } catch (error) {
+      console.error('Müşteri detayları Excel export hatası:', error);
+      alert('Excel dosyası oluşturulurken hata oluştu.');
+    }
+  };
+
+  // Müşteri detayları PDF export fonksiyonu
+  const exportClientDetailsToPDF = () => {
+    try {
+      if (!clientDetails || clientDetails.length === 0) {
+        alert('Yazdırılacak müşteri hareketi bulunamadı.');
+        return;
+      }
+
+      // Müşteri bilgilerini al
+      const clientName = data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.['Cari Ünvanı'] || data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.ÜNVANI || 'Müşteri';
+
+      const clientCode = data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.['Cari Kodu'] || data.find(row => 
+        (row.CLIENTREF || row.LOGICALREF || row.clientref || row.logicalref) === selectedClientRef
+      )?.KODU || selectedClientRef;
+
+      // Yazdırma için HTML oluştur
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Pop-up engelleyici nedeniyle PDF yazdırma penceresi açılamıyor.');
+        return;
+      }
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Müşteri Hesap Hareketleri - ${clientCode}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
+            .header { margin-bottom: 30px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+            .header-top { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
+            .logo { width: 100px; height: auto; flex-shrink: 0; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .header-content { flex: 1; }
+            .header h1 { color: white; margin: 0 0 8px 0; font-size: 22px; text-align: left; font-weight: bold; letter-spacing: 0.5px; }
+            .header p { margin: 3px 0; color: rgba(255,255,255,0.9); font-size: 12px; text-align: left; }
+            .pdf-info { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 10px; margin-bottom: 25px; border-radius: 4px; }
+            .pdf-info strong { color: #92400e; }
+            
+            .client-info { background-color: #f3f4f6; border-radius: 8px; padding: 15px; margin-bottom: 20px; border-left: 4px solid #991b1b; }
+            .client-info h3 { margin: 0 0 5px 0; color: #991b1b; font-size: 16px; }
+            .client-info p { margin: 2px 0; color: #374151; font-size: 12px; }
+            
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+            th { background-color:rgb(102, 0, 0) !important; color: white !important; font-weight: bold; font-size: 9px; border: 1px solid #000 !important; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .number { text-align: right; }
+            .currency { font-weight: bold; }
+            .center { text-align: center; }
+            @media print {
+              body { margin: 0; font-size: 10px; }
+              .pdf-info { display: none; }
+              table { font-size: 8px; }
+              th, td { padding: 3px; }
+              th { background-color: rgb(102, 0, 0)!important; color: white !important; font-weight: bold !important; border: 1px solid #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .header { margin-bottom: 20px; padding: 15px; }
+              .header-top { gap: 15px; margin-bottom: 10px; }
+              .logo { width: 75px; }
+              .header h1 { font-size: 16px; margin: 0 0 3px 0; }
+              .header p { font-size: 9px; margin: 1px 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+              <div class="header-content">
+                <h1>MÜŞTERİ HESAP HAREKETLERİ</h1>
+                <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR')}</p>
+                <p><strong>Toplam Hareket:</strong> ${clientDetails.length} adet</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="pdf-info">
+            <strong>📄 PDF Olarak Kaydetmek İçin:</strong><br>
+            Yazdırma diyaloğunda "Hedef" kısmından <strong>"PDF olarak kaydet"</strong> seçeneğini seçin.
+          </div>
+          
+          <div class="client-info">
+            <h3>👤 MÜŞTERİ BİLGİLERİ</h3>
+            <p><strong>Müşteri Kodu:</strong> ${clientCode}</p>
+            <p><strong>Müşteri Ünvanı:</strong> ${clientName}</p>
+          </div>
+          
+          <h3 style="color: #991b1b; margin: 20px 0 10px 0; font-size: 14px; border-bottom: 2px solid #991b1b; padding-bottom: 5px;">DETAYLI HAREKET LİSTESİ</h3>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Fiş No</th>
+                <th>Fiş Türü</th>
+                <th>Açıklama</th>
+                <th>Borç</th>
+                <th>Alacak</th>
+                <th>Döviz</th>
+                <th>Kur</th>
+                <th>Tutar (TL)</th>
+                <th>Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${clientDetails.map(detail => `
+                <tr>
+                  <td class="center">${detail.Tarih ? new Date(detail.Tarih).toLocaleDateString('tr-TR') : '-'}</td>
+                  <td>${detail['Fiş No'] || '-'}</td>
+                  <td>${detail['Fiş Türü'] || '-'}</td>
+                  <td>${detail.Açıklama || '-'}</td>
+                  <td class="number currency">${detail.Borç && detail.Borç !== '0,00' ? 
+                    `${safeParseFloat(detail.Borç).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</td>
+                  <td class="number currency">${detail.Alacak && detail.Alacak !== '0,00' ? 
+                    `${safeParseFloat(detail.Alacak).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</td>
+                  <td class="center">${detail.Döviz || '-'}</td>
+                  <td class="number">${detail.Döviz !== 'TL' && detail.Kur && detail.Kur > 0 ? 
+                    safeParseFloat(detail.Kur).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '-'}</td>
+                  <td class="number currency">${detail['Tutar(TL)'] ? 
+                    `${safeParseFloat(detail['Tutar(TL)']).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : '-'}</td>
+                  <td class="center">${detail['İptal Durumu'] === 'İptal Edilmiş' ? '❌' : '✅'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            Müşteri: ${clientName} (${clientCode}). Toplam ${clientDetails.length} hareket listelenmektedir.
+          </div>
+          
+          <script>
+            // Sayfa yüklendiğinde otomatik yazdırma diyaloğunu aç
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+            
+            // Yazdırma tamamlandığında veya iptal edildiğinde pencereyi kapat
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+    } catch (error) {
+      console.error('Müşteri detayları PDF yazdırma hatası:', error);
+      alert('PDF yazdırma işlemi sırasında hata oluştu.');
+    }
+  };
+
   const handlePrint = () => {
     try {
       // Yazdırma için HTML oluştur
@@ -738,7 +968,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
             .header p { margin: 2px 0; color: #666; font-size: 10px; text-align: left; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
             th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
-            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            th { background-color: #1f2937 !important; color: white !important; font-weight: bold; font-size: 9px; border: 1px solid #000 !important; }
             tr:nth-child(even) { background-color: #f9f9f9; }
             .number { text-align: right; }
             .currency { font-weight: bold; }
@@ -749,6 +979,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                .no-print { display: none; }
                table { font-size: 8px; }
                th, td { padding: 3px; }
+               th { background-color: #000000 !important; color: white !important; font-weight: bold !important; border: 1px solid #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                .header { margin-bottom: 10px; }
                .header-top { gap: 10px; }
                .logo { width: 45px; }
@@ -1929,6 +2160,38 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Excel Export Button - Dikkat Çekici */}
+                    <button
+                      onClick={() => exportClientDetailsToExcel()}
+                      disabled={loadingDetails || clientDetails.length === 0}
+                      className="bg-green-500 text-white font-bold px-4 py-2 rounded-lg hover:bg-green-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-green-300 shadow-md"
+                      title="Müşteri hareketlerini Excel'e aktar"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h10v2H7v-2z"/>
+                          <path d="M9 9h6v6H9V9zm1 1v4h4v-4h-4z"/>
+                        </svg>
+                        <span className="text-sm font-bold">EXCEL</span>
+                      </div>
+                    </button>
+
+                    {/* PDF Export Button - Dikkat Çekici */}
+                    <button
+                      onClick={() => exportClientDetailsToPDF()}
+                      disabled={loadingDetails || clientDetails.length === 0}
+                      className="bg-blue-500 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-blue-300 shadow-md"
+                      title="Müşteri hareketlerini PDF'e aktar"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                        </svg>
+                        <span className="text-sm font-bold">YAZDIR/PDF</span>
+                      </div>
+                    </button>
+
+                    {/* Refresh Button */}
                     <button
                       onClick={() => {
                         if (selectedClientRef) {
@@ -1982,18 +2245,18 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                     <div className="hidden lg:block">
                       <div className="overflow-x-auto rounded-lg border border-gray-200">
                         <table className="w-full min-w-[800px] divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
+                          <thead className="bg-gray-800">
                             <tr>
-                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Tarih</th>
-                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Fiş No</th>
-                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">Fiş Türü</th>
-                              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-60">Açıklama</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Borç</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Alacak</th>
-                              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Döviz</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Kur</th>
-                              <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Tutar</th>
-                              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Durum</th>
+                              <th className="px-3 py-3 text-left text-xs font-bold text-white uppercase tracking-wider w-24">Tarih</th>
+                              <th className="px-3 py-3 text-left text-xs font-bold text-white uppercase tracking-wider w-28">Fiş No</th>
+                              <th className="px-3 py-3 text-left text-xs font-bold text-white uppercase tracking-wider w-40">Fiş Türü</th>
+                              <th className="px-3 py-3 text-left text-xs font-bold text-white uppercase tracking-wider w-60">Açıklama</th>
+                              <th className="px-3 py-3 text-right text-xs font-bold text-white uppercase tracking-wider w-24">Borç</th>
+                              <th className="px-3 py-3 text-right text-xs font-bold text-white uppercase tracking-wider w-24">Alacak</th>
+                              <th className="px-3 py-3 text-center text-xs font-bold text-white uppercase tracking-wider w-16">Döviz</th>
+                              <th className="px-3 py-3 text-right text-xs font-bold text-white uppercase tracking-wider w-20">Kur</th>
+                              <th className="px-3 py-3 text-right text-xs font-bold text-white uppercase tracking-wider w-20">Tutar</th>
+                              <th className="px-3 py-3 text-center text-xs font-bold text-white uppercase tracking-wider w-20">Durum</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -2015,9 +2278,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                                 </td>
                                 <td className="px-3 py-3 text-sm text-gray-700 w-40">
                                   <div className="text-xs leading-tight break-words">
-                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium inline-block">
-                                      {detail['Fiş Türü']}
-                                    </span>
+                                    {detail['Fiş Türü']}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3 text-sm text-gray-600 w-60">
@@ -2027,12 +2288,16 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                                 </td>
                                 <td className="px-3 py-3 text-sm text-right font-bold text-gray-900 w-24">
                                   <div className="text-xs">
-                                    {detail.Borç && detail.Borç !== '0,00' ? detail.Borç : '-'}
+                                    {detail.Borç && detail.Borç !== '0,00' ? 
+                                      `${safeParseFloat(detail.Borç).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                      : '-'}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3 text-sm text-right font-bold text-gray-900 w-24">
                                   <div className="text-xs">
-                                    {detail.Alacak && detail.Alacak !== '0,00' ? detail.Alacak : '-'}
+                                    {detail.Alacak && detail.Alacak !== '0,00' ? 
+                                      `${safeParseFloat(detail.Alacak).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                      : '-'}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3 text-sm text-center w-16">
@@ -2111,12 +2376,10 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
 
                           {/* Fiş Türü - Full Width */}
                           <div className="mb-3">
-                            <div className="bg-blue-50 rounded-lg p-3">
-                              <p className="text-xs text-gray-600 mb-1">FİŞ TÜRÜ</p>
-                              <p className="text-sm font-medium text-blue-800">
-                                {detail['Fiş Türü']}
-                              </p>
-                            </div>
+                            <p className="text-xs text-gray-600 mb-1">FİŞ TÜRÜ</p>
+                            <p className="text-sm font-medium text-gray-700">
+                              {detail['Fiş Türü']}
+                            </p>
                           </div>
 
                           {/* Açıklama - Full Width */}
