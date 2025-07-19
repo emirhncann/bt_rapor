@@ -318,6 +318,255 @@ export default function ExcelCompare() {
     e.preventDefault();
   };
 
+  // Excel export fonksiyonu
+  const exportToExcel = () => {
+    if (!result?.missingInvoicesDetails || result.missingInvoicesDetails.length === 0) {
+      alert('Export edilecek veri bulunamadı.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    
+    // Verileri düzenle
+    const exportData = result.missingInvoicesDetails.map((invoice: any) => ({
+      'Fatura No': invoice['Fatura No'],
+      'Tür': invoice['Tür'],
+      'Fatura Tarihi': invoice['Fatura Tarihi'],
+      'Oluşturma Tarihi': invoice['Oluşturma Tarihi'],
+      'Gönderici VKN': invoice['Gönderici VKN'],
+      'Alıcı VKN': invoice['Alıcı VKN'],
+      'Toplam Tutar': invoice['Toplam Tutar'],
+      'Vergi Hariç Tutar': invoice['Vergi Hariç Tutar'],
+      'KDV Toplamı': invoice['KDV Toplamı'],
+      'Gönderici Adı': invoice['Gönderici Adı']
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // Sütun genişliklerini ayarla
+    const colWidths = [
+      { wch: 15 }, // Fatura No
+      { wch: 12 }, // Tür  
+      { wch: 12 }, // Fatura Tarihi
+      { wch: 15 }, // Oluşturma Tarihi
+      { wch: 15 }, // Gönderici VKN
+      { wch: 15 }, // Alıcı VKN
+      { wch: 15 }, // Toplam Tutar
+      { wch: 15 }, // Vergi Hariç Tutar
+      { wch: 12 }, // KDV Toplamı
+      { wch: 25 }  // Gönderici Adı
+    ];
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Eksik Faturalar');
+    
+    const fileName = `eksik_faturalar_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '_')}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+  // PDF export fonksiyonu - Yazdır/PDF formatında
+  const exportToPDF = () => {
+    if (!result?.missingInvoicesDetails || result.missingInvoicesDetails.length === 0) {
+      alert('Export edilecek veri bulunamadı.');
+      return;
+    }
+
+    try {
+      // Yazdırma için HTML oluştur (PDF'e optimize edilmiş)
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Pop-up engelleyici nedeniyle PDF yazdırma penceresi açılamıyor.');
+        return;
+      }
+
+      
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Eksik Faturalar Raporu - PDF</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
+            .header { margin-bottom: 30px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+            .header-top { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
+            .logo { width: 100px; height: auto; flex-shrink: 0; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .header-content { flex: 1; }
+            .header h1 { color: white; margin: 0 0 8px 0; font-size: 22px; text-align: left; font-weight: bold; letter-spacing: 0.5px; }
+            .header p { margin: 3px 0; color: rgba(255,255,255,0.9); font-size: 12px; text-align: left; }
+            .pdf-info { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 10px; margin-bottom: 25px; border-radius: 4px; }
+            .pdf-info strong { color: #92400e; }
+            
+            /* İstatistik Kutuları */
+            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+            .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
+            .stat-box.primary { border-color: #991b1b; background-color: #fef2f2; }
+            .stat-box.danger { border-color: #dc2626; background-color: #fef2f2; }
+            .stat-box.success { border-color: #059669; background-color: #ecfdf5; }
+            .stat-box.warning { border-color: #d97706; background-color: #fffbeb; }
+            .stat-title { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
+            .stat-value { font-size: 14px; font-weight: bold; color: #1f2937; }
+            .stat-subtitle { font-size: 8px; color: #9ca3af; margin-top: 2px; }
+            
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .number { text-align: right; }
+            .currency { font-weight: bold; }
+            .center { text-align: center; }
+            
+            @media print {
+              body { margin: 0; font-size: 10px; }
+              .pdf-info { display: none; }
+              .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
+              .stat-box { padding: 8px; }
+              table { font-size: 8px; }
+              th, td { padding: 3px; }
+              .header { margin-bottom: 20px; padding: 15px; }
+              .header-top { gap: 15px; margin-bottom: 10px; }
+              .logo { width: 75px; }
+              .header h1 { font-size: 16px; margin: 0 0 3px 0; }
+              .header p { font-size: 9px; margin: 1px 0; }
+              .stat-title { font-size: 9px; }
+              .stat-value { font-size: 12px; }
+              .stat-subtitle { font-size: 7px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+              <div class="header-content">
+                <h1>EKSİK FATURALAR RAPORU</h1>
+                <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')}</p>
+                <p><strong>Toplam Eksik Fatura:</strong> ${result.missingInvoicesDetails.length} adet</p>
+                <p><strong>Rapor Türü:</strong> Excel vs LOGO Fatura Karşılaştırması</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="pdf-info">
+            <strong>📄 PDF Olarak Kaydetmek İçin:</strong><br>
+            Yazdırma diyaloğunda "Hedef" kısmından <strong>"PDF olarak kaydet"</strong> seçeneğini seçin.
+          </div>
+          
+          <!-- İstatistik Kutuları -->
+          <div class="stats-grid">
+            <div class="stat-box primary">
+              <div class="stat-title">Toplam Fatura</div>
+              <div class="stat-value">${result.totalInvoices || 0}</div>
+              <div class="stat-subtitle">Excel'deki toplam</div>
+            </div>
+            
+            <div class="stat-box success">
+              <div class="stat-title">Mevcut Faturalar</div>
+              <div class="stat-value">${result.existingInvoices || 0}</div>
+              <div class="stat-subtitle">LOGO'da bulunan</div>
+            </div>
+            
+            <div class="stat-box danger">
+              <div class="stat-title">Eksik Faturalar</div>
+              <div class="stat-value">${result.missingInvoices || 0}</div>
+              <div class="stat-subtitle">LOGO'da bulunamayan</div>
+            </div>
+            
+                         <div class="stat-box warning">
+               <div class="stat-title">Rapor Tarihi</div>
+               <div class="stat-value">${new Date().toLocaleDateString('tr-TR')}</div>
+               <div class="stat-subtitle">Analiz tarihi</div>
+             </div>
+          </div>
+
+          <h3 style="color: #991b1b; margin: 20px 0 10px 0; font-size: 14px; border-bottom: 2px solid #991b1b; padding-bottom: 5px;">EKSİK FATURALAR DETAYI</h3>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Fatura No</th>
+                <th>Tür</th>
+                <th>Fatura Tarihi</th>
+                <th>Oluşturma Tarihi</th>
+                <th>Gönderici VKN</th>
+                <th>Alıcı VKN</th>
+                <th>Toplam Tutar</th>
+                <th>Vergi Hariç Tutar</th>
+                <th>KDV Toplamı</th>
+                <th>Gönderici Adı</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${result.missingInvoicesDetails.map((invoice: any) => `
+                <tr>
+                  <td><strong>${invoice['Fatura No']}</strong></td>
+                  <td class="center">
+                    <span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; ${
+                      invoice['Tür'] === 'Satış' 
+                        ? 'background-color: #dcfce7; color: #166534;' 
+                        : invoice['Tür'] === 'Alış'
+                        ? 'background-color: #dbeafe; color: #1e40af;'
+                        : 'background-color: #f3f4f6; color: #374151;'
+                    }">
+                      ${invoice['Tür']}
+                    </span>
+                  </td>
+                  <td class="center">${invoice['Fatura Tarihi']}</td>
+                  <td class="center">${invoice['Oluşturma Tarihi']}</td>
+                  <td class="center">${invoice['Gönderici VKN']}</td>
+                  <td class="center">${invoice['Alıcı VKN']}</td>
+                  <td class="number currency">
+                    ${typeof invoice['Toplam Tutar'] === 'number' 
+                      ? invoice['Toplam Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['Toplam Tutar']}
+                  </td>
+                  <td class="number currency">
+                    ${typeof invoice['Vergi Hariç Tutar'] === 'number'
+                      ? invoice['Vergi Hariç Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['Vergi Hariç Tutar']}
+                  </td>
+                  <td class="number currency">
+                    ${typeof invoice['KDV Toplamı'] === 'number'
+                      ? invoice['KDV Toplamı'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['KDV Toplamı']}
+                  </td>
+                  <td>${invoice['Gönderici Adı']}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+                     </table>
+          
+          <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            Eksik faturalar LOGO ERP sisteminde bulunamayan faturalardır. Tüm tutarlar Türk Lirası (₺) cinsindendir.
+          </div>
+          
+          <script>
+            // Sayfa yüklendiğinde otomatik yazdırma diyaloğunu aç
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+            
+            // Yazdırma tamamlandığında veya iptal edildiğinde pencereyi kapat
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+    } catch (error) {
+      console.error('PDF yazdırma hatası:', error);
+      alert('PDF yazdırma işlemi sırasında hata oluştu.');
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
@@ -642,8 +891,31 @@ export default function ExcelCompare() {
                 {/* Eksik Faturalar Tablosu */}
                 {(result.missingInvoicesDetails || []).length > 0 && (
                   <div className="border border-gray-200 rounded-lg">
-                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
                       <h3 className="text-sm font-medium text-gray-900">Eksik Faturalar Detayları</h3>
+                      <div className="flex space-x-2">
+                        {/* Excel Export Butonu */}
+                        <button
+                          onClick={exportToExcel}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Excel
+                        </button>
+                        
+                        {/* Yazdır/PDF Butonu */}
+                        <button
+                          onClick={exportToPDF}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          Yazdır/PDF
+                        </button>
+                      </div>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full divide-y divide-gray-200">
@@ -656,7 +928,10 @@ export default function ExcelCompare() {
                               Tür
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                              Tarih
+                              Fatura Tarihi
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                              Oluşturma Tarihi
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">
                               Gönderici VKN
@@ -696,7 +971,10 @@ export default function ExcelCompare() {
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {invoice['Tarih']}
+                                {invoice['Fatura Tarihi']}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {invoice['Oluşturma Tarihi']}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {invoice['Gönderici VKN']}

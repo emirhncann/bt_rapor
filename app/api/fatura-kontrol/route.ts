@@ -10,6 +10,7 @@ interface ExcelRow {
   'Vergi Hariç Tutar': number;
   'KDV Toplamı': number;
   'Fatura Tarihi': string;
+  'Oluşturma Tarihi': string;
   'Gönderici Adı': string;
   'Tür': string;
 }
@@ -23,11 +24,12 @@ interface MissingInvoice {
   'Vergi Hariç Tutar': number;
   'KDV Toplamı': number;
   'Fatura Tarihi': string;
+  'Oluşturma Tarihi': string;
   'Gönderici Adı': string;
   'Tür': string;
 }
 
-// Tarih formatını dönüştür
+// Tarih formatını dönüştür - DD.MM.YYYY formatında döndür
 function convertDateFormat(dateValue: any): string {
   if (!dateValue) return '';
   
@@ -52,6 +54,14 @@ function convertDateFormat(dateValue: any): string {
       date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 
                      parseInt(hour), parseInt(minute), parseInt(second));
     }
+    // YYYY-MM-DD HH:mm:ss formatı
+    else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStr)) {
+      const [datePart, timePart] = dateStr.split(' ');
+      const [year, month, day] = datePart.split('-');
+      const [hour, minute, second] = timePart.split(':');
+      date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 
+                     parseInt(hour), parseInt(minute), parseInt(second));
+    }
     // Diğer formatlar için Date.parse dene
     else {
       date = new Date(dateValue);
@@ -63,15 +73,12 @@ function convertDateFormat(dateValue: any): string {
     return '';
   }
   
-  // UTC+3 saat dilimi için 3 saat ekle
-  date.setHours(date.getHours() + 3);
-  
-  // YYYY-MM-DD 03:00:00 formatına dönüştür
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  // DD.MM.YYYY formatına dönüştür
   const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
   
-  return `${year}-${month}-${day} 03:00:00`;
+  return `${day}.${month}.${year}`;
 }
 
 // Test modu işleyici
@@ -253,7 +260,7 @@ export async function POST(request: NextRequest) {
     const headers = jsonData[0] as string[];
     const requiredColumns = [
       'Fatura No', 'Gönderici VKN', 'Alıcı VKN', 'Toplam Tutar',
-      'Vergi Hariç Tutar', 'KDV Toplamı', 'Fatura Tarihi', 'Gönderici Adı', 'Tür'
+      'Vergi Hariç Tutar', 'KDV Toplamı', 'Fatura Tarihi', 'Oluşturma Tarihi', 'Gönderici Adı', 'Tür'
     ];
 
     // Gerekli sütunları kontrol et
@@ -280,6 +287,7 @@ export async function POST(request: NextRequest) {
       vergiHariçTutar: headers.indexOf('Vergi Hariç Tutar'),
       kdvToplami: headers.indexOf('KDV Toplamı'),
       faturaTarihi: headers.indexOf('Fatura Tarihi'),
+      olusturmaTarihi: headers.indexOf('Oluşturma Tarihi'),
       gondericiAdi: headers.indexOf('Gönderici Adı'),
       tur: headers.indexOf('Tür')
     };
@@ -367,7 +375,8 @@ export async function POST(request: NextRequest) {
           'Toplam Tutar': parseFloat(row[columnIndexes.toplamTutar] || 0),
           'Vergi Hariç Tutar': parseFloat(row[columnIndexes.vergiHariçTutar] || 0),
           'KDV Toplamı': parseFloat(row[columnIndexes.kdvToplami] || 0),
-          'Fatura Tarihi': String(row[columnIndexes.faturaTarihi] || ''),
+          'Fatura Tarihi': convertDateFormat(row[columnIndexes.faturaTarihi]),
+          'Oluşturma Tarihi': convertDateFormat(row[columnIndexes.olusturmaTarihi]),
           'Gönderici Adı': String(row[columnIndexes.gondericiAdi] || ''),
           'Tür': String(row[columnIndexes.tur] || '')
         };
