@@ -5,6 +5,10 @@ export interface CompanyReport {
   report_name: string;
   report_description: string;
   has_access: boolean;
+  category?: string;
+  icon?: string;
+  route?: string;
+  route_path?: string;
 }
 
 export interface CompanyReportsResponse {
@@ -21,43 +25,10 @@ export interface ReportWithAccess extends CompanyReport {
   has_access: boolean;
 }
 
-// Rapor kategorileri ve route'ları
-const REPORT_CATEGORIES: {[key: string]: {name: string, icon: string, route: string}} = {
-  'Enpos Ciro Raporu': {
-    name: 'Satış Raporları',
-    icon: 'credit-card',
-    route: '/enpos-ciro'
-  },
-  'Cari Bakiye Raporu': {
-    name: 'Finansal Raporlar', 
-    icon: 'calculator',
-    route: '/c-bakiye'
-  },
-  'Stok Raporu': {
-    name: 'Stok Raporları',
-    icon: 'package',
-    route: '/stok-raporu'
-  },
-  'Müşteri Analizi': {
-    name: 'Müşteri Raporları',
-    icon: 'users',
-    route: '/musteri-analizi'
-  },
-  'Satış Analizi': {
-    name: 'Analiz Raporları',
-    icon: 'bar-chart',
-    route: '/satis-analizi'
-  },
-  'Gelir Gider Raporu': {
-    name: 'Finansal Raporlar',
-    icon: 'chart-line', 
-    route: '/gelir-gider'
-  },
-  'Fatura Kontrol': {
-    name: 'Finansal Raporlar',
-    icon: 'calculator',
-    route: '/fatura-kontrol'
-  }
+// Varsayılan kategoriler (API'de kategori yoksa fallback için)
+const DEFAULT_CATEGORY_INFO = {
+  name: 'Diğer Raporlar',
+  icon: 'folder'
 };
 
 // Şirket raporlarını çek ve yetki bilgisi ekle
@@ -71,20 +42,15 @@ export async function fetchUserReports(companyRef: string, userId?: number): Pro
       return {reports: [], planInfo: {planName: '', licenceEnd: ''}};
     }
 
-    // Raporları kategorilendir (yetki bilgisi API'den geliyor)
+    // API'den gelen raporları işle (artık route bilgileri API'den geliyor)
     const reports = data.all_reports.map((report: CompanyReport) => {
-      const category = REPORT_CATEGORIES[report.report_name] || {
-        name: 'Diğer Raporlar',
-        icon: 'folder',
-        route: `/${report.report_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`
-      };
-
       return {
         ...report,
-        route_path: category.route,
-        icon: category.icon,
-        category: category.name
-        // has_access zaten API'den geliyor, tekrar set etmeye gerek yok
+        // API'den gelen bilgileri kullan, yoksa varsayılan değerler ata
+        route_path: report.route_path || `/${(report.route || report.report_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))}`,
+        icon: report.icon || DEFAULT_CATEGORY_INFO.icon,
+        category: report.category || DEFAULT_CATEGORY_INFO.name
+        // has_access zaten API'den geliyor
       };
     });
 

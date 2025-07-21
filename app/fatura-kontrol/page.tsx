@@ -106,19 +106,36 @@ export default function ExcelCompare() {
           const headers = jsonData[0] as string[];
           const rows = jsonData.slice(1);
           
+          // Uygulama Yanıtı kolonu var mı kontrol et
+          const hasApColumn = headers.includes('Uygulama Yanıtı') || headers.includes('ap');
+          const apColumnIndex = hasApColumn ? 
+            (headers.indexOf('Uygulama Yanıtı') !== -1 ? headers.indexOf('Uygulama Yanıtı') : headers.indexOf('ap')) : -1;
+
           // Fatura verilerini işle - B kolonu (index 1) fatura numarası
-          const invoices = rows.map((row: unknown, rowIndex: number) => {
-            const rowArray = row as any[];
-            const invoice: any = {};
-            headers.forEach((header, index) => {
-              invoice[header] = rowArray[index] || '';
+          const invoices = rows
+            .map((row: unknown, rowIndex: number) => {
+              const rowArray = row as any[];
+              const invoice: any = {};
+              headers.forEach((header, index) => {
+                invoice[header] = rowArray[index] || '';
+              });
+              
+              // B kolonu (index 1) fatura numarası olarak ata
+              invoice['Fatura No'] = rowArray[1] || '';
+              
+              return invoice;
+            })
+            .filter((invoice: any) => {
+              // "red" olan faturaları filtrele
+              if (hasApColumn && apColumnIndex !== -1) {
+                const uygulamaYaniti = String(invoice[headers[apColumnIndex]] || '').toLowerCase().trim();
+                if (uygulamaYaniti === 'red') {
+                  console.log(`🚫 Fatura ${invoice['Fatura No']} "red" (ret) olduğu için karşılaştırmaya dahil edilmiyor`);
+                  return false;
+                }
+              }
+              return true;
             });
-            
-            // B kolonu (index 1) fatura numarası olarak ata
-            invoice['Fatura No'] = rowArray[1] || '';
-            
-            return invoice;
-          });
           
           resolve(invoices);
         } catch (error) {
@@ -844,7 +861,7 @@ export default function ExcelCompare() {
             {result.success ? (
               <div className="space-y-4">
                 {/* İstatistikler */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -886,6 +903,24 @@ export default function ExcelCompare() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Reddedilen Faturalar */}
+                  {(result.rejectedInvoices || 0) > 0 && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-orange-800">Ret Faturalar</p>
+                          <p className="text-2xl font-bold text-orange-900">{result.rejectedInvoices || 0}</p>
+                          <p className="text-xs text-orange-600">Karşılaştırmaya dahil edilmedi</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Eksik Faturalar Tablosu */}

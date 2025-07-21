@@ -816,16 +816,15 @@ export default function Dashboard() {
                     ).filter(Boolean).slice(0, 6)
                   : userReports.slice(0, 6);
                 
-                return reportsToShow.map((report) => {
+                return reportsToShow.map((report, idx) => {
                   if (!report) return null;
                   
-                  const colors = getReportCardColors(report.report_name, report.has_access);
-                  const route = getReportRoute(report.report_name);
+                  const colors = getReportCardColors(report, idx);
                   const isPinned = pinnedReports.includes(report.id.toString());
                   
                   return (
                     <div key={report.id} className="group cursor-pointer" 
-                         onClick={() => handleReportClick(report, route, router)}>
+                         onClick={() => handleReportClick(report, router)}>
                       <div className={`bg-gradient-to-br ${colors.bgGradient} rounded-xl p-4 sm:p-6 border ${colors.border} hover:${colors.hoverBorder} transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${colors.opacity} relative h-full flex flex-col`}>
                         {/* Sabitlenmiş rapor işareti */}
                         {isPinned && (
@@ -1161,9 +1160,77 @@ const formatLicenseDate = (dateString: string) => {
   }
 };
 
-const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
-  // Kilitli raporlar için gri tema
-  if (!hasAccess) {
+const colorPalette = [
+  {
+    bgGradient: 'from-blue-50 to-blue-100',
+    border: 'border-blue-200',
+    hoverBorder: 'border-blue-300',
+    iconBg: 'from-blue-500 to-blue-600',
+    arrowColor: 'text-blue-400',
+    arrowHover: 'text-blue-600',
+    badgeBg: 'bg-blue-500',
+    textColor: 'text-gray-900',
+    opacity: 'opacity-100'
+  },
+  {
+    bgGradient: 'from-red-50 to-red-100',
+    border: 'border-red-200',
+    hoverBorder: 'border-red-300',
+    iconBg: 'from-red-500 to-red-600',
+    arrowColor: 'text-red-400',
+    arrowHover: 'text-red-600',
+    badgeBg: 'bg-red-500',
+    textColor: 'text-gray-900',
+    opacity: 'opacity-100'
+  },
+  {
+    bgGradient: 'from-emerald-50 to-emerald-100',
+    border: 'border-emerald-200',
+    hoverBorder: 'border-emerald-300',
+    iconBg: 'from-emerald-500 to-emerald-600',
+    arrowColor: 'text-emerald-400',
+    arrowHover: 'text-emerald-600',
+    badgeBg: 'bg-emerald-500',
+    textColor: 'text-gray-900',
+    opacity: 'opacity-100'
+  },
+  {
+    bgGradient: 'from-orange-50 to-orange-100',
+    border: 'border-orange-200',
+    hoverBorder: 'border-orange-300',
+    iconBg: 'from-orange-500 to-orange-600',
+    arrowColor: 'text-orange-400',
+    arrowHover: 'text-orange-600',
+    badgeBg: 'bg-orange-500',
+    textColor: 'text-gray-900',
+    opacity: 'opacity-100'
+  },
+  {
+    bgGradient: 'from-purple-50 to-purple-100',
+    border: 'border-purple-200',
+    hoverBorder: 'border-purple-300',
+    iconBg: 'from-purple-500 to-purple-600',
+    arrowColor: 'text-purple-400',
+    arrowHover: 'text-purple-600',
+    badgeBg: 'bg-purple-500',
+    textColor: 'text-gray-900',
+    opacity: 'opacity-100'
+  },
+  {
+    bgGradient: 'from-pink-50 to-pink-100',
+    border: 'border-pink-200',
+    hoverBorder: 'border-pink-300',
+    iconBg: 'from-pink-500 to-pink-600',
+    arrowColor: 'text-pink-400',
+    arrowHover: 'text-pink-600',
+    badgeBg: 'bg-pink-500',
+    textColor: 'text-gray-900',
+    opacity: 'opacity-100'
+  }
+];
+
+const getReportCardColors = (report: ReportWithAccess, idx?: number) => {
+  if (!report.has_access) {
     return {
       bgGradient: 'from-gray-50 to-gray-100',
       border: 'border-gray-200',
@@ -1176,59 +1243,25 @@ const getReportCardColors = (reportName: string, hasAccess: boolean = true) => {
       opacity: 'opacity-60'
     };
   }
-
-  if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
-    return {
-      bgGradient: 'from-red-50 to-red-100',
-      border: 'border-red-200',
-      hoverBorder: 'border-red-300',
-      iconBg: 'from-red-500 to-red-600',
-      arrowColor: 'text-red-400',
-      arrowHover: 'text-red-600',
-      badgeBg: 'bg-red-500',
-      textColor: 'text-gray-900',
-      opacity: 'opacity-100'
-    };
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('ciro') || reportName.toLocaleLowerCase('tr-TR').includes('satış')) {
-    return {
-      bgGradient: 'from-blue-50 to-blue-100',
-      border: 'border-blue-200',
-      hoverBorder: 'border-blue-300',
-      iconBg: 'from-blue-500 to-blue-600',
-      arrowColor: 'text-blue-400',
-      arrowHover: 'text-blue-600',
-      badgeBg: 'bg-blue-500',
-      textColor: 'text-gray-900',
-      opacity: 'opacity-100'
-    };
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('stok') || reportName.toLocaleLowerCase('tr-TR').includes('envanter')) {
-    return {
-      bgGradient: 'from-emerald-50 to-emerald-100',
-      border: 'border-emerald-200',
-      hoverBorder: 'border-emerald-300',
-      iconBg: 'from-emerald-500 to-emerald-600',
-      arrowColor: 'text-emerald-400',
-      arrowHover: 'text-emerald-600',
-      badgeBg: 'bg-emerald-500',
-      textColor: 'text-gray-900',
-      opacity: 'opacity-100'
-    };
-  } else {
-    return {
-      bgGradient: 'from-purple-50 to-purple-100',
-      border: 'border-purple-200',
-      hoverBorder: 'border-purple-300',
-      iconBg: 'from-purple-500 to-purple-600',
-      arrowColor: 'text-purple-400',
-      arrowHover: 'text-purple-600',
-      badgeBg: 'bg-purple-500',
-      textColor: 'text-gray-900',
-      opacity: 'opacity-100'
-    };
+  // Favorilerde index verilirse sıraya göre renk
+  if (typeof idx === 'number') {
+    return colorPalette[idx % colorPalette.length];
   }
+  // Diğer kartlar için id'ye göre renk
+  const idIdx = report.id % colorPalette.length;
+  return colorPalette[idIdx];
 };
 
-const getReportRoute = (reportName: string) => {
+const getReportRoute = (report: ReportWithAccess) => {
+  // Önce API'den gelen route bilgisini kullan
+  if (report.route_path) {
+    return report.route_path;
+  } else if (report.route) {
+    return `/${report.route}`;
+  }
+  
+  // API'de route bilgisi yoksa fallback olarak isim bazlı eşleştirme yap
+  const reportName = report.report_name;
   if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
     return '/c-bakiye';
   } else if (reportName.toLocaleLowerCase('tr-TR').includes('enpos') && reportName.toLocaleLowerCase('tr-TR').includes('ciro')) {
@@ -1237,8 +1270,12 @@ const getReportRoute = (reportName: string) => {
     return '/envanter-raporu';
   } else if (reportName.toLocaleLowerCase('tr-TR').includes('fatura') && reportName.toLocaleLowerCase('tr-TR').includes('kontrol')) {
     return '/fatura-kontrol';
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('hareket') && reportName.toLocaleLowerCase('tr-TR').includes('gormeyen')) {
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('hareket') && reportName.toLocaleLowerCase('tr-TR').includes('görmeyen')) {
+    return '/hareket-gormeyen-cariler';
+  } else if (reportName.toLocaleLowerCase('tr-TR').includes('satılan') || reportName.toLocaleLowerCase('tr-TR').includes('malzeme')) {
+    return '/en-cok-satilan-malzemeler';
   }
+  
   return null; // Henüz route'u olmayan raporlar
 };
 
@@ -1254,18 +1291,21 @@ const getReportIcon = (reportName: string) => {
   }
 };
 
-const handleReportClick = (report: ReportWithAccess, route: string | null, router: any) => {
+const handleReportClick = (report: ReportWithAccess, router: any) => {
   // Erişim yetkisi kontrolü
   if (!report.has_access) {
     alert(`🔒 ${report.report_name} rapora erişim yetkiniz bulunmamaktadır.\n\nBu raporu kullanabilmek için paket yükseltmesi yapmanız gerekmektedir.\n\nPaket bilgileri için Ayarlar > Plan Yönetimi bölümünü ziyaret edebilirsiniz.`);
     return;
   }
   
+  // Route'u belirle (API'den gelen bilgi öncelikli)
+  const route = getReportRoute(report);
+  
   if (!route) {
     alert(`${report.report_name} henüz hazır değil. Yakında erişilebilir olacak.`);
     return;
   }
   
-  console.log(`🔄 Dashboard - ${report.report_name} raporu açılıyor...`);
+  console.log(`🔄 Dashboard - ${report.report_name} raporu açılıyor: ${route}`);
   router.push(route);
 }; 

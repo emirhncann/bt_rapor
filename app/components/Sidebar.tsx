@@ -47,6 +47,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       // API'den kullanıcının raporlarını çek (yeni format)
       const {reports: allReports} = await fetchUserReports(companyRef, currentUser?.id);
       console.log('📊 Çekilen raporlar:', allReports);
+      console.log('🔗 Route bilgileri:', allReports.map(r => ({name: r.report_name, route: r.route, route_path: r.route_path, category: r.category, icon: r.icon})));
       
       // Sadece yetkili raporları al
       const authorizedReports = getAuthorizedReports(allReports);
@@ -128,8 +129,13 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     return iconComponents[iconName] || iconComponents['folder'];
   };
 
-  // Kategori için ikon belirle
-  const getCategoryIcon = (categoryName: string) => {
+  // Kategori için ikon belirle (eski kategoriler için fallback)
+  const getCategoryIcon = (categoryName: string, reports: ReportWithAccess[]) => {
+    // Kategori içindeki ilk raporun ikonunu kullan, yoksa kategori adına göre belirle
+    const firstReport = reports[0];
+    if (firstReport?.icon) return firstReport.icon;
+    
+    // Fallback için eski sistemdeki kategori ikonları
     switch (categoryName) {
       case 'Finansal Raporlar': return 'calculator';
       case 'Satış Raporları': return 'credit-card';
@@ -204,7 +210,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               ) : (
                 Object.entries(reportsByCategory).map(([categoryName, reports]) => {
                   const isOpen = openCategories[categoryName];
-                  const categoryIcon = getCategoryIcon(categoryName);
+                  const categoryIcon = getCategoryIcon(categoryName, reports);
 
                   return (
                     <div key={categoryName}>
@@ -305,6 +311,18 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className="ml-3">⏰ Hareket Görmeyen Cariler</span>
+            </a>
+            
+            {/* En Çok / En Az Satılan Malzemeler */}
+            <a
+              href="/en-cok-satilan-malzemeler"
+              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg group transition-colors duration-200"
+              title="Seçilen tarih aralığında en çok veya en az satılan ürünleri miktarsal veya tutarsal olarak analiz eder"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span className="ml-3">📊 En Çok / En Az Satılan Malzemeler</span>
             </a>
             
             <a

@@ -192,6 +192,11 @@ export default function HareketGormeyenler() {
     }
 
     let filtered = data.filter(row => {
+      // LOGICALREF = 1 olan kaydı hariç tut
+      if (row.LOGICALREF === 1) {
+        return false;
+      }
+
       // Cari kodu filtreleri
       if (cariFilters.cariKoduExclude && row.CODE?.toLocaleLowerCase('tr-TR').includes(cariFilters.cariKoduExclude.toLocaleLowerCase('tr-TR'))) {
         return false;
@@ -495,9 +500,59 @@ export default function HareketGormeyenler() {
             S5.DEFINITION_ AS [Ozel Kod 5 Açıklama],
 
             C.CYPHCODE    AS [Yetki Kodu],
-            Y.DEFINITION_ AS [Yetki Kodu Açıklama]
+            Y.DEFINITION_ AS [Yetki Kodu Açıklama],
+
+            LASTOP.DATE_ AS [Son Hareket Tarihi],
+            CASE LASTOP.TRCODE
+                WHEN 1 THEN 'Satınalma İrsaliyesi'
+                WHEN 2 THEN 'Perakende Satış İade İrsaliyesi'
+                WHEN 3 THEN 'Toptan Satış İade İrsaliyesi'
+                WHEN 4 THEN 'Konsinye Çıkış İade İrsaliyesi'
+                WHEN 5 THEN 'Konsinye Giriş İrsaliyesi'
+                WHEN 6 THEN 'Satınalma İade İrsaliyesi'
+                WHEN 7 THEN 'Perakende Satış İrsaliyesi'
+                WHEN 8 THEN 'Toptan Satış İrsaliyesi'
+                WHEN 31 THEN 'Satınalma Faturası'
+                WHEN 32 THEN 'Perakende Satış İade Faturası'
+                WHEN 33 THEN 'Toptan Satış İade Faturası'
+                WHEN 34 THEN 'Alınan Hizmet Faturası'
+                WHEN 36 THEN 'Satınalma İade Faturası'
+                WHEN 37 THEN 'Perakende Satış Faturası'
+                WHEN 38 THEN 'Toptan Satış Faturası'
+                WHEN 39 THEN 'Verilen Hizmet Faturası'
+                WHEN 43 THEN 'Satınalma Fiyat Farkı Faturası'
+                WHEN 44 THEN 'Satış Fiyat Farkı Faturası'
+                WHEN 56 THEN 'Müstahsil Makbuzu'
+                WHEN 1 THEN 'Nakit Tahsilat'
+                WHEN 2 THEN 'Nakit Ödeme'
+                WHEN 3 THEN 'Borç Dekontu'
+                WHEN 4 THEN 'Alacak Dekontu'
+                WHEN 5 THEN 'Virman Fişi'
+                WHEN 6 THEN 'Kur Farkı İşlemi'
+                WHEN 12 THEN 'Özel Fiş'
+                WHEN 14 THEN 'Açılış Fişi'
+                WHEN 20 THEN 'Gelen Havale/EFT'
+                WHEN 21 THEN 'Gönderilen Havale/EFT'
+                WHEN 41 THEN 'Verilen Vade Farkı Faturası'
+                WHEN 42 THEN 'Alınan Vade Farkı Faturası'
+                WHEN 45 THEN 'Verilen Serbest Meslek Makbuzu'
+                WHEN 46 THEN 'Alınan Serbest Meslek Makbuzu'
+                WHEN 61 THEN 'Çek Girişi'
+                WHEN 62 THEN 'Senet Girişi'
+                WHEN 63 THEN 'Çek Çıkışı(Cari Hesaba)'
+                WHEN 64 THEN 'Senet Çıkışı(Cari Hesaba)'
+                WHEN 65 THEN 'İşyerleri Arası İşlem Bordrosu(Müşteri Çeki)'
+                WHEN 66 THEN 'İşyerleri Arası İşlem Bordrosu(Müşteri Seneti)'
+                WHEN 70 THEN 'Kredi Kartı Fişi'
+                WHEN 71 THEN 'Kredi Kartı İade Fişi'
+                WHEN 72 THEN 'Firma Kredi Kartı Fişi'
+                WHEN 73 THEN 'Firma Kredi Kartı İade Fişi'
+                ELSE CONCAT('TRCODE: ', CAST(LASTOP.TRCODE AS VARCHAR))
+            END AS [Son İşlem Türü]
 
         FROM LG_${firmaNo.padStart(3, '0')}_CLCARD C
+
+        -- Hareketsiz cariyi bulmak için LEFT JOIN (sadece belirtilen tarih sonrası hareketi olanlar)
         LEFT JOIN (
             SELECT DISTINCT CLIENTREF
             FROM LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_CLFLINE
@@ -516,48 +571,37 @@ export default function HareketGormeyenler() {
                 )
         ) AS H ON C.LOGICALREF = H.CLIENTREF
 
-        -- Özel Kod 1-5 Açıklamaları
+        -- OUTER APPLY ile son hareketin alınması (tarih sınırı olmadan)
         OUTER APPLY (
-            SELECT DEFINITION_ 
-            FROM LG_${firmaNo.padStart(3, '0')}_SPECODES 
-            WHERE SPECODE = C.SPECODE 
-              AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP1 = 1
-        ) S1
-        OUTER APPLY (
-            SELECT DEFINITION_ 
-            FROM LG_${firmaNo.padStart(3, '0')}_SPECODES 
-            WHERE SPECODE = C.SPECODE2 
-              AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP2 = 1
-        ) S2
-        OUTER APPLY (
-            SELECT DEFINITION_ 
-            FROM LG_${firmaNo.padStart(3, '0')}_SPECODES 
-            WHERE SPECODE = C.SPECODE3 
-              AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP3 = 1
-        ) S3
-        OUTER APPLY (
-            SELECT DEFINITION_ 
-            FROM LG_${firmaNo.padStart(3, '0')}_SPECODES 
-            WHERE SPECODE = C.SPECODE4 
-              AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP4 = 1
-        ) S4
-        OUTER APPLY (
-            SELECT DEFINITION_ 
-            FROM LG_${firmaNo.padStart(3, '0')}_SPECODES 
-            WHERE SPECODE = C.SPECODE5 
-              AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP5 = 1
-        ) S5
+            SELECT TOP 1 DATE_, TRCODE
+            FROM LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_CLFLINE L
+            WHERE 
+                L.CLIENTREF = C.LOGICALREF
+                AND L.CANCELLED = 0
+                AND L.TRCODE > 0
+                AND (
+                    ${allModules ? '1 = 1' : selectedModules.length > 0 ? `L.MODULENR IN (${selectedModules.join(',')})` : '1 = 1'}
+                )
+                AND (
+                    ${allTRCodes ? '1 = 1' : selectedTRCodes.length > 0 ? `L.TRCODE IN (${selectedTRCodes.join(',')})` : '1 = 1'}
+                )
+                AND (
+                    ${allSigns ? '1 = 1' : selectedSigns.length > 0 ? `L.SIGN IN (${selectedSigns.join(',')})` : '1 = 1'}
+                )
+            ORDER BY L.DATE_ DESC
+        ) LASTOP
 
-        -- Yetki Kodu Açıklaması
-        OUTER APPLY (
-            SELECT DEFINITION_ 
-            FROM LG_${firmaNo.padStart(3, '0')}_SPECODES 
-            WHERE SPECODE = C.CYPHCODE 
-              AND CODETYPE = 2 AND SPECODETYPE = 26
-        ) Y
+        -- Açıklamalar için OUTER APPLY
+        OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES WHERE SPECODE = C.SPECODE  AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP1 = 1) S1
+        OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES WHERE SPECODE = C.SPECODE2 AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP2 = 1) S2
+        OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES WHERE SPECODE = C.SPECODE3 AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP3 = 1) S3
+        OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES WHERE SPECODE = C.SPECODE4 AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP4 = 1) S4
+        OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES WHERE SPECODE = C.SPECODE5 AND CODETYPE = 1 AND SPECODETYPE = 26 AND SPETYP5 = 1) S5
+        OUTER APPLY (SELECT DEFINITION_ FROM LG_${firmaNo.padStart(3, '0')}_SPECODES WHERE SPECODE = C.CYPHCODE AND CODETYPE = 2 AND SPECODETYPE = 26) Y
 
-        WHERE C.ACTIVE = 0
-          AND H.CLIENTREF IS NULL
+        WHERE 
+            C.ACTIVE = 0
+            AND H.CLIENTREF IS NULL
         ORDER BY C.DEFINITION_;
       `;
 
@@ -747,6 +791,11 @@ export default function HareketGormeyenler() {
       const exportData = filteredData.map(row => ({
         'Cari Kodu': row.CODE || '',
         'Cari Ünvanı': row.DEFINITION_ || '',
+        'Son Hareket Tarihi': row['Son Hareket Tarihi'] ? 
+          new Date(row['Son Hareket Tarihi']).toLocaleDateString('tr-TR') : 
+          'Hiç hareket yok',
+        'Son İşlem Türü': row['Son İşlem Türü'] && !row['Son İşlem Türü'].startsWith('TRCODE:') ? 
+          row['Son İşlem Türü'] : '-',
         'Özel Kod 1': row['Ozel Kod 1'] || '',
         'Özel Kod 1 Açıklama': row['Ozel Kod 1 Açıklama'] || '',
         'Özel Kod 2': row['Ozel Kod 2'] || '',
@@ -816,6 +865,8 @@ export default function HareketGormeyenler() {
       dataWorksheet['!cols'] = [
         { wch: 15 }, // Cari Kodu
         { wch: 40 }, // Cari Ünvanı
+        { wch: 18 }, // Son Hareket Tarihi
+        { wch: 30 }, // Son İşlem Türü
         { wch: 12 }, // Özel Kod 1
         { wch: 25 }, // Özel Kod 1 Açıklama
         { wch: 12 }, // Özel Kod 2
@@ -995,6 +1046,8 @@ export default function HareketGormeyenler() {
               <tr>
                 <th>Cari Kodu</th>
                 <th>Cari Ünvanı</th>
+                <th>Son Hareket Tarihi</th>
+                <th>Son İşlem Türü</th>
                 <th>Özel Kod 1</th>
                 <th>Özel Kod 2</th>
                 <th>Özel Kod 3</th>
@@ -1008,6 +1061,11 @@ export default function HareketGormeyenler() {
                 <tr>
                   <td>${row.CODE || ''}</td>
                   <td>${row.DEFINITION_ || ''}</td>
+                  <td>${row['Son Hareket Tarihi'] ? 
+                    new Date(row['Son Hareket Tarihi']).toLocaleDateString('tr-TR') : 
+                    'Hiç hareket yok'}</td>
+                  <td>${row['Son İşlem Türü'] && !row['Son İşlem Türü'].startsWith('TRCODE:') ? 
+                    row['Son İşlem Türü'] : '-'}</td>
                   <td>${row['Ozel Kod 1'] || ''}</td>
                   <td>${row['Ozel Kod 2'] || ''}</td>
                   <td>${row['Ozel Kod 3'] || ''}</td>
@@ -1752,6 +1810,12 @@ export default function HareketGormeyenler() {
                       Cari Adı
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Son Hareket Tarihi
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Son İşlem Türü
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Özel Kod 1
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1779,6 +1843,18 @@ export default function HareketGormeyenler() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {row.DEFINITION_}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {row['Son Hareket Tarihi'] ? 
+                          new Date(row['Son Hareket Tarihi']).toLocaleDateString('tr-TR') : 
+                          <span className="text-gray-400 italic">Hiç hareket yok</span>
+                        }
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {row['Son İşlem Türü'] && !row['Son İşlem Türü'].startsWith('TRCODE:') ? 
+                          row['Son İşlem Türü'] : 
+                          <span className="text-gray-400 italic">-</span>
+                        }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div>

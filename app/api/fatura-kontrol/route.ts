@@ -263,6 +263,9 @@ export async function POST(request: NextRequest) {
       'Vergi Hariç Tutar', 'KDV Toplamı', 'Fatura Tarihi', 'Oluşturma Tarihi', 'Gönderici Adı', 'Tür'
     ];
 
+    // Uygulama Yanıtı kolonu var mı kontrol et
+    const hasApColumn = headers.includes('Uygulama Yanıtı') || headers.includes('ap');
+
     // Gerekli sütunları kontrol et
     const missingColumns = requiredColumns.filter(col => !headers.includes(col));
     if (missingColumns.length > 0) {
@@ -289,7 +292,8 @@ export async function POST(request: NextRequest) {
       faturaTarihi: headers.indexOf('Fatura Tarihi'),
       olusturmaTarihi: headers.indexOf('Oluşturma Tarihi'),
       gondericiAdi: headers.indexOf('Gönderici Adı'),
-      tur: headers.indexOf('Tür')
+      tur: headers.indexOf('Tür'),
+      uygulamaYaniti: hasApColumn ? (headers.indexOf('Uygulama Yanıtı') !== -1 ? headers.indexOf('Uygulama Yanıtı') : headers.indexOf('ap')) : -1
     };
 
     // Frontend'den gelen localStorage değerlerini al
@@ -324,6 +328,7 @@ export async function POST(request: NextRequest) {
     // Excel'den fatura numaralarını çıkar
     const faturaNumbers: string[] = [];
     const excelRows: any[] = [];
+    let rejectedCount = 0; // "red" olan faturaları say
     
     for (let i = 1; i < jsonData.length; i++) {
       const row = jsonData[i] as any[];
@@ -331,6 +336,16 @@ export async function POST(request: NextRequest) {
 
       const faturaNo = String(row[columnIndexes.faturaNo] || '');
       if (!faturaNo || faturaNo.trim() === '') continue;
+
+      // Uygulama Yanıtı kontrolü - "red" olanları karşılaştırmaya dahil etme
+      if (hasApColumn && columnIndexes.uygulamaYaniti !== -1) {
+        const uygulamaYaniti = String(row[columnIndexes.uygulamaYaniti] || '').toLowerCase().trim();
+        if (uygulamaYaniti === 'red') {
+          rejectedCount++;
+          console.log(`🚫 Fatura ${faturaNo} "red" olduğu için karşılaştırmaya dahil edilmiyor`);
+          continue; // Bu faturayı karşılaştırmaya dahil etme
+        }
+      }
 
       faturaNumbers.push(faturaNo);
       excelRows.push({
@@ -341,6 +356,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('🔍 LOGO\'da', faturaNumbers.length, 'fatura numarası aranıyor...');
+    if (rejectedCount > 0) {
+      console.log(`🚫 ${rejectedCount} fatura "red" (ret) olduğu için karşılaştırmaya dahil edilmedi`);
+    }
 
     if (faturaNumbers.length === 0) {
       return NextResponse.json({
@@ -349,10 +367,13 @@ export async function POST(request: NextRequest) {
           totalExcelRows: jsonData.length - 1,
           totalLogoInvoices: 0,
           missingInvoices: 0,
+          rejectedInvoices: rejectedCount,
           processedAt: new Date().toLocaleString('tr-TR')
         },
         missingInvoices: [],
-        message: 'Excel dosyasında geçerli fatura numarası bulunamadı.'
+        message: rejectedCount > 0 
+          ? `Excel dosyasında ${jsonData.length - 1} fatura bulundu. ${rejectedCount} fatura "ret" olduğu için karşılaştırmaya dahil edilmedi. Geçerli fatura numarası bulunamadı.`
+          : 'Excel dosyasında geçerli fatura numarası bulunamadı.'
       });
     }
 
@@ -390,11 +411,13 @@ export async function POST(request: NextRequest) {
       totalInvoices: jsonData.length - 1,
       existingInvoices: existingInvoices.length,
       missingInvoices: missingInvoices.length,
+      rejectedInvoices: rejectedCount,
       missingInvoiceNumbers: missingInvoices.map(invoice => invoice['Fatura No']),
       summary: {
         totalExcelRows: jsonData.length - 1,
         totalLogoInvoices: existingInvoices.length,
         missingInvoices: missingInvoices.length,
+        rejectedInvoices: rejectedCount,
         processedAt: new Date().toLocaleString('tr-TR'),
         firmaNo,
         donemNo,
@@ -402,7 +425,9 @@ export async function POST(request: NextRequest) {
         companyRef
       },
       missingInvoicesDetails: missingInvoices,
-      message: `Excel'de ${jsonData.length - 1} fatura bulundu. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
+      message: rejectedCount > 0 
+        ? `Excel'de ${jsonData.length - 1} fatura bulundu. ${rejectedCount} fatura "ret" olduğu için karşılaştırmaya dahil edilmedi. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
+        : `Excel'de ${jsonData.length - 1} fatura bulundu. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
     };
 
     console.log('✅ Karşılaştırma tamamlandı:', result.summary);

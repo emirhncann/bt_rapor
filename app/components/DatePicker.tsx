@@ -25,12 +25,12 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
     return null;
   };
 
-  // Date'i DD/MM/YYYY formatına çevir
-  const formatToDisplay = (date: Date): string => {
-    const dd = String(date.getDate()).padStart(2, '0');
+  // Date'i YYYY-MM-DD formatına çevir
+  const formatToYMD = (date: Date): string => {
+    const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(date.getFullYear());
-    return `${dd}/${mm}/${yyyy}`;
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   // Value değiştiğinde selectedDate'i güncelle
@@ -100,7 +100,7 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
 
     const newDate = new Date(selectedYear, selectedMonth, day);
     setSelectedDate(newDate);
-    onChange(formatToDisplay(newDate));
+    onChange(formatToYMD(newDate)); // YYYY-MM-DD formatında gönder
     setIsOpen(false);
   };
 
@@ -116,7 +116,7 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
     const today = new Date();
     setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedDate(today);
-    onChange(formatToDisplay(today));
+    onChange(formatToYMD(today)); // YYYY-MM-DD formatında gönder
     setIsOpen(false);
   };
 
