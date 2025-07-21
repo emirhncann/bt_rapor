@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import EnCokSatilanMalzemelerTable from '../components/tables/EnCokSatilanMalzemelerTable';
@@ -22,7 +22,7 @@ function formatDateToYMD(date: string | Date): string {
 export default function EnCokSatilanMalzemeler() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingFilters, setLoadingFilters] = useState(false);
+  const [loadingFilterCodes, setLoadingFilterCodes] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [hasAccess, setHasAccess] = useState<boolean>(false);
@@ -46,7 +46,12 @@ export default function EnCokSatilanMalzemeler() {
   const trCodeList = '7,8'; // Sabit, kullanıcıya gösterilmiyor
   const [ioCodeList, setIoCodeList] = useState('4');
   
-  // Filtreler
+  // Filtreler (Envanter raporundaki gibi selectedFilters state'i kullanacağız)
+  const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>({});
+  const selectedFiltersRef = useRef(selectedFilters);
+  useEffect(() => { selectedFiltersRef.current = selectedFilters; }, [selectedFilters]);
+  
+  // Eski filtreler (backward compatibility için kalabilir)
   const [stGrpCode, setStGrpCode] = useState('');
   const [specode1, setSpecode1] = useState('');
   const [specode2, setSpecode2] = useState('');
@@ -54,24 +59,74 @@ export default function EnCokSatilanMalzemeler() {
   const [specode4, setSpecode4] = useState('');
   const [specode5, setSpecode5] = useState('');
 
-  // Gelişmiş filtreler için state
+  // Gelişmiş filtreler için state - artık kullanılmayacak, selectedFilters kullanacağız
   const [selectedGrupKodlari, setSelectedGrupKodlari] = useState<string[]>([]);
   const [selectedOzelKod1, setSelectedOzelKod1] = useState<string[]>([]);
+  const [selectedOzelKod2, setSelectedOzelKod2] = useState<string[]>([]);
+  const [selectedOzelKod3, setSelectedOzelKod3] = useState<string[]>([]);
+  const [selectedOzelKod4, setSelectedOzelKod4] = useState<string[]>([]);
+  const [selectedOzelKod5, setSelectedOzelKod5] = useState<string[]>([]);
 
-  // Filtre seçenekleri için state
+  // Filtre seçenekleri için state - artık kullanılmayacak
   const [availableGrupKodlari, setAvailableGrupKodlari] = useState<string[]>([]);
   const [availableOzelKod1, setAvailableOzelKod1] = useState<string[]>([]);
+  const [availableOzelKod2, setAvailableOzelKod2] = useState<string[]>([]);
+  const [availableOzelKod3, setAvailableOzelKod3] = useState<string[]>([]);
+  const [availableOzelKod4, setAvailableOzelKod4] = useState<string[]>([]);
+  const [availableOzelKod5, setAvailableOzelKod5] = useState<string[]>([]);
 
-  // Checkbox filtreleme fonksiyonları
+  // Tüm özel kodlar için state yükle (Envanter gibi)
+  const [filterCodes, setFilterCodes] = useState<any[]>([]);
+
+  // Envanter raporundaki gibi toggle fonksiyonu
+  const toggleFilterValue = (codeType: string, value: string) => {
+    setSelectedFilters(prev => {
+      const currentArr = prev[codeType] || [];
+      if (currentArr.includes(value)) {
+        return { ...prev, [codeType]: currentArr.filter(v => v !== value) };
+      }
+      return { ...prev, [codeType]: [...currentArr, value] };
+    });
+  };
+
+  // Envanter raporundaki gibi kod tipi etiketleri
+  const getCodeTypeLabel = (codeType: string) => {
+    switch (codeType) {
+      case 'STRGRPCODE':
+        return 'Grup Kodu';
+      case 'SPECODE':
+        return 'Özel Kod';
+      case 'SPECODE2':
+        return 'Özel Kod 2';
+      case 'SPECODE3':
+        return 'Özel Kod 3';
+      case 'SPECODE4':
+        return 'Özel Kod 4';
+      case 'SPECODE5':
+        return 'Özel Kod 5';
+      default:
+        return codeType;
+    }
+  };
+
+  // Eski checkbox handlers - deprecated, toggle fonksiyonu kullanacağız
   const handleGrupKodChange = (kod: string) => {
-    setSelectedGrupKodlari(prev =>
-      prev.includes(kod) ? prev.filter(k => k !== kod) : [...prev, kod]
-    );
+    toggleFilterValue('STRGRPCODE', kod);
   };
   const handleOzelKod1Change = (kod: string) => {
-    setSelectedOzelKod1(prev =>
-      prev.includes(kod) ? prev.filter(k => k !== kod) : [...prev, kod]
-    );
+    toggleFilterValue('SPECODE', kod);
+  };
+  const handleOzelKod2Change = (kod: string) => {
+    toggleFilterValue('SPECODE2', kod);
+  };
+  const handleOzelKod3Change = (kod: string) => {
+    toggleFilterValue('SPECODE3', kod);
+  };
+  const handleOzelKod4Change = (kod: string) => {
+    toggleFilterValue('SPECODE4', kod);
+  };
+  const handleOzelKod5Change = (kod: string) => {
+    toggleFilterValue('SPECODE5', kod);
   };
 
   // Authentication kontrolü
@@ -274,6 +329,54 @@ export default function EnCokSatilanMalzemeler() {
       const tableITEMS = `LG_${firmaNo.toString().padStart(3, '0')}_ITEMS`;
       const specodesTable = `LG_${firmaNo.toString().padStart(3, '0')}_SPECODES`;
 
+      // selectedFiltersRef.current kullan (async fonksiyon olduğu için)
+      const currentFilters = selectedFiltersRef.current || {};
+      
+      // Envanter raporundaki gibi filtre koşulları oluştur
+      const buildFilterConditions = () => {
+        const conditions: string[] = [];
+        
+        // Grup Kodu filtresi
+        if (currentFilters.STRGRPCODE && currentFilters.STRGRPCODE.length > 0) {
+          const escaped = currentFilters.STRGRPCODE.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          conditions.push(`I.STGRPCODE IN (${escaped})`);
+        }
+        
+        // Özel Kod 1 filtresi  
+        if (currentFilters.SPECODE && currentFilters.SPECODE.length > 0) {
+          const escaped = currentFilters.SPECODE.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          conditions.push(`I.SPECODE IN (${escaped})`);
+        }
+        
+        // Özel Kod 2 filtresi
+        if (currentFilters.SPECODE2 && currentFilters.SPECODE2.length > 0) {
+          const escaped = currentFilters.SPECODE2.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          conditions.push(`I.SPECODE2 IN (${escaped})`);
+        }
+        
+        // Özel Kod 3 filtresi
+        if (currentFilters.SPECODE3 && currentFilters.SPECODE3.length > 0) {
+          const escaped = currentFilters.SPECODE3.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          conditions.push(`I.SPECODE3 IN (${escaped})`);
+        }
+        
+        // Özel Kod 4 filtresi
+        if (currentFilters.SPECODE4 && currentFilters.SPECODE4.length > 0) {
+          const escaped = currentFilters.SPECODE4.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          conditions.push(`I.SPECODE4 IN (${escaped})`);
+        }
+        
+        // Özel Kod 5 filtresi
+        if (currentFilters.SPECODE5 && currentFilters.SPECODE5.length > 0) {
+          const escaped = currentFilters.SPECODE5.map(v => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+          conditions.push(`I.SPECODE5 IN (${escaped})`);
+        }
+        
+        return conditions.length ? " AND " + conditions.join(" AND ") : "";
+      };
+
+      const filterConditions = buildFilterConditions();
+
       // Dinamik SQL oluştur
       const sqlQuery = `
 DECLARE @FirmaNo INT = ${firmaNo};
@@ -286,7 +389,7 @@ DECLARE @TRCODE_LIST NVARCHAR(MAX) = '${trCodeList}';
 DECLARE @IOCODE_LIST NVARCHAR(MAX) = '${ioCodeList}';
 DECLARE @TopCount INT = ${topCount};
 
--- Filtreler
+-- Eski metin filtreler
 DECLARE @STGRPCODE NVARCHAR(25) = ${stGrpCode ? `'${stGrpCode}'` : 'NULL'};
 DECLARE @SPECODE1 NVARCHAR(25) = ${specode1 ? `'${specode1}'` : 'NULL'};
 DECLARE @SPECODE2 NVARCHAR(25) = ${specode2 ? `'${specode2}'` : 'NULL'};
@@ -308,38 +411,28 @@ SELECT TOP (' + CAST(@TopCount AS NVARCHAR(10)) + ')
     I.STGRPCODE AS [Grup Kodu],
     S7.DEFINITION_ AS [Grup Açıklama],
     CASE 
-        WHEN I.SPECODE IS NOT NULL AND S1.DEFINITION_ IS NOT NULL 
-        THEN I.SPECODE + '' - '' + S1.DEFINITION_
-        WHEN I.SPECODE IS NOT NULL 
-        THEN I.SPECODE
+        WHEN I.SPECODE IS NOT NULL AND S1.DEFINITION_ IS NOT NULL THEN I.SPECODE + '' - '' + S1.DEFINITION_
+        WHEN I.SPECODE IS NOT NULL THEN I.SPECODE
         ELSE NULL
     END AS [Özel Kod 1],
     CASE 
-        WHEN I.SPECODE2 IS NOT NULL AND S2.DEFINITION_ IS NOT NULL 
-        THEN I.SPECODE2 + '' - '' + S2.DEFINITION_
-        WHEN I.SPECODE2 IS NOT NULL 
-        THEN I.SPECODE2
+        WHEN I.SPECODE2 IS NOT NULL AND S2.DEFINITION_ IS NOT NULL THEN I.SPECODE2 + '' - '' + S2.DEFINITION_
+        WHEN I.SPECODE2 IS NOT NULL THEN I.SPECODE2
         ELSE NULL
     END AS [Özel Kod 2],
     CASE 
-        WHEN I.SPECODE3 IS NOT NULL AND S3.DEFINITION_ IS NOT NULL 
-        THEN I.SPECODE3 + '' - '' + S3.DEFINITION_
-        WHEN I.SPECODE3 IS NOT NULL 
-        THEN I.SPECODE3
+        WHEN I.SPECODE3 IS NOT NULL AND S3.DEFINITION_ IS NOT NULL THEN I.SPECODE3 + '' - '' + S3.DEFINITION_
+        WHEN I.SPECODE3 IS NOT NULL THEN I.SPECODE3
         ELSE NULL
     END AS [Özel Kod 3],
     CASE 
-        WHEN I.SPECODE4 IS NOT NULL AND S4.DEFINITION_ IS NOT NULL 
-        THEN I.SPECODE4 + '' - '' + S4.DEFINITION_
-        WHEN I.SPECODE4 IS NOT NULL 
-        THEN I.SPECODE4
+        WHEN I.SPECODE4 IS NOT NULL AND S4.DEFINITION_ IS NOT NULL THEN I.SPECODE4 + '' - '' + S4.DEFINITION_
+        WHEN I.SPECODE4 IS NOT NULL THEN I.SPECODE4
         ELSE NULL
     END AS [Özel Kod 4],
     CASE 
-        WHEN I.SPECODE5 IS NOT NULL AND S5.DEFINITION_ IS NOT NULL 
-        THEN I.SPECODE5 + '' - '' + S5.DEFINITION_
-        WHEN I.SPECODE5 IS NOT NULL 
-        THEN I.SPECODE5
+        WHEN I.SPECODE5 IS NOT NULL AND S5.DEFINITION_ IS NOT NULL THEN I.SPECODE5 + '' - '' + S5.DEFINITION_
+        WHEN I.SPECODE5 IS NOT NULL THEN I.SPECODE5
         ELSE NULL
     END AS [Özel Kod 5],
     SUM(S.AMOUNT) AS [Toplam Miktar],
@@ -364,6 +457,7 @@ WHERE
     AND (@SPECODE3 IS NULL OR I.SPECODE3 = @SPECODE3)
     AND (@SPECODE4 IS NULL OR I.SPECODE4 = @SPECODE4)
     AND (@SPECODE5 IS NULL OR I.SPECODE5 = @SPECODE5)
+    ${filterConditions}
 GROUP BY 
     I.CODE, I.NAME, I.STGRPCODE,
     S7.DEFINITION_,
@@ -379,7 +473,7 @@ ORDER BY
     CASE WHEN @Olcu = ''TUTAR'' AND @Sirala = ''DESC'' THEN SUM(S.LINENET) END DESC
 ';
 
--- EXECUTE
+-- EXEC
 EXEC sp_executesql 
     @SQL,
     N'@StartDate DATE, @EndDate DATE, 
@@ -393,7 +487,13 @@ EXEC sp_executesql
     @SPECODE1 = @SPECODE1, @SPECODE2 = @SPECODE2,
     @SPECODE3 = @SPECODE3, @SPECODE4 = @SPECODE4, @SPECODE5 = @SPECODE5,
     @Sirala = @Sirala, @Olcu = @Olcu;
+
       `;
+
+      // Debug: SQL sorgusunu logla
+      console.log('🔍 Generated SQL Query:', sqlQuery);
+      console.log('🔍 Active Filters:', currentFilters);
+      console.log('🔍 Filter conditions:', filterConditions);
 
       // Direkt proxy'ye istek gönder
       const response = await sendSecureProxyRequest(
@@ -464,9 +564,9 @@ EXEC sp_executesql
     setHasFetched(true);
   };
 
-  // Filtre seçeneklerini yükle
-  const fetchFilterOptions = async () => {
-    setLoadingFilters(true);
+  // Filtre kodlarını yükle (envanter raporundaki gibi sayfaya girerken)
+  const fetchFilterCodes = async () => {
+    setLoadingFilterCodes(true);
     try {
       const companyRef = localStorage.getItem('companyRef');
       if (!companyRef) {
@@ -485,36 +585,74 @@ EXEC sp_executesql
       const specodesTable = `LG_${firmaNo.toString().padStart(3, '0')}_SPECODES`;
       const itemsTable = `LG_${firmaNo.toString().padStart(3, '0')}_ITEMS`;
   
-      const filterOptionsQuery = `
-        -- Grup Kodları
+      const filterCodesQuery = `
+      
         SELECT DISTINCT 
-          I.STGRPCODE AS [KOD],
+          S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
-          'GRUP' AS [TIP]
-        FROM ${itemsTable} I
-        LEFT JOIN ${specodesTable} S ON I.STGRPCODE = S.SPECODE AND S.CODETYPE = 4 AND S.SPECODETYPE = 0
-        WHERE I.STGRPCODE IS NOT NULL AND I.STGRPCODE != ''
-  
+          'STRGRPCODE' AS [ALAN]
+        FROM ${specodesTable} S
+        WHERE S.CODETYPE = 4 AND S.SPECODETYPE = 0
+
         UNION ALL
-  
-        -- Özel Kod 1
+
+        -- SPECODE (Özel Kod 1)
         SELECT DISTINCT 
-          I.SPECODE AS [KOD],
+          S.SPECODE AS [KOD],
           S.DEFINITION_ AS [AÇIKLAMA],
-          'OZEL1' AS [TIP]
-        FROM ${itemsTable} I
-        LEFT JOIN ${specodesTable} S ON I.SPECODE = S.SPECODE AND S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP1 = 1
-        WHERE I.SPECODE IS NOT NULL AND I.SPECODE != ''
-  
-        ORDER BY [TIP], [KOD]
+          'SPECODE' AS [ALAN]
+        FROM ${specodesTable} S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP1 = 1
+
+        UNION ALL
+
+        -- SPECODE2
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE2' AS [ALAN]
+        FROM ${specodesTable} S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP2 = 1
+
+        UNION ALL
+
+        -- SPECODE3
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE3' AS [ALAN]
+        FROM ${specodesTable} S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP3 = 1
+
+        UNION ALL
+
+        -- SPECODE4
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE4' AS [ALAN]
+        FROM ${specodesTable} S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP4 = 1
+
+        UNION ALL
+
+        -- SPECODE5
+        SELECT DISTINCT 
+          S.SPECODE AS [KOD],
+          S.DEFINITION_ AS [AÇIKLAMA],
+          'SPECODE5' AS [ALAN]
+        FROM ${specodesTable} S
+        WHERE S.CODETYPE = 1 AND S.SPECODETYPE = 1 AND S.SPETYP5 = 1
+        
+        ORDER BY [ALAN], [KOD]
       `;
   
       const response = await sendSecureProxyRequest(
         companyRef,
         'first_db_key',
-        { query: filterOptionsQuery },
+        { query: filterCodesQuery },
         'https://api.btrapor.com/proxy',
-        60000 // 1 dakika timeout
+        600000 // 10 dakika timeout
       );
   
       if (!response.ok) {
@@ -526,36 +664,37 @@ EXEC sp_executesql
   
       const result = await response.json();
       
-      if (result.results && Array.isArray(result.results)) {
-               const grupKodlari = result.results
-         .filter((item: any) => item.TIP === 'GRUP')
-         .map((item: any) => item.KOD)
-         .sort();
-       
-       const ozelKod1ler = result.results
-         .filter((item: any) => item.TIP === 'OZEL1')
-         .map((item: any) => item.KOD)
-         .sort();
-        
-        setAvailableGrupKodlari(grupKodlari);
-        setAvailableOzelKod1(ozelKod1ler);
-        
-        console.log('✅ Filtre seçenekleri yüklendi');
-        console.log('📊 Grup kodları:', grupKodlari.length);
-        console.log('📊 Özel kod 1:', ozelKod1ler.length);
+            if (result.results && Array.isArray(result.results)) {
+        setFilterCodes(result.results);
+        console.log('✅ Filtreleme kodları başarıyla yüklendi');
+        console.log('📊 Toplam filtreleme kodu sayısı:', result.results.length);
+      } else if (result.data && Array.isArray(result.data)) {
+        // Alternatif response formatı
+        setFilterCodes(result.data);
+        console.log('✅ Filtreleme kodları başarıyla yüklendi (alternatif format)');
+      } else {
+        console.error('❌ Filtreleme kodları API yanıtı geçersiz format:', result);
+        showErrorMessage('Sunucu yanıtı geçersiz formatta');
       }
   
     } catch (error: any) {
-      console.error('❌ Filtre seçenekleri yüklenirken hata:', error);
-      showErrorMessage('Filtre seçenekleri yüklenirken hata oluştu');
+      console.error('Filtreleme kodları yüklenirken hata:', error);
+      
+      if (error.name === 'AbortError') {
+        showErrorMessage('İstek zaman aşımına uğradı. Lütfen tekrar deneyin.');
+      } else if (error.message?.includes('Failed to fetch')) {
+        showErrorMessage('Sunucuya bağlanılamıyor. İnternet bağlantınızı kontrol edin.');
+      } else {
+        showErrorMessage('Filtreleme kodları alınırken bir hata oluştu. Lütfen tekrar deneyin.');
+      }
     } finally {
-      setLoadingFilters(false);
+      setLoadingFilterCodes(false);
     }
   };
 
   useEffect(() => {
     if (isAuthenticated && hasAccess && !isCheckingAccess) {
-      fetchFilterOptions(); // Filtre seçeneklerini yükle
+      fetchFilterCodes(); // Filtre kodlarını yükle (envanter raporundaki gibi)
     }
   }, [isAuthenticated, hasAccess, isCheckingAccess]);
 
@@ -659,7 +798,7 @@ EXEC sp_executesql
               </div>
             </div>
 
-            {/* Kayıt Sayısı ve Kodlar */}
+            {/* Kayıt Sayısı */}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Gösterilecek Kayıt Sayısı</label>
@@ -676,84 +815,74 @@ EXEC sp_executesql
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Gelişmiş Filtreler */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <h4 className="text-md font-medium mb-4 text-gray-900 flex items-center gap-2">
-              <span>🔍</span>
-              Gelişmiş Filtreler (Opsiyonel)
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Grup Kodu</label>
-                {loadingFilters ? (
-                  <div className="text-xs text-gray-500">Yükleniyor...</div>
-                ) : (
-                <div className="flex flex-wrap gap-2 max-w-xs">
-                  {availableGrupKodlari.length === 0 ? (
-                    <span className="text-gray-400 text-xs">Veri yok</span>
-                  ) : (
-                    availableGrupKodlari.map(kod => (
-                      <label key={kod} className="flex items-center gap-1 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedGrupKodlari.includes(kod)}
-                          onChange={() => handleGrupKodChange(kod)}
-                          className="accent-red-600"
-                        />
-                        <span>{kod}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Özel Kod 1</label>
-                {loadingFilters ? (
-                  <div className="text-xs text-gray-500">Yükleniyor...</div>
-                ) : (
-                <div className="flex flex-wrap gap-2 max-w-xs">
-                  {availableOzelKod1.length === 0 ? (
-                    <span className="text-gray-400 text-xs">Veri yok</span>
-                  ) : (
-                    availableOzelKod1.map(kod => (
-                      <label key={kod} className="flex items-center gap-1 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedOzelKod1.includes(kod)}
-                          onChange={() => handleOzelKod1Change(kod)}
-                          className="accent-blue-600"
-                        />
-                        <span>{kod}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Özel Kod 2</label>
-                <input
-                  type="text"
-                  value={specode2}
-                  onChange={(e) => setSpecode2(e.target.value)}
-                  placeholder="Özel kod 2..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
+        {/* Aktif Filtreler (Envanter raporundaki gibi) */}
+        {hasFetched && Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                <span className="text-blue-600">🔍</span>
+                Aktif Filtreler
+              </h3>
+              <button
+                onClick={() => setSelectedFilters({})}
+                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+              >
+                Tümünü Temizle
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(selectedFilters).map(([codeType, codes]) =>
+                codes.map(code => {
+                  // Filtre kodundan açıklamayı bul
+                  const filterCode = filterCodes.find(fc => fc.ALAN === codeType && fc.KOD === code);
+                  const description = filterCode ? filterCode.AÇIKLAMA : '';
+                  
+                  return (
+                    <div
+                      key={`${codeType}-${code}`}
+                      className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg border border-blue-200"
+                    >
+                      <span className="text-blue-600 mr-2">🏷️</span>
+                      <span className="font-semibold">{getCodeTypeLabel(codeType)}:</span>
+                      <span className="ml-1">{code}</span>
+                      {description && (
+                        <span className="ml-2 text-blue-600 text-xs opacity-75">
+                          ({description})
+                        </span>
+                      )}
+                      <button
+                        onClick={() => toggleFilterValue(codeType, code)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 transition-colors"
+                      >
+                        ✖
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
+        )}
 
-          {/* Raporu Getir Butonu */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
+        {/* Filtre Kartı (Envanter raporundaki gibi) */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">En Çok / En Az Satılan Malzemeler</h3>
+              <p className="text-sm text-gray-500">Satış analizlerinizi görüntüleyin ve karşılaştırın</p>
+              {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+                <p className="text-sm text-blue-600 mt-1 flex items-center gap-1">
+                  <span>🔍</span>
+                  {Object.values(selectedFilters).flat().length} aktif filtre uygulanacak
+                </p>
+              )}
+            </div>
             <button
               onClick={handleFetchReport}
               disabled={loading}
-              className="w-full lg:w-auto px-8 py-3 bg-gradient-to-r from-purple-800 to-purple-900 text-white font-medium rounded-lg shadow hover:from-purple-900 hover:to-purple-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+              className="px-6 py-3 bg-gradient-to-r from-purple-800 to-purple-900 text-white font-medium rounded-lg shadow hover:from-purple-900 hover:to-purple-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
             >
               {loading ? (
                 <>
@@ -805,15 +934,29 @@ EXEC sp_executesql
           </div>
         )}
 
-        {/* Data Table */}
-        <div className="bg-white rounded-lg shadow">
-          <EnCokSatilanMalzemelerTable 
-            data={data}
-            isLoading={loading}
-            selectedGrupKodlari={selectedGrupKodlari}
-            selectedOzelKod1={selectedOzelKod1}
-          />
-        </div>
+        {/* Data Table (Envanter raporundaki gibi) */}
+        {loading ? (
+          <div className="bg-white rounded-lg shadow p-12">
+            <div className="flex flex-col items-center justify-center">
+              {animationData && (
+                <div className="w-24 h-24 mb-4">
+                  <Lottie animationData={animationData} loop={true} />
+                </div>
+              )}
+              <p className="text-gray-600 font-medium">Satış verileri yükleniyor...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow">
+            <EnCokSatilanMalzemelerTable 
+              data={data}
+              filterCodes={filterCodes}
+              loadingFilterCodes={loadingFilterCodes}
+              selectedFilters={selectedFilters}
+              onToggleFilter={toggleFilterValue}
+            />
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

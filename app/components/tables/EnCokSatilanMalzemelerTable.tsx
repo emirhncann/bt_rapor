@@ -14,18 +14,20 @@ declare module 'jspdf' {
 
 interface EnCokSatilanMalzemelerTableProps {
   data: any[];
-  isLoading?: boolean;
-  selectedGrupKodlari?: string[];
-  selectedOzelKod1?: string[];
+  filterCodes?: any[];
+  loadingFilterCodes?: boolean;
+  selectedFilters?: Record<string, string[]>;
+  onToggleFilter?: (codeType: string, value: string) => void;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
 export default function EnCokSatilanMalzemelerTable({ 
   data,
-  isLoading = false,
-  selectedGrupKodlari = [],
-  selectedOzelKod1 = []
+  filterCodes = [],
+  loadingFilterCodes = false,
+  selectedFilters = {},
+  onToggleFilter = () => {}
 }: EnCokSatilanMalzemelerTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,21 +35,60 @@ export default function EnCokSatilanMalzemelerTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
-  // Checkbox filtre state'leri
-  // const [selectedGrupKodlari, setSelectedGrupKodlari] = useState<string[]>([]);
-  // const [selectedOzelKod1, setSelectedOzelKod1] = useState<string[]>([]);
+  // Filtreleme state'leri (envanter raporundaki gibi)
+  const [showFilters, setShowFilters] = useState(false);
+  const [showCodeSelector, setShowCodeSelector] = useState(true);
+  const [selectedCodeType, setSelectedCodeType] = useState<string>('');
+  const [codeSearchTerm, setCodeSearchTerm] = useState<string>('');
 
-  // Tablodaki mevcut kodlardan filtre seçeneklerini türet
-  const grupKodlari = Array.from(new Set(data.map(item => item['Grup Kodu']).filter(Boolean))).sort();
-  const ozelKod1ler = Array.from(new Set(data.map(item => item['Özel Kod 1']).filter(Boolean))).sort();
+  // Filtreleme kodları için helper fonksiyonlar
+  const getCodeTypes = () => {
+    const types = Array.from(new Set(filterCodes.map(code => code.ALAN)));
+    return types.sort();
+  };
 
-  // Checkbox filtreleme fonksiyonları
-  // const handleGrupKodChange = (kod: string) => {
-  //   setCurrentPage(1);
-  //   setSelectedGrupKodlari(prev =>
-  //     prev.includes(kod) ? prev.filter(k => k !== kod) : [...prev, kod]
-  //   );
-  // };
+  const getFilteredCodes = () => {
+    if (!selectedCodeType) return [];
+    
+    const codes = filterCodes
+      .filter(code => code.ALAN === selectedCodeType)
+      .filter(code => 
+        code.KOD.toLocaleLowerCase('tr-TR').includes(codeSearchTerm.toLocaleLowerCase('tr-TR')) ||
+        (code.AÇIKLAMA && code.AÇIKLAMA.toLocaleLowerCase('tr-TR').includes(codeSearchTerm.toLocaleLowerCase('tr-TR')))
+      );
+    
+    return codes.sort((a, b) => a.KOD.localeCompare(b.KOD));
+  };
+
+  const getCodeTypeLabel = (codeType: string) => {
+    const labels: {[key: string]: string} = {
+      'STRGRPCODE': 'Grup Kodu',
+      'SPECODE': 'Özel Kod 1',
+      'SPECODE2': 'Özel Kod 2',
+      'SPECODE3': 'Özel Kod 3',
+      'SPECODE4': 'Özel Kod 4',
+      'SPECODE5': 'Özel Kod 5'
+    };
+    return labels[codeType] || codeType;
+  };
+
+  const isCodeSelected = (codeType: string, kod: string) => {
+    const arr = selectedFilters[codeType] || [];
+    return arr.includes(kod);
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setSelectedCodeType('');
+    setCodeSearchTerm('');
+    setShowCodeSelector(false);
+    setCurrentPage(1);
+    // Tüm filtreleri temizle
+    Object.keys(selectedFilters).forEach(codeType => {
+      const codes = selectedFilters[codeType] || [];
+      codes.forEach(code => onToggleFilter(codeType, code));
+    });
+  };
   // const handleOzelKod1Change = (kod: string) => {
   //   setCurrentPage(1);
   //   setSelectedOzelKod1(prev =>
@@ -81,34 +122,37 @@ export default function EnCokSatilanMalzemelerTable({
     setCurrentPage(1);
   };
 
-  // Arama ve filtreleme
+  // Kod tiplerine karşılık gelen tablo alanları
+  const codeFieldMap: {[key: string]: string} = {
+    'STRGRPCODE': 'Grup Kodu',
+    'SPECODE': 'Özel Kod 1',
+    'SPECODE2': 'Özel Kod 2',
+    'SPECODE3': 'Özel Kod 3',
+    'SPECODE4': 'Özel Kod 4',
+    'SPECODE5': 'Özel Kod 5'
+  };
+
+  // Arama ve filtreleme (envanter raporundaki gibi)
   const filteredData = data.filter(item => {
-    if (!searchTerm) {
-      // Checkbox filtreleri uygula (artık props ile geliyor)
-      if (
-        (selectedGrupKodlari.length === 0 || selectedGrupKodlari.includes(item['Grup Kodu'])) &&
-        (selectedOzelKod1.length === 0 || selectedOzelKod1.includes(item['Özel Kod 1']))
-      ) {
-        return true;
-      }
-      return false;
-    }
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = (
-      (item['Malzeme Kodu'] || '').toLowerCase().includes(searchLower) ||
-      (item['Malzeme Adı'] || '').toLowerCase().includes(searchLower) ||
-      (item['Grup Kodu'] || '').toLowerCase().includes(searchLower) ||
-      (item['Grup Açıklama'] || '').toLowerCase().includes(searchLower)
+    // Arama filtresi
+    const matchesSearch = !searchTerm || Object.values(item).some(value => 
+      String(value).toLocaleLowerCase('tr-TR').includes(searchTerm.toLocaleLowerCase('tr-TR'))
     );
-    // Checkbox filtreleri uygula
-    if (!matchesSearch) return false;
-    if (
-      (selectedGrupKodlari.length > 0 && !selectedGrupKodlari.includes(item['Grup Kodu'])) ||
-      (selectedOzelKod1.length > 0 && !selectedOzelKod1.includes(item['Özel Kod 1']))
-    ) {
-      return false;
-    }
-    return true;
+    
+    // Kod filtreleri - her kod tipi için seçilen değerlerin KESİŞİMİ
+    const matchesCodes = Object.entries(selectedFilters).every(([type, codes]) => {
+      if (!codes || codes.length === 0) return true; // bu tipte seçim yoksa sorun değil
+      const codeField = codeFieldMap[type];
+      if (!codeField) return true;
+      // Özel kod alanları için düzenleme - sadece kod kısmını al (açıklama kısmını çıkar)
+      let itemValue = item[codeField];
+      if (codeField.includes('Özel Kod') && itemValue && itemValue.includes(' - ')) {
+        itemValue = itemValue.split(' - ')[0]; // "000001 - AÇIKLAMA" formatından sadece "000001" al
+      }
+      return codes.includes(itemValue);
+    });
+    
+    return matchesSearch && matchesCodes;
   });
 
   // Sıralanmış veri
@@ -223,42 +267,187 @@ export default function EnCokSatilanMalzemelerTable({
       <span className="text-blue-600">↓</span>;
   };
 
-  if (isLoading) {
-    return (
-      <div className="bg-white rounded-lg shadow p-12">
-        <div className="flex flex-col items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">Satış verileri yükleniyor...</p>
-        </div>
-      </div>
-    );
-  }
+  // Loading durumu artık ana sayfada kontrol ediliyor
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Filtreler kaldırıldı, sadece props ile filtreleme yapılacak */}
-      {/* Header Controls */}
-      <div className="p-6 bg-gray-50 border-b border-gray-200">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Search */}
-          <div className="flex-1 max-w-md">
+    <div className="overflow-x-auto bg-white rounded-lg shadow">
+      {/* Arama ve filtre kontrolleri */}
+      <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Arama Kutusu */}
             <div className="relative">
               <input
                 type="text"
-                placeholder="Malzeme kodu, adı veya grup kodu ile arama..."
+                placeholder="Malzeme ara..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent shadow-sm"
               />
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
+              <span className="absolute left-3 top-3 text-gray-400">🔍</span>
             </div>
+
+            {/* Tüm Filtreleri Temizle Butonu */}
+            {(searchTerm || Object.entries(selectedFilters).some(([, codes]) => codes.length > 0)) && (
+              <button
+                onClick={clearAllFilters}
+                className="px-4 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 flex items-center gap-2"
+              >
+                <span>🧹</span>
+                Tüm Filtreleri Temizle
+              </button>
+            )}
+
+            {/* Filtre Butonları */}
+            {filterCodes.length > 0 && (
+              <button
+                onClick={() => setShowCodeSelector(!showCodeSelector)}
+                className={`px-4 py-3 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                  showCodeSelector 
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                    : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                }`}
+              >
+                <span>🏷️</span>
+                {showCodeSelector ? 'Kod Filtrelerini Gizle' : 'Kod Filtreleri'}
+              </button>
+            )}
+          </div>
+
+          {loadingFilterCodes && (
+            <div className="px-4 py-3 text-sm text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
+              Filtreleme kodları yükleniyor...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Kod Filtreleri Bölümü (envanter raporundaki gibi) */}
+      {showCodeSelector && filterCodes.length > 0 && (
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+          <div className="space-y-4">
+            {/* Kod Tipi Seçimi */}
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <span>🏷️</span>
+                Kod Tipi:
+              </label>
+              <select
+                value={selectedCodeType}
+                onChange={(e) => {
+                  setSelectedCodeType(e.target.value);
+                  setCodeSearchTerm('');
+                }}
+                className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+              >
+                <option value="">Kod tipi seçin...</option>
+                {getCodeTypes().map(type => (
+                  <option key={type} value={type}>{getCodeTypeLabel(type)}</option>
+                ))}
+              </select>
+            </div>
+
+            {selectedCodeType && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <span>🔍</span>
+                    Kod Ara:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Kod veya açıklama ara..."
+                    value={codeSearchTerm}
+                    onChange={(e) => setCodeSearchTerm(e.target.value)}
+                    className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm flex-1"
+                  />
+                </div>
+
+                {/* Kod Listesi */}
+                <div className="max-h-60 overflow-y-auto border border-gray-300 rounded-lg">
+                  {getFilteredCodes().map(code => (
+                    <div
+                      key={`${code.ALAN}-${code.KOD}`}
+                      onClick={() => {
+                        onToggleFilter(selectedCodeType, code.KOD);
+                      }}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200 ${
+                        isCodeSelected(selectedCodeType, code.KOD) ? 'bg-blue-100 border-blue-200' : ''
+                      }`}
+                    >
+                      <div className="font-medium text-sm text-gray-900">{code.KOD}</div>
+                      <div className="text-xs text-gray-600 mt-1">{code.AÇIKLAMA}</div>
+                    </div>
+                  ))}
+                  
+                  {getFilteredCodes().length === 0 && (
+                    <div className="p-6 text-center text-gray-500 text-sm">
+                      {codeSearchTerm ? '🔍 Arama kriterine uygun kod bulunamadı' : '📋 Bu kod tipinde kod bulunamadı'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Seçili Kodlar */}
+                {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-blue-900 mb-3 flex items-center gap-2">
+                      <span>✅</span>
+                      Seçili Kodlar
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(selectedFilters).map(([type, codes]) =>
+                        codes.map(kod => {
+                          // Filtre kodundan açıklamayı bul
+                          const filterCode = filterCodes.find(fc => fc.ALAN === type && fc.KOD === kod);
+                          const description = filterCode ? filterCode.AÇIKLAMA : '';
+                          
+                          return (
+                            <span key={`${type}-${kod}`} className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg border border-blue-200">
+                              <span className="text-blue-600 mr-2">🏷️</span>
+                              <span className="font-semibold">{getCodeTypeLabel(type)}:</span>
+                              <span className="ml-1">{kod}</span>
+                              {description && (
+                                <span className="ml-2 text-blue-600 text-xs opacity-75">
+                                  ({description})
+                                </span>
+                              )}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation(); 
+                                  onToggleFilter(type, kod);
+                                }} 
+                                className="ml-2 text-blue-600 hover:text-blue-800 transition-colors"
+                              >
+                                ✖
+                              </button>
+                            </span>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Header Controls */}
+      <div className="p-6 bg-gray-50 border-b border-gray-200">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {/* Filtrelenmiş kayıt sayısı */}
+          <div className="flex-1">
+            <p className="text-sm text-gray-600">
+              <span className="font-medium">Toplam {filteredData.length} kayıt</span> 
+              {data.length !== filteredData.length && (
+                <span> ({data.length} kayıttan filtrelenmiş)</span>
+              )}
+            </p>
           </div>
 
           {/* Export Buttons */}
