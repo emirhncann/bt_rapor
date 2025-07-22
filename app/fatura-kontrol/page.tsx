@@ -111,6 +111,11 @@ export default function ExcelCompare() {
           const apColumnIndex = hasApColumn ? 
             (headers.indexOf('Uygulama Yanıtı') !== -1 ? headers.indexOf('Uygulama Yanıtı') : headers.indexOf('ap')) : -1;
 
+          // Harici İptal Durumu kolonu var mı kontrol et
+          const hasAuColumn = headers.includes('Harici İptal Durumu') || headers.includes('AU');
+          const auColumnIndex = hasAuColumn ? 
+            (headers.indexOf('Harici İptal Durumu') !== -1 ? headers.indexOf('Harici İptal Durumu') : headers.indexOf('AU')) : -1;
+
           let rejectedCount = 0;
 
           // Fatura verilerini işle - B kolonu (index 1) fatura numarası
@@ -133,10 +138,21 @@ export default function ExcelCompare() {
                 const uygulamaYaniti = String(invoice[headers[apColumnIndex]] || '').toLowerCase().trim();
                 if (uygulamaYaniti === 'red') {
                   rejectedCount++;
-                  console.log(`🚫 Fatura ${invoice['Fatura No']} "red" (ret) olduğu için karşılaştırmaya dahil edilmiyor`);
+                  console.log(`🚫 Fatura ${invoice['Fatura No']} "red" olduğu için karşılaştırmaya dahil edilmiyor`);
                   return false;
                 }
               }
+
+              // Harici İptal Durumu kolonu dolu ise filtrele
+              if (hasAuColumn && auColumnIndex !== -1) {
+                const hariciIptalDurumu = String(invoice[headers[auColumnIndex]] || '').trim();
+                if (hariciIptalDurumu && hariciIptalDurumu !== '') {
+                  rejectedCount++;
+                  console.log(`🚫 Fatura ${invoice['Fatura No']} harici iptal durumu "${hariciIptalDurumu}" olduğu için karşılaştırmaya dahil edilmiyor`);
+                  return false;
+                }
+              }
+
               return true;
             });
           
@@ -170,12 +186,13 @@ export default function ExcelCompare() {
       // Fatura numaralarını SQL için hazırla (SQL injection'a karşı escape)
       const faturaList = faturaNumbers.map(fn => `'${fn.toString().replace(/'/g, "''")}'`).join(',');
       
-      // SQL sorgusunu hazırla - NETTOTAL ve TOTALVAT alanlarını da çek
+      // SQL sorgusunu hazırla - NETTOTAL, TOTALVAT ve TRNET alanlarını da çek
       const sqlQuery = `
         SELECT 
           FICHENO as fatura_no,
           NETTOTAL as toplam_tutar,
           TOTALVAT as kdv_toplami,
+          TRNET as tr_net,
           DATE_ as tarih
         FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
         WHERE TRCODE IN (1,2,3,4) 
@@ -228,6 +245,7 @@ export default function ExcelCompare() {
           fatura_no: row.fatura_no || row.FATURA_NO,
           toplam_tutar: parseFloat(row.toplam_tutar || row.TOPLAM_TUTAR || 0),
           kdv_toplami: parseFloat(row.kdv_toplami || row.KDV_TOPLAMI || 0),
+          tr_net: parseFloat(row.tr_net || row.TRNET || 0),
           tarih: row.tarih || row.DATE_
         };
         
@@ -237,7 +255,8 @@ export default function ExcelCompare() {
             ham: row,
             islenmis: processed,
             tutar_ham: row.toplam_tutar || row.TOPLAM_TUTAR,
-            kdv_ham: row.kdv_toplami || row.KDV_TOPLAMI
+            kdv_ham: row.kdv_toplami || row.KDV_TOPLAMI,
+            trnet_ham: row.tr_net || row.TRNET
           });
         }
         
@@ -262,11 +281,14 @@ export default function ExcelCompare() {
     excelInvoices.slice(0, 3).forEach((invoice, index) => {
       const toplamTutar = parseFloat(invoice['Toplam Tutar'] || 0);
       const kdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
+      const paraBirimi = invoice['Para Birimi'] || 'TRY';
       
       console.log(`   ${index + 1}. Excel kaydı:`, {
         faturaNo: invoice['Fatura No'],
         toplamTutar: toplamTutar,
         kdvToplami: kdvToplami,
+        paraBirimi: paraBirimi,
+        isDovizli: paraBirimi !== 'TRY',
         toplamTutar_ham: invoice['Toplam Tutar'],
         kdvToplami_ham: invoice['KDV Toplamı'],
         toplamTutar_tipi: typeof toplamTutar,
@@ -280,6 +302,8 @@ export default function ExcelCompare() {
 
       const excelToplamTutar = parseFloat(invoice['Toplam Tutar'] || 0);
       const excelKdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
+      const paraBirimi = invoice['Para Birimi'] || 'TRY';
+      const isDovizli = paraBirimi !== 'TRY';
 
       // LOGO'da bu fatura numarası var mı?
       const logoInvoice = logoInvoices.find(li => li.fatura_no === faturaNo);
@@ -296,32 +320,53 @@ export default function ExcelCompare() {
           'Toplam Tutar': excelToplamTutar,
           'Vergi Hariç Tutar': parseFloat(invoice['Vergi Hariç Tutar'] || 0),
           'KDV Toplamı': excelKdvToplami,
+          'Para Birimi': paraBirimi,
           'Gönderici Adı': invoice['Gönderici Adı']
         };
         
         missingInvoices.push(missingInvoice);
       } else {
         // Fatura LOGO'da var, tutarları kontrol et
-        const tutarUyumlu = Math.abs(logoInvoice.toplam_tutar - excelToplamTutar) < 0.001; // 0.1 kuruş tolerans
-        const kdvUyumlu = Math.abs(logoInvoice.kdv_toplami - excelKdvToplami) < 0.001; // 0.1 kuruş tolerans
+        let tutarUyumlu = false;
+        let kdvUyumlu = true; // Dövizli işlemlerde KDV kontrol etmiyoruz
+        let logoKarsilastirmaTutari = 0;
+        let logoKdvTutari = 0;
+
+        if (isDovizli) {
+          // Dövizli işlem - TRNET ile karşılaştır
+          logoKarsilastirmaTutari = logoInvoice.tr_net;
+          tutarUyumlu = Math.abs(logoKarsilastirmaTutari - excelToplamTutar) < 0.001;
+          console.log(`💱 Dövizli fatura ${faturaNo} (${paraBirimi}): Excel ${excelToplamTutar} ↔ LOGO TRNET ${logoKarsilastirmaTutari}`);
+        } else {
+          // TRY işlem - NETTOTAL ve TOTALVAT ile karşılaştır
+          logoKarsilastirmaTutari = logoInvoice.toplam_tutar;
+          logoKdvTutari = logoInvoice.kdv_toplami;
+          tutarUyumlu = Math.abs(logoKarsilastirmaTutari - excelToplamTutar) < 0.001;
+          kdvUyumlu = Math.abs(logoKdvTutari - excelKdvToplami) < 0.001;
+          console.log(`₺ TRY fatura ${faturaNo}: Excel Tutar ${excelToplamTutar} ↔ LOGO NETTOTAL ${logoKarsilastirmaTutari}, Excel KDV ${excelKdvToplami} ↔ LOGO TOTALVAT ${logoKdvTutari}`);
+        }
         
         // Debug için detaylı log
-        const tutarFarki = Math.abs(logoInvoice.toplam_tutar - excelToplamTutar);
-        const kdvFarki = Math.abs(logoInvoice.kdv_toplami - excelKdvToplami);
+        const tutarFarki = Math.abs(logoKarsilastirmaTutari - excelToplamTutar);
+        const kdvFarki = isDovizli ? 0 : Math.abs(logoKdvTutari - excelKdvToplami);
         
         console.log(`🔍 Fatura ${faturaNo} karşılaştırması:`);
-        console.log(`   Excel Tutar: ${excelToplamTutar} (${typeof excelToplamTutar}) | LOGO Tutar: ${logoInvoice.toplam_tutar} (${typeof logoInvoice.toplam_tutar}) | Fark: ${tutarFarki}`);
-        console.log(`   Excel KDV: ${excelKdvToplami} (${typeof excelKdvToplami}) | LOGO KDV: ${logoInvoice.kdv_toplami} (${typeof logoInvoice.kdv_toplami}) | Fark: ${kdvFarki}`);
-        console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu}`);
-        console.log(`   Tolerans: 0.001 | Tutar için gerekli: ${tutarFarki < 0.001} | KDV için gerekli: ${kdvFarki < 0.001}`);
+        console.log(`   Para Birimi: ${paraBirimi} (Dövizli: ${isDovizli})`);
+        console.log(`   Excel Tutar: ${excelToplamTutar} | LOGO ${isDovizli ? 'TRNET' : 'NETTOTAL'}: ${logoKarsilastirmaTutari} | Fark: ${tutarFarki}`);
+        if (!isDovizli) {
+          console.log(`   Excel KDV: ${excelKdvToplami} | LOGO TOTALVAT: ${logoKdvTutari} | Fark: ${kdvFarki}`);
+        } else {
+          console.log(`   Excel KDV: ${excelKdvToplami} | LOGO KDV: Karşılaştırılmadı (dövizli fatura)`);
+        }
+        console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu} (${isDovizli ? 'dövizli - KDV kontrol edilmiyor' : 'TRY'})`);
         
         if (tutarUyumlu && kdvUyumlu) {
           // Tam uyumlu
           exactMatches++;
-          console.log(`✅ Fatura ${faturaNo}: Tam uyumlu`);
+          console.log(`✅ Fatura ${faturaNo}: Tam uyumlu ${isDovizli ? '(dövizli - sadece tutar kontrol)' : '(TRY)'}`);
         } else {
           // Tutarlar uyumsuz - hatalı fatura
-          console.log(`❌ Fatura ${faturaNo}: TUTARSIZ - Tutar farkı: ${tutarFarki}, KDV farkı: ${kdvFarki}`);
+          console.log(`❌ Fatura ${faturaNo}: TUTARSIZ - Tutar farkı: ${tutarFarki}${isDovizli ? ' (dövizli fatura)' : `, KDV farkı: ${kdvFarki}`}`);
           const mismatchedInvoice = {
             'Fatura No': faturaNo,
             'Tür': invoice['Tür'],
@@ -329,9 +374,10 @@ export default function ExcelCompare() {
             'Gönderici VKN': invoice['Gönderici VKN'],
             'Alıcı VKN': invoice['Alıcı VKN'],
             'Excel Toplam Tutar': excelToplamTutar,
-            'LOGO Toplam Tutar': logoInvoice.toplam_tutar,
+            'LOGO Toplam Tutar': logoKarsilastirmaTutari,
             'Excel KDV Toplamı': excelKdvToplami,
-            'LOGO KDV Toplamı': logoInvoice.kdv_toplami,
+            'LOGO KDV Toplamı': isDovizli ? 'Karşılaştırılmadı (Dövizli)' : logoKdvTutari,
+            'Para Birimi': paraBirimi,
             'Tutar Uyumlu': tutarUyumlu,
             'KDV Uyumlu': kdvUyumlu,
             'Vergi Hariç Tutar': parseFloat(invoice['Vergi Hariç Tutar'] || 0),
@@ -430,8 +476,7 @@ export default function ExcelCompare() {
 
       setResult({
         success: true,
-        ...comparisonResult,
-        rejectedInvoices: excelInvoices.rejectedCount
+        ...comparisonResult
       });
 
       console.log('✅ Karşılaştırma tamamlandı:', comparisonResult);
@@ -461,6 +506,7 @@ export default function ExcelCompare() {
     const exportData = result.missingInvoicesDetails.map((invoice: any) => ({
       'Fatura No': invoice['Fatura No'],
       'Tür': invoice['Tür'],
+      'Para Birimi': invoice['Para Birimi'] || 'TRY',
       'Fatura Tarihi': invoice['Fatura Tarihi'],
       'Oluşturma Tarihi': invoice['Oluşturma Tarihi'],
       'Gönderici VKN': invoice['Gönderici VKN'],
@@ -477,6 +523,7 @@ export default function ExcelCompare() {
     const colWidths = [
       { wch: 15 }, // Fatura No
       { wch: 12 }, // Tür  
+      { wch: 12 }, // Para Birimi
       { wch: 12 }, // Fatura Tarihi
       { wch: 15 }, // Oluşturma Tarihi
       { wch: 15 }, // Gönderici VKN
@@ -507,12 +554,13 @@ export default function ExcelCompare() {
     const exportData = result.mismatchedInvoicesDetails.map((invoice: any) => ({
       'Fatura No': invoice['Fatura No'],
       'Tür': invoice['Tür'],
+      'Para Birimi': invoice['Para Birimi'],
       'Excel Toplam Tutar': invoice['Excel Toplam Tutar'],
       'LOGO Toplam Tutar': invoice['LOGO Toplam Tutar'],
       'Excel KDV Toplamı': invoice['Excel KDV Toplamı'],
       'LOGO KDV Toplamı': invoice['LOGO KDV Toplamı'],
       'Tutar Uyumlu': invoice['Tutar Uyumlu'] ? 'Evet' : 'Hayır',
-      'KDV Uyumlu': invoice['KDV Uyumlu'] ? 'Evet' : 'Hayır',
+      'KDV Uyumlu': invoice['Para Birimi'] === 'TRY' ? (invoice['KDV Uyumlu'] ? 'Evet' : 'Hayır') : 'Karşılaştırılmadı (Dövizli)',
       'Fatura Tarihi': invoice['Fatura Tarihi'],
       'Gönderici VKN': invoice['Gönderici VKN'],
       'Alıcı VKN': invoice['Alıcı VKN'],
@@ -525,6 +573,7 @@ export default function ExcelCompare() {
     const colWidths = [
       { wch: 15 }, // Fatura No
       { wch: 12 }, // Tür
+      { wch: 12 }, // Para Birimi
       { wch: 18 }, // Excel Toplam Tutar
       { wch: 18 }, // LOGO Toplam Tutar
       { wch: 16 }, // Excel KDV Toplamı
@@ -1148,23 +1197,7 @@ export default function ExcelCompare() {
                   </div>
                 </div>
 
-                {/* Reddedilen Faturalar */}
-                {(result.rejectedInvoices || 0) > 0 && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-800">Ret Faturalar</p>
-                        <p className="text-2xl font-bold text-gray-900">{result.rejectedInvoices || 0}</p>
-                        <p className="text-xs text-gray-600">Karşılaştırmaya dahil edilmedi</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Tutarı Uyumsuz Faturalar Tablosu */}
                 {(result.mismatchedInvoicesDetails || []).length > 0 && (
@@ -1190,6 +1223,9 @@ export default function ExcelCompare() {
                           <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
                               Fatura No
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Para Birimi
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
                               Excel Toplam Tutar
@@ -1218,10 +1254,19 @@ export default function ExcelCompare() {
                                 {invoice['Fatura No']}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  invoice['Para Birimi'] === 'TRY' 
+                                    ? 'bg-blue-100 text-blue-800' 
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {invoice['Para Birimi']}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {typeof invoice['Excel Toplam Tutar'] === 'number' 
                                   ? invoice['Excel Toplam Tutar'].toLocaleString('tr-TR', { 
                                       style: 'currency', 
-                                      currency: 'TRY' 
+                                      currency: invoice['Para Birimi'] === 'TRY' ? 'TRY' : 'USD'
                                     })
                                   : invoice['Excel Toplam Tutar']
                                 }
@@ -1230,7 +1275,7 @@ export default function ExcelCompare() {
                                 {typeof invoice['LOGO Toplam Tutar'] === 'number' 
                                   ? invoice['LOGO Toplam Tutar'].toLocaleString('tr-TR', { 
                                       style: 'currency', 
-                                      currency: 'TRY' 
+                                      currency: invoice['Para Birimi'] === 'TRY' ? 'TRY' : 'USD'
                                     })
                                   : invoice['LOGO Toplam Tutar']
                                 }
@@ -1245,22 +1290,25 @@ export default function ExcelCompare() {
                                 }
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {typeof invoice['LOGO KDV Toplamı'] === 'number' 
-                                  ? invoice['LOGO KDV Toplamı'].toLocaleString('tr-TR', { 
-                                      style: 'currency', 
-                                      currency: 'TRY' 
-                                    })
-                                  : invoice['LOGO KDV Toplamı']
-                                }
+                                {invoice['LOGO KDV Toplamı'] === 'Karşılaştırılmadı (Dövizli)' ? (
+                                  <span className="text-gray-400 italic">Karşılaştırılmadı (Dövizli)</span>
+                                ) : (
+                                  typeof invoice['LOGO KDV Toplamı'] === 'number' 
+                                    ? invoice['LOGO KDV Toplamı'].toLocaleString('tr-TR', { 
+                                        style: 'currency', 
+                                        currency: 'TRY' 
+                                      })
+                                    : invoice['LOGO KDV Toplamı']
+                                )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <div className="space-y-1">
                                   {!invoice['Tutar Uyumlu'] && (
                                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                      Tutar Farklı
+                                      {invoice['Para Birimi'] === 'TRY' ? 'Tutar Farklı' : 'TRNET Farklı'}
                                     </span>
                                   )}
-                                  {!invoice['KDV Uyumlu'] && (
+                                  {!invoice['KDV Uyumlu'] && invoice['Para Birimi'] === 'TRY' && (
                                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
                                       KDV Farklı
                                     </span>
@@ -1317,6 +1365,9 @@ export default function ExcelCompare() {
                             <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-24">
                               Tür
                             </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-24">
+                              Para Birimi
+                            </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-32">
                               Fatura Tarihi
                             </th>
@@ -1361,6 +1412,15 @@ export default function ExcelCompare() {
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  invoice['Para Birimi'] === 'TRY' 
+                                    ? 'bg-blue-100 text-blue-800' 
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {invoice['Para Birimi'] || 'TRY'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {invoice['Fatura Tarihi']}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -1376,7 +1436,7 @@ export default function ExcelCompare() {
                                 {typeof invoice['Toplam Tutar'] === 'number' 
                                   ? invoice['Toplam Tutar'].toLocaleString('tr-TR', { 
                                       style: 'currency', 
-                                      currency: 'TRY' 
+                                      currency: (invoice['Para Birimi'] || 'TRY') === 'TRY' ? 'TRY' : 'USD'
                                     })
                                   : invoice['Toplam Tutar']
                                 }
@@ -1385,7 +1445,7 @@ export default function ExcelCompare() {
                                 {typeof invoice['Vergi Hariç Tutar'] === 'number'
                                   ? invoice['Vergi Hariç Tutar'].toLocaleString('tr-TR', { 
                                       style: 'currency', 
-                                      currency: 'TRY' 
+                                      currency: (invoice['Para Birimi'] || 'TRY') === 'TRY' ? 'TRY' : 'USD'
                                     })
                                   : invoice['Vergi Hariç Tutar']
                                 }

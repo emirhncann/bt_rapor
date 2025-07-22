@@ -43,7 +43,7 @@ export default function EnCokSatilanMalzemeler() {
   const [sirala, setSirala] = useState('DESC'); // ASC veya DESC
   const [olcu, setOlcu] = useState('MIKTAR'); // MIKTAR veya TUTAR
   const [topCount, setTopCount] = useState(50);
-  const trCodeList = '7,8'; // Sabit, kullanıcıya gösterilmiyor
+  const [selectedTrCodes, setSelectedTrCodes] = useState(['7', '8']); // Perakende ve Toptan seçimleri
   const [ioCodeList, setIoCodeList] = useState('4');
   
   // Filtreler (Envanter raporundaki gibi selectedFilters state'i kullanacağız)
@@ -107,6 +107,16 @@ export default function EnCokSatilanMalzemeler() {
       default:
         return codeType;
     }
+  };
+
+  // TR Code seçim fonksiyonu
+  const toggleTrCode = (code: string) => {
+    setSelectedTrCodes(prev => {
+      if (prev.includes(code)) {
+        return prev.filter(c => c !== code);
+      }
+      return [...prev, code];
+    });
   };
 
   // Eski checkbox handlers - deprecated, toggle fonksiyonu kullanacağız
@@ -378,6 +388,7 @@ export default function EnCokSatilanMalzemeler() {
       const filterConditions = buildFilterConditions();
 
       // Dinamik SQL oluştur
+      const trCodeList = selectedTrCodes.join(',');
       const sqlQuery = `
 DECLARE @FirmaNo INT = ${firmaNo};
 DECLARE @DonemNo INT = ${donemNo};
@@ -720,7 +731,7 @@ EXEC sp_executesql
     <DashboardLayout title="En Çok / En Az Satılan Malzemeler">
       <div className="space-y-6">
         {/* Header Section */}
-        <div className="bg-gradient-to-r from-purple-800 to-purple-900 rounded-lg shadow p-6">
+        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center">
               <img 
@@ -730,14 +741,15 @@ EXEC sp_executesql
               />
               <div>
                 <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">En Çok / En Az Satılan Malzemeler</h2>
-                <p className="text-purple-100 text-sm">
-                  Toplam Kayıt: {data.length} | Analiz Kriteri: {olcu === 'MIKTAR' ? 'Miktar' : 'Tutar'} | Sıralama: {sirala === 'ASC' ? 'En Az' : 'En Çok'}
+                <p className="text-red-100 text-sm">
+                  Toplam Kayıt: {data.length} | Analiz Kriteri: {olcu === 'MIKTAR' ? 'Miktar' : 'Tutar'} | Sıralama: {sirala === 'ASC' ? 'En Az' : 'En Çok'} | 
+                  Satış Türü: {selectedTrCodes.map(code => code === '7' ? 'Perakende' : 'Toptan').join(', ')}
                 </p>
               </div>
             </div>
             <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
               <div className="text-left lg:text-right">
-                <p className="text-purple-100 text-sm">Rapor Dönemi</p>
+                <p className="text-red-100 text-sm">Rapor Dönemi</p>
                 <p className="text-lg lg:text-xl font-semibold text-white">{startDate} - {endDate}</p>
               </div>
             </div>
@@ -745,72 +757,147 @@ EXEC sp_executesql
         </div>
 
         {/* Parametreler */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-6 text-gray-900 flex items-center gap-2">
-            <span>⚙️</span>
-            Rapor Parametreleri
-          </h3>
+        <div className="bg-white rounded-lg shadow-lg border border-gray-100">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+              <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                <span className="text-red-600">⚙️</span>
+              </div>
+              Rapor Parametreleri
+            </h3>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Tarih Aralığı */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Başlangıç Tarihi</label>
-                <DatePicker 
-                  value={startDate}
-                  onChange={(date) => setStartDate(formatDateToYMD(date))}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Bitiş Tarihi</label>
-                <DatePicker 
-                  value={endDate}
-                  onChange={(date) => setEndDate(formatDateToYMD(date))}
-                />
-              </div>
-            </div>
-
-            {/* Analiz Kriterleri */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Analiz Kriteri</label>
-                <select
-                  value={olcu}
-                  onChange={(e) => setOlcu(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="MIKTAR">Miktar Bazlı</option>
-                  <option value="TUTAR">Tutar Bazlı</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Sıralama</label>
-                <select
-                  value={sirala}
-                  onChange={(e) => setSirala(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="DESC">En Çok Satılan</option>
-                  <option value="ASC">En Az Satılan</option>
-                </select>
+          <div className="p-6 space-y-6">
+            {/* Tarih Aralığı Kartı */}
+            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <span className="w-4 h-4 bg-blue-500 rounded-full"></span>
+                Tarih Aralığı
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Başlangıç Tarihi</label>
+                  <DatePicker 
+                    value={startDate}
+                    onChange={(date) => setStartDate(formatDateToYMD(date))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">Bitiş Tarihi</label>
+                  <DatePicker 
+                    value={endDate}
+                    onChange={(date) => setEndDate(formatDateToYMD(date))}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Kayıt Sayısı */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Gösterilecek Kayıt Sayısı</label>
-                <select
-                  value={topCount}
-                  onChange={(e) => setTopCount(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value={20}>Top 20</option>
-                  <option value={50}>Top 50</option>
-                  <option value={100}>Top 100</option>
-                  <option value={200}>Top 200</option>
+            {/* Analiz Seçenekleri Kartı */}
+            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-800 mb-5 flex items-center gap-2">
+                <span className="w-4 h-4 bg-green-500 rounded-full"></span>
+                Analiz Seçenekleri
+              </h4>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-3">Analiz Kriteri</label>
+                  <div className="inline-flex bg-white rounded-lg p-1 shadow-sm border border-gray-200">
+                    <button
+                      type="button"
+                      onClick={() => setOlcu('MIKTAR')}
+                      className={`px-4 py-2.5 text-sm font-medium rounded-md transition-all duration-200 ${
+                        olcu === 'MIKTAR'
+                          ? 'bg-red-600 text-white shadow-md'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      Miktar Bazlı
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOlcu('TUTAR')}
+                      className={`px-4 py-2.5 text-sm font-medium rounded-md transition-all duration-200 ${
+                        olcu === 'TUTAR'
+                          ? 'bg-red-600 text-white shadow-md'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      Tutar Bazlı
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-3">Sıralama Türü</label>
+                  <div className="inline-flex bg-white rounded-lg p-1 shadow-sm border border-gray-200">
+                    <button
+                      type="button"
+                      onClick={() => setSirala('DESC')}
+                      className={`px-4 py-2.5 text-sm font-medium rounded-md transition-all duration-200 ${
+                        sirala === 'DESC'
+                          ? 'bg-red-600 text-white shadow-md'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      En Çok Satılan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSirala('ASC')}
+                      className={`px-4 py-2.5 text-sm font-medium rounded-md transition-all duration-200 ${
+                        sirala === 'ASC'
+                          ? 'bg-red-600 text-white shadow-md'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      En Az Satılan
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-3">Satış Türü</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center bg-white rounded-lg p-3 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedTrCodes.includes('7')}
+                        onChange={() => toggleTrCode('7')}
+                        className="rounded border-gray-300 text-red-600 focus:ring-red-500 focus:ring-2"
+                      />
+                      <span className="ml-3 text-sm font-medium text-gray-700">Perakende Satış</span>
+                    </label>
+                    <label className="flex items-center bg-white rounded-lg p-3 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedTrCodes.includes('8')}
+                        onChange={() => toggleTrCode('8')}
+                        className="rounded border-gray-300 text-red-600 focus:ring-red-500 focus:ring-2"
+                      />
+                      <span className="ml-3 text-sm font-medium text-gray-700">Toptan Satış</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Kayıt Sayısı Kartı */}
+            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+              <h4 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <span className="w-4 h-4 bg-orange-500 rounded-full"></span>
+                Görüntüleme Seçenekleri
+              </h4>
+              <div className="max-w-xs">
+                <label className="block text-sm font-medium text-gray-600 mb-2">Gösterilecek Kayıt Sayısı</label>
+                                  <select
+                    value={topCount}
+                    onChange={(e) => setTopCount(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm font-medium shadow-sm transition-all duration-200"
+                  >
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
                 </select>
               </div>
             </div>
@@ -882,7 +969,7 @@ EXEC sp_executesql
             <button
               onClick={handleFetchReport}
               disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-purple-800 to-purple-900 text-white font-medium rounded-lg shadow hover:from-purple-900 hover:to-purple-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+              className="px-6 py-3 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
             >
               {loading ? (
                 <>
