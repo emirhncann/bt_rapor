@@ -136,8 +136,8 @@ async function handleTestMode(testData: any) {
   }
 }
 
-// LOGO'da fatura kontrolü
-async function checkInvoicesInLogo(faturaNumbers: string[], firmaNo: string, donemNo: string, logoDb: string, companyRef: string): Promise<string[]> {
+// LOGO'da fatura kontrolü - şimdi tutarları da kontrol edecek
+async function checkInvoicesInLogo(faturaNumbers: string[], firmaNo: string, donemNo: string, logoDb: string, companyRef: string): Promise<any[]> {
   try {
     if (faturaNumbers.length === 0) {
       console.log('⚠️ Fatura numarası bulunamadı');
@@ -148,7 +148,10 @@ async function checkInvoicesInLogo(faturaNumbers: string[], firmaNo: string, don
     const faturaList = faturaNumbers.map(fn => `'${fn}'`).join(',');
     
     const sqlQuery = `
-      SELECT FICHENO 
+      SELECT 
+        FICHENO as fatura_no,
+        NETTOTAL as toplam_tutar,
+        TOTALVAT as kdv_toplami
       FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
       WHERE TRCODE IN (1,2,3,4) 
         AND FICHENO IN (${faturaList})
@@ -184,10 +187,31 @@ async function checkInvoicesInLogo(faturaNumbers: string[], firmaNo: string, don
     const result = await response.json();
     console.log('📊 LOGO yanıtı:', result);
     
-    const existingInvoices = result.results || result.data || [];
+    const logoInvoices = result.results || result.data || [];
+    console.log('🔍 LOGO ham veriler (ilk 3 kayıt):', logoInvoices.slice(0, 3));
     
-    // Mevcut fatura numaralarını döndür
-    return existingInvoices.map((row: any) => row.FICHENO || row.FICHENO);
+    // LOGO'dan gelen fatura bilgilerini döndür (fatura_no, toplam_tutar, kdv_toplami ile)
+    const processedInvoices = logoInvoices.map((row: any, index: number) => {
+      const processed = {
+        fatura_no: row.fatura_no || row.FATURA_NO,
+        toplam_tutar: parseFloat(row.toplam_tutar || row.TOPLAM_TUTAR || 0),
+        kdv_toplami: parseFloat(row.kdv_toplami || row.KDV_TOPLAMI || 0)
+      };
+      
+      // İlk 3 kaydı detaylı log'la
+      if (index < 3) {
+        console.log(`🔍 LOGO ${index + 1}. kayıt:`, {
+          ham: row,
+          islenmis: processed,
+          tutar_ham: row.toplam_tutar || row.TOPLAM_TUTAR,
+          kdv_ham: row.kdv_toplami || row.KDV_TOPLAMI
+        });
+      }
+      
+      return processed;
+    });
+    
+    return processedInvoices;
 
   } catch (error) {
     console.error('❌ LOGO kontrol hatası:', error);
@@ -350,12 +374,27 @@ export async function POST(request: NextRequest) {
       faturaNumbers.push(faturaNo);
       excelRows.push({
         faturaNo,
+        toplamTutar: parseFloat(row[columnIndexes.toplamTutar] || 0),
+        kdvToplami: parseFloat(row[columnIndexes.kdvToplami] || 0),
         row,
         columnIndexes
       });
     }
 
     console.log('🔍 LOGO\'da', faturaNumbers.length, 'fatura numarası aranıyor...');
+    console.log('🔍 Excel verilerinden örnekler (ilk 3 kayıt):');
+    excelRows.slice(0, 3).forEach((item, index) => {
+      console.log(`   ${index + 1}. Excel kaydı:`, {
+        faturaNo: item.faturaNo,
+        toplamTutar: item.toplamTutar,
+        kdvToplami: item.kdvToplami,
+        toplamTutar_ham: item.row[item.columnIndexes.toplamTutar],
+        kdvToplami_ham: item.row[item.columnIndexes.kdvToplami],
+        toplamTutar_tipi: typeof item.toplamTutar,
+        kdvToplami_tipi: typeof item.kdvToplami
+      });
+    });
+
     if (rejectedCount > 0) {
       console.log(`🚫 ${rejectedCount} fatura "red" (ret) olduğu için karşılaştırmaya dahil edilmedi`);
     }
@@ -367,35 +406,42 @@ export async function POST(request: NextRequest) {
           totalExcelRows: jsonData.length - 1,
           totalLogoInvoices: 0,
           missingInvoices: 0,
+          mismatchedInvoices: 0,
           rejectedInvoices: rejectedCount,
           processedAt: new Date().toLocaleString('tr-TR')
         },
         missingInvoices: [],
+        mismatchedInvoices: [],
         message: rejectedCount > 0 
           ? `Excel dosyasında ${jsonData.length - 1} fatura bulundu. ${rejectedCount} fatura "ret" olduğu için karşılaştırmaya dahil edilmedi. Geçerli fatura numarası bulunamadı.`
           : 'Excel dosyasında geçerli fatura numarası bulunamadı.'
       });
     }
 
-    // LOGO'da mevcut faturaları kontrol et
-    const existingInvoices = await checkInvoicesInLogo(faturaNumbers, firmaNo, donemNo, logoDb, companyRef);
+    // LOGO'da mevcut faturaları kontrol et (artık tutarlarla birlikte)
+    const logoInvoices = await checkInvoicesInLogo(faturaNumbers, firmaNo, donemNo, logoDb, companyRef);
     
-    console.log('✅ LOGO\'da bulunan faturalar:', existingInvoices.length);
-    console.log('❌ LOGO\'da bulunamayan faturalar:', faturaNumbers.length - existingInvoices.length);
+    console.log('✅ LOGO\'da bulunan faturalar:', logoInvoices.length);
 
-    // Eksik faturaları bul
+    // Eksik faturaları ve uyumsuz faturaları bul
     const missingInvoices: MissingInvoice[] = [];
+    const mismatchedInvoices: any[] = [];
+    let exactMatches = 0;
     
-    excelRows.forEach(({ faturaNo, row, columnIndexes }) => {
-      if (!existingInvoices.includes(faturaNo)) {
+    excelRows.forEach(({ faturaNo, toplamTutar, kdvToplami, row, columnIndexes }) => {
+      // LOGO'da bu fatura numarası var mı?
+      const logoInvoice = logoInvoices.find(li => li.fatura_no === faturaNo);
+      
+      if (!logoInvoice) {
+        // Fatura LOGO'da hiç yok - eksik fatura
         const missingInvoice: MissingInvoice = {
           'Fatura No': faturaNo,
           'Tarih': convertDateFormat(row[columnIndexes.faturaTarihi]),
           'Gönderici VKN': String(row[columnIndexes.gondericiVKN] || ''),
           'Alıcı VKN': String(row[columnIndexes.aliciVKN] || ''),
-          'Toplam Tutar': parseFloat(row[columnIndexes.toplamTutar] || 0),
+          'Toplam Tutar': toplamTutar,
           'Vergi Hariç Tutar': parseFloat(row[columnIndexes.vergiHariçTutar] || 0),
-          'KDV Toplamı': parseFloat(row[columnIndexes.kdvToplami] || 0),
+          'KDV Toplamı': kdvToplami,
           'Fatura Tarihi': convertDateFormat(row[columnIndexes.faturaTarihi]),
           'Oluşturma Tarihi': convertDateFormat(row[columnIndexes.olusturmaTarihi]),
           'Gönderici Adı': String(row[columnIndexes.gondericiAdi] || ''),
@@ -403,20 +449,71 @@ export async function POST(request: NextRequest) {
         };
         
         missingInvoices.push(missingInvoice);
+      } else {
+        // Fatura LOGO'da var, tutarları kontrol et
+        const tutarUyumlu = Math.abs(logoInvoice.toplam_tutar - toplamTutar) < 0.001; // 0.1 kuruş tolerans
+        const kdvUyumlu = Math.abs(logoInvoice.kdv_toplami - kdvToplami) < 0.001; // 0.1 kuruş tolerans
+        
+        // Debug için detaylı log
+        const tutarFarki = Math.abs(logoInvoice.toplam_tutar - toplamTutar);
+        const kdvFarki = Math.abs(logoInvoice.kdv_toplami - kdvToplami);
+        
+        console.log(`🔍 Fatura ${faturaNo} karşılaştırması:`);
+        console.log(`   Excel Tutar: ${toplamTutar} (${typeof toplamTutar}) | LOGO Tutar: ${logoInvoice.toplam_tutar} (${typeof logoInvoice.toplam_tutar}) | Fark: ${tutarFarki}`);
+        console.log(`   Excel KDV: ${kdvToplami} (${typeof kdvToplami}) | LOGO KDV: ${logoInvoice.kdv_toplami} (${typeof logoInvoice.kdv_toplami}) | Fark: ${kdvFarki}`);
+        console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu}`);
+        console.log(`   Tolerans: 0.001 | Tutar için gerekli: ${tutarFarki < 0.001} | KDV için gerekli: ${kdvFarki < 0.001}`);
+        
+        if (tutarUyumlu && kdvUyumlu) {
+          // Tam uyumlu
+          exactMatches++;
+          console.log(`✅ Fatura ${faturaNo}: Tam uyumlu`);
+        } else {
+          // Tutarlar uyumsuz - hatalı fatura
+          console.log(`❌ Fatura ${faturaNo}: TUTARSIZ - Tutar farkı: ${tutarFarki}, KDV farkı: ${kdvFarki}`);
+          const mismatchedInvoice = {
+            'Fatura No': faturaNo,
+            'Tarih': convertDateFormat(row[columnIndexes.faturaTarihi]),
+            'Gönderici VKN': String(row[columnIndexes.gondericiVKN] || ''),
+            'Alıcı VKN': String(row[columnIndexes.aliciVKN] || ''),
+            'Excel Toplam Tutar': toplamTutar,
+            'LOGO Toplam Tutar': logoInvoice.toplam_tutar,
+            'Excel KDV Toplamı': kdvToplami,
+            'LOGO KDV Toplamı': logoInvoice.kdv_toplami,
+            'Tutar Uyumlu': tutarUyumlu,
+            'KDV Uyumlu': kdvUyumlu,
+            'Vergi Hariç Tutar': parseFloat(row[columnIndexes.vergiHariçTutar] || 0),
+            'Fatura Tarihi': convertDateFormat(row[columnIndexes.faturaTarihi]),
+            'Oluşturma Tarihi': convertDateFormat(row[columnIndexes.olusturmaTarihi]),
+            'Gönderici Adı': String(row[columnIndexes.gondericiAdi] || ''),
+            'Tür': String(row[columnIndexes.tur] || '')
+          };
+          
+          mismatchedInvoices.push(mismatchedInvoice);
+          console.log(`❌ Fatura ${faturaNo}: Tutarlar uyumsuz - Excel Tutar: ${toplamTutar}, LOGO Tutar: ${logoInvoice.toplam_tutar}, Excel KDV: ${kdvToplami}, LOGO KDV: ${logoInvoice.kdv_toplami}`);
+        }
       }
     });
+
+    console.log(`✅ Tam uyumlu faturalar: ${exactMatches}`);
+    console.log(`❌ LOGO'da bulunamayan faturalar: ${missingInvoices.length}`);
+    console.log(`⚠️ Tutarları uyumsuz faturalar: ${mismatchedInvoices.length}`);
 
     const result = {
       success: true,
       totalInvoices: jsonData.length - 1,
-      existingInvoices: existingInvoices.length,
+      existingInvoices: exactMatches,
       missingInvoices: missingInvoices.length,
+      mismatchedInvoices: mismatchedInvoices.length,
       rejectedInvoices: rejectedCount,
       missingInvoiceNumbers: missingInvoices.map(invoice => invoice['Fatura No']),
+      mismatchedInvoiceNumbers: mismatchedInvoices.map(invoice => invoice['Fatura No']),
       summary: {
         totalExcelRows: jsonData.length - 1,
-        totalLogoInvoices: existingInvoices.length,
+        totalLogoInvoices: logoInvoices.length,
+        exactMatches: exactMatches,
         missingInvoices: missingInvoices.length,
+        mismatchedInvoices: mismatchedInvoices.length,
         rejectedInvoices: rejectedCount,
         processedAt: new Date().toLocaleString('tr-TR'),
         firmaNo,
@@ -425,9 +522,10 @@ export async function POST(request: NextRequest) {
         companyRef
       },
       missingInvoicesDetails: missingInvoices,
+      mismatchedInvoicesDetails: mismatchedInvoices,
       message: rejectedCount > 0 
-        ? `Excel'de ${jsonData.length - 1} fatura bulundu. ${rejectedCount} fatura "ret" olduğu için karşılaştırmaya dahil edilmedi. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
-        : `Excel'de ${jsonData.length - 1} fatura bulundu. LOGO'da ${existingInvoices.length} fatura mevcut. ${missingInvoices.length} fatura LOGO'da bulunamadı.`
+        ? `Excel'de ${jsonData.length - 1} fatura bulundu. ${rejectedCount} fatura "ret" olduğu için karşılaştırmaya dahil edilmedi. ${exactMatches} fatura tam uyumlu, ${missingInvoices.length} fatura LOGO'da bulunamadı, ${mismatchedInvoices.length} fatura tutarları uyumsuz.`
+        : `Excel'de ${jsonData.length - 1} fatura bulundu. ${exactMatches} fatura tam uyumlu, ${missingInvoices.length} fatura LOGO'da bulunamadı, ${mismatchedInvoices.length} fatura tutarları uyumsuz.`
     };
 
     console.log('✅ Karşılaştırma tamamlandı:', result.summary);

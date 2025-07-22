@@ -83,7 +83,7 @@ export default function ExcelCompare() {
     loadConnectionInfo();
   }, []);
 
-  const processExcelFile = async (file: File): Promise<any[]> => {
+  const processExcelFile = async (file: File): Promise<{invoices: any[], totalRows: number, rejectedCount: number}> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       
@@ -111,6 +111,8 @@ export default function ExcelCompare() {
           const apColumnIndex = hasApColumn ? 
             (headers.indexOf('Uygulama Yanıtı') !== -1 ? headers.indexOf('Uygulama Yanıtı') : headers.indexOf('ap')) : -1;
 
+          let rejectedCount = 0;
+
           // Fatura verilerini işle - B kolonu (index 1) fatura numarası
           const invoices = rows
             .map((row: unknown, rowIndex: number) => {
@@ -130,6 +132,7 @@ export default function ExcelCompare() {
               if (hasApColumn && apColumnIndex !== -1) {
                 const uygulamaYaniti = String(invoice[headers[apColumnIndex]] || '').toLowerCase().trim();
                 if (uygulamaYaniti === 'red') {
+                  rejectedCount++;
                   console.log(`🚫 Fatura ${invoice['Fatura No']} "red" (ret) olduğu için karşılaştırmaya dahil edilmiyor`);
                   return false;
                 }
@@ -137,7 +140,11 @@ export default function ExcelCompare() {
               return true;
             });
           
-          resolve(invoices);
+          resolve({
+            invoices,
+            totalRows: rows.length,
+            rejectedCount
+          });
         } catch (error) {
           reject(error);
         }
@@ -148,7 +155,7 @@ export default function ExcelCompare() {
     });
   };
 
-  // LOGO veritabanından fatura bilgilerini çek (Proxy üzerinden)
+  // LOGO veritabanından fatura bilgilerini çek (Proxy üzerinden) - artık tutarlarla birlikte
   const fetchLogoInvoices = async (faturaNumbers: string[]) => {
     try {
       const companyRef = connectionInfo.company_ref?.toString() || '';
@@ -163,10 +170,12 @@ export default function ExcelCompare() {
       // Fatura numaralarını SQL için hazırla (SQL injection'a karşı escape)
       const faturaList = faturaNumbers.map(fn => `'${fn.toString().replace(/'/g, "''")}'`).join(',');
       
-      // SQL sorgusunu hazırla
+      // SQL sorgusunu hazırla - NETTOTAL ve TOTALVAT alanlarını da çek
       const sqlQuery = `
         SELECT 
           FICHENO as fatura_no,
+          NETTOTAL as toplam_tutar,
+          TOTALVAT as kdv_toplami,
           DATE_ as tarih
         FROM [${logoDb}]..LG_${firmaNo.padStart(3, '0')}_${donemNo.padStart(2, '0')}_INVOICE 
         WHERE TRCODE IN (1,2,3,4) 
@@ -194,55 +203,158 @@ export default function ExcelCompare() {
 
       const data = await response.json();
       
+      console.log('📊 LOGO yanıtı:', data);
+      
       // Proxy'den gelen yanıtı işle
+      let logoInvoices = [];
       if (Array.isArray(data)) {
-        return data;
+        logoInvoices = data;
       } else if (data.results && Array.isArray(data.results)) {
-        return data.results;
+        logoInvoices = data.results;
       } else if (data.data && Array.isArray(data.data)) {
-        return data.data;
+        logoInvoices = data.data;
       } else if (data.status === 'success' && data.data) {
-        return Array.isArray(data.data) ? data.data : [];
+        logoInvoices = Array.isArray(data.data) ? data.data : [];
       } else {
         console.warn('Beklenmeyen veri formatı:', data);
-        return [];
+        logoInvoices = [];
       }
+
+      console.log('🔍 LOGO ham veriler (ilk 3 kayıt):', logoInvoices.slice(0, 3));
+
+      // LOGO verilerini işle
+      const processedInvoices = logoInvoices.map((row: any, index: number) => {
+        const processed = {
+          fatura_no: row.fatura_no || row.FATURA_NO,
+          toplam_tutar: parseFloat(row.toplam_tutar || row.TOPLAM_TUTAR || 0),
+          kdv_toplami: parseFloat(row.kdv_toplami || row.KDV_TOPLAMI || 0),
+          tarih: row.tarih || row.DATE_
+        };
+        
+        // İlk 3 kaydı detaylı log'la
+        if (index < 3) {
+          console.log(`🔍 LOGO ${index + 1}. kayıt:`, {
+            ham: row,
+            islenmis: processed,
+            tutar_ham: row.toplam_tutar || row.TOPLAM_TUTAR,
+            kdv_ham: row.kdv_toplami || row.KDV_TOPLAMI
+          });
+        }
+        
+        return processed;
+      });
+
+      return processedInvoices;
     } catch (error) {
       console.error('❌ LOGO veritabanı hatası:', error);
       throw error;
     }
   };
 
-  // Fatura karşılaştırma işlemi
+  // Fatura karşılaştırma işlemi - artık tutarları da kontrol ediyor
   const compareInvoices = (excelInvoices: any[], logoInvoices: any[]) => {
-    const excelFaturaNumbers = new Set(
-      excelInvoices
-        .map(invoice => invoice['Fatura No']?.toString().trim())
-        .filter(faturaNo => faturaNo && faturaNo !== '')
-    );
+    const missingInvoices: any[] = [];
+    const mismatchedInvoices: any[] = [];
+    let exactMatches = 0;
 
-    const logoFaturaNumbers = new Set(
-      logoInvoices.map(invoice => invoice.fatura_no?.toString().trim())
-    );
-
-    // LOGO'da olmayan faturalar (B kolonu fatura numarası)
-    const missingInvoices = excelInvoices.filter(invoice => {
-      const faturaNo = invoice['Fatura No']?.toString().trim();
-      return faturaNo && faturaNo !== '' && !logoFaturaNumbers.has(faturaNo);
+    // Excel verilerinden örnekler log'la
+    console.log('🔍 Excel verilerinden örnekler (ilk 3 kayıt):');
+    excelInvoices.slice(0, 3).forEach((invoice, index) => {
+      const toplamTutar = parseFloat(invoice['Toplam Tutar'] || 0);
+      const kdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
+      
+      console.log(`   ${index + 1}. Excel kaydı:`, {
+        faturaNo: invoice['Fatura No'],
+        toplamTutar: toplamTutar,
+        kdvToplami: kdvToplami,
+        toplamTutar_ham: invoice['Toplam Tutar'],
+        kdvToplami_ham: invoice['KDV Toplamı'],
+        toplamTutar_tipi: typeof toplamTutar,
+        kdvToplami_tipi: typeof kdvToplami
+      });
     });
 
-    // LOGO'da olan faturalar (B kolonu fatura numarası)
-    const existingInvoices = excelInvoices.filter(invoice => {
+    excelInvoices.forEach((invoice) => {
       const faturaNo = invoice['Fatura No']?.toString().trim();
-      return faturaNo && faturaNo !== '' && logoFaturaNumbers.has(faturaNo);
+      if (!faturaNo || faturaNo === '') return;
+
+      const excelToplamTutar = parseFloat(invoice['Toplam Tutar'] || 0);
+      const excelKdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
+
+      // LOGO'da bu fatura numarası var mı?
+      const logoInvoice = logoInvoices.find(li => li.fatura_no === faturaNo);
+      
+      if (!logoInvoice) {
+        // Fatura LOGO'da hiç yok - eksik fatura
+        const missingInvoice = {
+          'Fatura No': faturaNo,
+          'Tür': invoice['Tür'],
+          'Fatura Tarihi': invoice['Fatura Tarihi'],
+          'Oluşturma Tarihi': invoice['Oluşturma Tarihi'],
+          'Gönderici VKN': invoice['Gönderici VKN'],
+          'Alıcı VKN': invoice['Alıcı VKN'],
+          'Toplam Tutar': excelToplamTutar,
+          'Vergi Hariç Tutar': parseFloat(invoice['Vergi Hariç Tutar'] || 0),
+          'KDV Toplamı': excelKdvToplami,
+          'Gönderici Adı': invoice['Gönderici Adı']
+        };
+        
+        missingInvoices.push(missingInvoice);
+      } else {
+        // Fatura LOGO'da var, tutarları kontrol et
+        const tutarUyumlu = Math.abs(logoInvoice.toplam_tutar - excelToplamTutar) < 0.001; // 0.1 kuruş tolerans
+        const kdvUyumlu = Math.abs(logoInvoice.kdv_toplami - excelKdvToplami) < 0.001; // 0.1 kuruş tolerans
+        
+        // Debug için detaylı log
+        const tutarFarki = Math.abs(logoInvoice.toplam_tutar - excelToplamTutar);
+        const kdvFarki = Math.abs(logoInvoice.kdv_toplami - excelKdvToplami);
+        
+        console.log(`🔍 Fatura ${faturaNo} karşılaştırması:`);
+        console.log(`   Excel Tutar: ${excelToplamTutar} (${typeof excelToplamTutar}) | LOGO Tutar: ${logoInvoice.toplam_tutar} (${typeof logoInvoice.toplam_tutar}) | Fark: ${tutarFarki}`);
+        console.log(`   Excel KDV: ${excelKdvToplami} (${typeof excelKdvToplami}) | LOGO KDV: ${logoInvoice.kdv_toplami} (${typeof logoInvoice.kdv_toplami}) | Fark: ${kdvFarki}`);
+        console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu}`);
+        console.log(`   Tolerans: 0.001 | Tutar için gerekli: ${tutarFarki < 0.001} | KDV için gerekli: ${kdvFarki < 0.001}`);
+        
+        if (tutarUyumlu && kdvUyumlu) {
+          // Tam uyumlu
+          exactMatches++;
+          console.log(`✅ Fatura ${faturaNo}: Tam uyumlu`);
+        } else {
+          // Tutarlar uyumsuz - hatalı fatura
+          console.log(`❌ Fatura ${faturaNo}: TUTARSIZ - Tutar farkı: ${tutarFarki}, KDV farkı: ${kdvFarki}`);
+          const mismatchedInvoice = {
+            'Fatura No': faturaNo,
+            'Tür': invoice['Tür'],
+            'Fatura Tarihi': invoice['Fatura Tarihi'],
+            'Gönderici VKN': invoice['Gönderici VKN'],
+            'Alıcı VKN': invoice['Alıcı VKN'],
+            'Excel Toplam Tutar': excelToplamTutar,
+            'LOGO Toplam Tutar': logoInvoice.toplam_tutar,
+            'Excel KDV Toplamı': excelKdvToplami,
+            'LOGO KDV Toplamı': logoInvoice.kdv_toplami,
+            'Tutar Uyumlu': tutarUyumlu,
+            'KDV Uyumlu': kdvUyumlu,
+            'Vergi Hariç Tutar': parseFloat(invoice['Vergi Hariç Tutar'] || 0),
+            'Oluşturma Tarihi': invoice['Oluşturma Tarihi'],
+            'Gönderici Adı': invoice['Gönderici Adı']
+          };
+          
+          mismatchedInvoices.push(mismatchedInvoice);
+        }
+      }
     });
+
+    console.log(`✅ Tam uyumlu faturalar: ${exactMatches}`);
+    console.log(`❌ LOGO'da bulunamayan faturalar: ${missingInvoices.length}`);
+    console.log(`⚠️ Tutarları uyumsuz faturalar: ${mismatchedInvoices.length}`);
 
     return {
       totalInvoices: excelInvoices.length,
-      existingInvoices: existingInvoices.length,
+      existingInvoices: exactMatches,
       missingInvoices: missingInvoices.length,
+      mismatchedInvoices: mismatchedInvoices.length,
       missingInvoicesDetails: missingInvoices,
-      existingInvoicesDetails: existingInvoices
+      mismatchedInvoicesDetails: mismatchedInvoices
     };
   };
 
@@ -292,10 +404,10 @@ export default function ExcelCompare() {
       // Excel dosyasını işle
       console.log('📊 Excel dosyası işleniyor...');
       const excelInvoices = await processExcelFile(file);
-      console.log('✅ Excel işlendi, fatura sayısı:', excelInvoices.length);
+      console.log('✅ Excel işlendi, fatura sayısı:', excelInvoices.invoices.length);
 
       // Fatura numaralarını çıkar (B kolonu - index 1)
-      const faturaNumbers = excelInvoices
+      const faturaNumbers = excelInvoices.invoices
         .map(invoice => invoice['Fatura No'])
         .filter(faturaNo => faturaNo && faturaNo.toString().trim() !== '');
 
@@ -314,11 +426,12 @@ export default function ExcelCompare() {
 
       // Faturaları karşılaştır
       console.log('🔍 Faturalar karşılaştırılıyor...');
-      const comparisonResult = compareInvoices(excelInvoices, logoInvoices);
+      const comparisonResult = compareInvoices(excelInvoices.invoices, logoInvoices);
 
       setResult({
         success: true,
-        ...comparisonResult
+        ...comparisonResult,
+        rejectedInvoices: excelInvoices.rejectedCount
       });
 
       console.log('✅ Karşılaştırma tamamlandı:', comparisonResult);
@@ -381,9 +494,61 @@ export default function ExcelCompare() {
     XLSX.writeFile(wb, fileName);
   };
 
+  // Tutarsız faturalar için Excel export fonksiyonu
+  const exportMismatchedToExcel = () => {
+    if (!result?.mismatchedInvoicesDetails || result.mismatchedInvoicesDetails.length === 0) {
+      alert('Export edilecek tutarsız fatura bulunamadı.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    
+    // Verileri düzenle
+    const exportData = result.mismatchedInvoicesDetails.map((invoice: any) => ({
+      'Fatura No': invoice['Fatura No'],
+      'Tür': invoice['Tür'],
+      'Excel Toplam Tutar': invoice['Excel Toplam Tutar'],
+      'LOGO Toplam Tutar': invoice['LOGO Toplam Tutar'],
+      'Excel KDV Toplamı': invoice['Excel KDV Toplamı'],
+      'LOGO KDV Toplamı': invoice['LOGO KDV Toplamı'],
+      'Tutar Uyumlu': invoice['Tutar Uyumlu'] ? 'Evet' : 'Hayır',
+      'KDV Uyumlu': invoice['KDV Uyumlu'] ? 'Evet' : 'Hayır',
+      'Fatura Tarihi': invoice['Fatura Tarihi'],
+      'Gönderici VKN': invoice['Gönderici VKN'],
+      'Alıcı VKN': invoice['Alıcı VKN'],
+      'Gönderici Adı': invoice['Gönderici Adı']
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // Sütun genişliklerini ayarla
+    const colWidths = [
+      { wch: 15 }, // Fatura No
+      { wch: 12 }, // Tür
+      { wch: 18 }, // Excel Toplam Tutar
+      { wch: 18 }, // LOGO Toplam Tutar
+      { wch: 16 }, // Excel KDV Toplamı
+      { wch: 16 }, // LOGO KDV Toplamı
+      { wch: 12 }, // Tutar Uyumlu
+      { wch: 12 }, // KDV Uyumlu
+      { wch: 12 }, // Fatura Tarihi
+      { wch: 15 }, // Gönderici VKN
+      { wch: 15 }, // Alıcı VKN
+      { wch: 25 }  // Gönderici Adı
+    ];
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Tutarsız Faturalar');
+    
+    const fileName = `tutarsiz_faturalar_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '_')}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   // PDF export fonksiyonu - Yazdır/PDF formatında
   const exportToPDF = () => {
-    if (!result?.missingInvoicesDetails || result.missingInvoicesDetails.length === 0) {
+    const hasData = (result?.missingInvoicesDetails || []).length > 0 || (result?.mismatchedInvoicesDetails || []).length > 0;
+    
+    if (!hasData) {
       alert('Export edilecek veri bulunamadı.');
       return;
     }
@@ -396,13 +561,11 @@ export default function ExcelCompare() {
         return;
       }
 
-      
-
       const printContent = `
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Eksik Faturalar Raporu - PDF</title>
+          <title>Fatura Kontrol Raporu - PDF</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
             .header { margin-bottom: 30px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
@@ -415,12 +578,13 @@ export default function ExcelCompare() {
             .pdf-info strong { color: #92400e; }
             
             /* İstatistik Kutuları */
-            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+            .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
             .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
             .stat-box.primary { border-color: #991b1b; background-color: #fef2f2; }
             .stat-box.danger { border-color: #dc2626; background-color: #fef2f2; }
             .stat-box.success { border-color: #059669; background-color: #ecfdf5; }
             .stat-box.warning { border-color: #d97706; background-color: #fffbeb; }
+            .stat-box.orange { border-color: #ea580c; background-color: #fff7ed; }
             .stat-title { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
             .stat-value { font-size: 14px; font-weight: bold; color: #1f2937; }
             .stat-subtitle { font-size: 8px; color: #9ca3af; margin-top: 2px; }
@@ -428,15 +592,17 @@ export default function ExcelCompare() {
             table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
             th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
             th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            th.orange { background-color: #ea580c; }
             tr:nth-child(even) { background-color: #f9f9f9; }
             .number { text-align: right; }
             .currency { font-weight: bold; }
             .center { text-align: center; }
+            .section-title { color: #991b1b; margin: 20px 0 10px 0; font-size: 14px; border-bottom: 2px solid #991b1b; padding-bottom: 5px; }
             
             @media print {
               body { margin: 0; font-size: 10px; }
               .pdf-info { display: none; }
-              .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
+              .stats-grid { grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 15px; }
               .stat-box { padding: 8px; }
               table { font-size: 8px; }
               th, td { padding: 3px; }
@@ -456,10 +622,11 @@ export default function ExcelCompare() {
             <div class="header-top">
               <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
               <div class="header-content">
-                <h1>EKSİK FATURALAR RAPORU</h1>
+                <h1>FATURA KONTROL RAPORU</h1>
                 <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')}</p>
-                <p><strong>Toplam Eksik Fatura:</strong> ${result.missingInvoicesDetails.length} adet</p>
-                <p><strong>Rapor Türü:</strong> Excel vs LOGO Fatura Karşılaştırması</p>
+                <p><strong>Toplam Eksik Fatura:</strong> ${(result.missingInvoicesDetails || []).length} adet</p>
+                <p><strong>Toplam Tutarsız Fatura:</strong> ${(result.mismatchedInvoicesDetails || []).length} adet</p>
+                <p><strong>Rapor Türü:</strong> Excel vs LOGO Fatura & Tutar Karşılaştırması</p>
               </div>
             </div>
           </div>
@@ -478,9 +645,9 @@ export default function ExcelCompare() {
             </div>
             
             <div class="stat-box success">
-              <div class="stat-title">Mevcut Faturalar</div>
+              <div class="stat-title">Tam Uyumlu</div>
               <div class="stat-value">${result.existingInvoices || 0}</div>
-              <div class="stat-subtitle">LOGO'da bulunan</div>
+              <div class="stat-subtitle">No, tutar ve KDV uyumlu</div>
             </div>
             
             <div class="stat-box danger">
@@ -488,15 +655,72 @@ export default function ExcelCompare() {
               <div class="stat-value">${result.missingInvoices || 0}</div>
               <div class="stat-subtitle">LOGO'da bulunamayan</div>
             </div>
+
+            <div class="stat-box orange">
+              <div class="stat-title">Tutarsız Faturalar</div>
+              <div class="stat-value">${result.mismatchedInvoices || 0}</div>
+              <div class="stat-subtitle">Tutar veya KDV farklı</div>
+            </div>
             
-                         <div class="stat-box warning">
-               <div class="stat-title">Rapor Tarihi</div>
-               <div class="stat-value">${new Date().toLocaleDateString('tr-TR')}</div>
-               <div class="stat-subtitle">Analiz tarihi</div>
-             </div>
+            <div class="stat-box warning">
+              <div class="stat-title">Rapor Tarihi</div>
+              <div class="stat-value">${new Date().toLocaleDateString('tr-TR')}</div>
+              <div class="stat-subtitle">Analiz tarihi</div>
+            </div>
           </div>
 
-          <h3 style="color: #991b1b; margin: 20px 0 10px 0; font-size: 14px; border-bottom: 2px solid #991b1b; padding-bottom: 5px;">EKSİK FATURALAR DETAYI</h3>
+          ${(result.mismatchedInvoicesDetails || []).length > 0 ? `
+          <h3 class="section-title">TUTARI UYUMSUZ FATURALAR</h3>
+          
+          <table>
+            <thead>
+              <tr>
+                <th class="orange">Fatura No</th>
+                <th class="orange">Excel Toplam Tutar</th>
+                <th class="orange">LOGO Toplam Tutar</th>
+                <th class="orange">Excel KDV Toplamı</th>
+                <th class="orange">LOGO KDV Toplamı</th>
+                <th class="orange">Durum</th>
+                <th class="orange">Gönderici Adı</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(result.mismatchedInvoicesDetails || []).map((invoice: any) => `
+                <tr>
+                  <td><strong>${invoice['Fatura No']}</strong></td>
+                  <td class="number currency">
+                    ${typeof invoice['Excel Toplam Tutar'] === 'number' 
+                      ? invoice['Excel Toplam Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['Excel Toplam Tutar']}
+                  </td>
+                  <td class="number currency">
+                    ${typeof invoice['LOGO Toplam Tutar'] === 'number' 
+                      ? invoice['LOGO Toplam Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['LOGO Toplam Tutar']}
+                  </td>
+                  <td class="number currency">
+                    ${typeof invoice['Excel KDV Toplamı'] === 'number' 
+                      ? invoice['Excel KDV Toplamı'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['Excel KDV Toplamı']}
+                  </td>
+                  <td class="number currency">
+                    ${typeof invoice['LOGO KDV Toplamı'] === 'number' 
+                      ? invoice['LOGO KDV Toplamı'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+                      : invoice['LOGO KDV Toplamı']}
+                  </td>
+                  <td class="center">
+                    ${!invoice['Tutar Uyumlu'] ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fecaca; color: #991b1b;">Tutar Farklı</span>' : ''}
+                    ${!invoice['KDV Uyumlu'] ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fed7aa; color: #ea580c;">KDV Farklı</span>' : ''}
+                  </td>
+                  <td>${invoice['Gönderici Adı']}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ` : ''}
+
+          ${(result.missingInvoicesDetails || []).length > 0 ? `
+          <h3 class="section-title">EKSİK FATURALAR DETAYI</h3>
           
           <table>
             <thead>
@@ -514,7 +738,7 @@ export default function ExcelCompare() {
               </tr>
             </thead>
             <tbody>
-              ${result.missingInvoicesDetails.map((invoice: any) => `
+              ${(result.missingInvoicesDetails || []).map((invoice: any) => `
                 <tr>
                   <td><strong>${invoice['Fatura No']}</strong></td>
                   <td class="center">
@@ -551,11 +775,13 @@ export default function ExcelCompare() {
                 </tr>
               `).join('')}
             </tbody>
-                     </table>
+          </table>
+          ` : ''}
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
             <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
-            Eksik faturalar LOGO ERP sisteminde bulunamayan faturalardır. Tüm tutarlar Türk Lirası (₺) cinsindendir.
+            Eksik faturalar LOGO ERP sisteminde bulunamayan faturalardır. Tutarsız faturalar LOGO'da mevcut ancak tutar veya KDV değerleri farklı olan faturalardır. 
+            Tüm tutarlar Türk Lirası (₺) cinsindendir.
           </div>
           
           <script>
@@ -884,8 +1110,9 @@ export default function ExcelCompare() {
                         </svg>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-green-800">Mevcut Faturalar</p>
+                        <p className="text-sm font-medium text-green-800">Tam Uyumlu</p>
                         <p className="text-2xl font-bold text-green-900">{result.existingInvoices || 0}</p>
+                        <p className="text-xs text-green-600">Fatura no, tutar ve KDV uyumlu</p>
                       </div>
                     </div>
                   </div>
@@ -900,34 +1127,162 @@ export default function ExcelCompare() {
                       <div>
                         <p className="text-sm font-medium text-red-800">Eksik Faturalar</p>
                         <p className="text-2xl font-bold text-red-900">{result.missingInvoices || 0}</p>
+                        <p className="text-xs text-red-600">LOGO'da bulunamayan</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Reddedilen Faturalar */}
-                  {(result.rejectedInvoices || 0) > 0 && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                          <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-orange-800">Ret Faturalar</p>
-                          <p className="text-2xl font-bold text-orange-900">{result.rejectedInvoices || 0}</p>
-                          <p className="text-xs text-orange-600">Karşılaştırmaya dahil edilmedi</p>
-                        </div>
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-orange-800">Tutarı Uyumsuz</p>
+                        <p className="text-2xl font-bold text-orange-900">{result.mismatchedInvoices || 0}</p>
+                        <p className="text-xs text-orange-600">Tutar veya KDV farklı</p>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Reddedilen Faturalar */}
+                {(result.rejectedInvoices || 0) > 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">Ret Faturalar</p>
+                        <p className="text-2xl font-bold text-gray-900">{result.rejectedInvoices || 0}</p>
+                        <p className="text-xs text-gray-600">Karşılaştırmaya dahil edilmedi</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tutarı Uyumsuz Faturalar Tablosu */}
+                {(result.mismatchedInvoicesDetails || []).length > 0 && (
+                  <div className="border border-gray-200 rounded-lg">
+                    <div className="bg-orange-50 px-4 py-3 border-b border-orange-200 flex justify-between items-center">
+                      <h3 className="text-sm font-medium text-orange-900">Tutarı Uyumsuz Faturalar</h3>
+                      <div className="flex space-x-2">
+                        {/* Excel Export Butonu */}
+                        <button
+                          onClick={() => exportMismatchedToExcel()}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Excel
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full divide-y divide-gray-200">
+                        <thead className="bg-orange-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Fatura No
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Excel Toplam Tutar
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              LOGO Toplam Tutar
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Excel KDV Toplamı
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              LOGO KDV Toplamı
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Durum
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Gönderici Adı
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {(result.mismatchedInvoicesDetails || []).map((invoice: any, index: number) => (
+                            <tr key={index} className="hover:bg-orange-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-orange-600">
+                                {invoice['Fatura No']}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {typeof invoice['Excel Toplam Tutar'] === 'number' 
+                                  ? invoice['Excel Toplam Tutar'].toLocaleString('tr-TR', { 
+                                      style: 'currency', 
+                                      currency: 'TRY' 
+                                    })
+                                  : invoice['Excel Toplam Tutar']
+                                }
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {typeof invoice['LOGO Toplam Tutar'] === 'number' 
+                                  ? invoice['LOGO Toplam Tutar'].toLocaleString('tr-TR', { 
+                                      style: 'currency', 
+                                      currency: 'TRY' 
+                                    })
+                                  : invoice['LOGO Toplam Tutar']
+                                }
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {typeof invoice['Excel KDV Toplamı'] === 'number' 
+                                  ? invoice['Excel KDV Toplamı'].toLocaleString('tr-TR', { 
+                                      style: 'currency', 
+                                      currency: 'TRY' 
+                                    })
+                                  : invoice['Excel KDV Toplamı']
+                                }
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {typeof invoice['LOGO KDV Toplamı'] === 'number' 
+                                  ? invoice['LOGO KDV Toplamı'].toLocaleString('tr-TR', { 
+                                      style: 'currency', 
+                                      currency: 'TRY' 
+                                    })
+                                  : invoice['LOGO KDV Toplamı']
+                                }
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                <div className="space-y-1">
+                                  {!invoice['Tutar Uyumlu'] && (
+                                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                      Tutar Farklı
+                                    </span>
+                                  )}
+                                  {!invoice['KDV Uyumlu'] && (
+                                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                                      KDV Farklı
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {invoice['Gönderici Adı']}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {/* Eksik Faturalar Tablosu */}
                 {(result.missingInvoicesDetails || []).length > 0 && (
                   <div className="border border-gray-200 rounded-lg">
-                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-                      <h3 className="text-sm font-medium text-gray-900">Eksik Faturalar Detayları</h3>
+                    <div className="bg-red-50 px-4 py-3 border-b border-red-200 flex justify-between items-center">
+                      <h3 className="text-sm font-medium text-red-900">Eksik Faturalar Detayları</h3>
                       <div className="flex space-x-2">
                         {/* Excel Export Butonu */}
                         <button
@@ -954,43 +1309,43 @@ export default function ExcelCompare() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                        <thead className="bg-red-50">
                           <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-32">
                               Fatura No
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-24">
                               Tür
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-32">
                               Fatura Tarihi
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-32">
                               Oluşturma Tarihi
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-36">
                               Gönderici VKN
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-36">
                               Alıcı VKN
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-40">
                               Toplam Tutar
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-40">
                               Vergi Hariç Tutar
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider w-32">
                               KDV Toplamı
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-red-700 uppercase tracking-wider">
                               Gönderici Adı
                             </th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {(result.missingInvoicesDetails || []).map((invoice: any, index: number) => (
-                            <tr key={index} className="hover:bg-gray-50">
+                            <tr key={index} className="hover:bg-red-50">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
                                 {invoice['Fatura No']}
                               </td>
