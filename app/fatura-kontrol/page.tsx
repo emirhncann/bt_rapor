@@ -356,7 +356,7 @@ export default function ExcelCompare() {
         if (!isDovizli) {
           console.log(`   Excel KDV: ${excelKdvToplami} | LOGO TOTALVAT: ${logoKdvTutari} | Fark: ${kdvFarki}`);
         } else {
-          console.log(`   Excel KDV: ${excelKdvToplami} | LOGO KDV: Karşılaştırılmadı (dövizli fatura)`);
+          console.log(`   Excel KDV: ${excelKdvToplami} | LOGO KDV: -`);
         }
         console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu} (${isDovizli ? 'dövizli - KDV kontrol edilmiyor' : 'TRY'})`);
         
@@ -375,8 +375,8 @@ export default function ExcelCompare() {
             'Alıcı VKN': invoice['Alıcı VKN'],
             'Excel Toplam Tutar': excelToplamTutar,
             'LOGO Toplam Tutar': logoKarsilastirmaTutari,
-            'Excel KDV Toplamı': excelKdvToplami,
-            'LOGO KDV Toplamı': isDovizli ? 'Karşılaştırılmadı (Dövizli)' : logoKdvTutari,
+            'Excel KDV Toplamı': isDovizli ? '-' : excelKdvToplami,
+            'LOGO KDV Toplamı': isDovizli ? '-' : logoKdvTutari,
             'Para Birimi': paraBirimi,
             'Tutar Uyumlu': tutarUyumlu,
             'KDV Uyumlu': kdvUyumlu,
@@ -560,7 +560,7 @@ export default function ExcelCompare() {
       'Excel KDV Toplamı': invoice['Excel KDV Toplamı'],
       'LOGO KDV Toplamı': invoice['LOGO KDV Toplamı'],
       'Tutar Uyumlu': invoice['Tutar Uyumlu'] ? 'Evet' : 'Hayır',
-      'KDV Uyumlu': invoice['Para Birimi'] === 'TRY' ? (invoice['KDV Uyumlu'] ? 'Evet' : 'Hayır') : 'Karşılaştırılmadı (Dövizli)',
+      'KDV Uyumlu': invoice['Para Birimi'] === 'TRY' ? (invoice['KDV Uyumlu'] ? 'Evet' : 'Hayır') : '-',
       'Fatura Tarihi': invoice['Fatura Tarihi'],
       'Gönderici VKN': invoice['Gönderici VKN'],
       'Alıcı VKN': invoice['Alıcı VKN'],
@@ -610,6 +610,131 @@ export default function ExcelCompare() {
         return;
       }
 
+      // Helper function para birimi formatlaması için
+      const formatCurrency = (value: any, currency: string = 'TRY') => {
+        if (typeof value === 'number') {
+          return value.toLocaleString('tr-TR', { style: 'currency', currency: currency });
+        }
+        return value;
+      };
+
+      // Tutarsız faturalar HTML'ini oluştur
+      const mismatchedInvoicesHTML = (result.mismatchedInvoicesDetails || []).length > 0 ? `
+      <h3 class="section-title">TUTARI UYUMSUZ FATURALAR</h3>
+      
+      <table>
+        <thead>
+          <tr>
+            <th class="orange">Fatura No</th>
+            <th class="orange">Para Birimi</th>
+            <th class="orange">Excel Toplam Tutar</th>
+            <th class="orange">LOGO Toplam Tutar</th>
+            <th class="orange">Excel KDV Toplamı</th>
+            <th class="orange">LOGO KDV Toplamı</th>
+            <th class="orange">Durum</th>
+            <th class="orange">Gönderici Adı</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(result.mismatchedInvoicesDetails || []).map((invoice: any) => `
+            <tr>
+              <td><strong>${invoice['Fatura No']}</strong></td>
+              <td class="center">
+                <span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; ${
+                  invoice['Para Birimi'] === 'TRY' 
+                    ? 'background-color: #dbeafe; color: #1e40af;' 
+                    : 'background-color: #e9d5ff; color: #7c3aed;'
+                }">
+                  ${invoice['Para Birimi']}
+                </span>
+              </td>
+              <td class="number currency">
+                ${formatCurrency(invoice['Excel Toplam Tutar'], invoice['Para Birimi'])}
+              </td>
+              <td class="number currency">
+                ${formatCurrency(invoice['LOGO Toplam Tutar'], 'TRY')}
+              </td>
+              <td class="number currency">
+                ${invoice['Excel KDV Toplamı'] === '-' ? '-' : formatCurrency(invoice['Excel KDV Toplamı'], invoice['Para Birimi'])}
+              </td>
+              <td class="number currency">
+                ${invoice['LOGO KDV Toplamı'] === '-' ? '-' : formatCurrency(invoice['LOGO KDV Toplamı'], 'TRY')}
+              </td>
+              <td class="center">
+                ${!invoice['Tutar Uyumlu'] ? `<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fecaca; color: #991b1b;">${invoice['Para Birimi'] === 'TRY' ? 'Tutar Farklı' : 'TRNET Farklı'}</span>` : ''}
+                ${!invoice['KDV Uyumlu'] && invoice['Para Birimi'] === 'TRY' ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fed7aa; color: #ea580c;">KDV Farklı</span>' : ''}
+              </td>
+              <td>${invoice['Gönderici Adı']}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ` : '';
+
+      // Eksik faturalar HTML'ini oluştur
+      const missingInvoicesHTML = (result.missingInvoicesDetails || []).length > 0 ? `
+      <h3 class="section-title">EKSİK FATURALAR DETAYI</h3>
+      
+      <table>
+        <thead>
+          <tr>
+            <th>Fatura No</th>
+            <th>Tür</th>
+            <th>Para Birimi</th>
+            <th>Fatura Tarihi</th>
+            <th>Oluşturma Tarihi</th>
+            <th>Gönderici VKN</th>
+            <th>Alıcı VKN</th>
+            <th>Toplam Tutar</th>
+            <th>Vergi Hariç Tutar</th>
+            <th>KDV Toplamı</th>
+            <th>Gönderici Adı</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(result.missingInvoicesDetails || []).map((invoice: any) => `
+            <tr>
+              <td><strong>${invoice['Fatura No']}</strong></td>
+              <td class="center">
+                <span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; ${
+                  invoice['Tür'] === 'Satış' 
+                    ? 'background-color: #dcfce7; color: #166534;' 
+                    : invoice['Tür'] === 'Alış'
+                    ? 'background-color: #dbeafe; color: #1e40af;'
+                    : 'background-color: #f3f4f6; color: #374151;'
+                }">
+                  ${invoice['Tür']}
+                </span>
+              </td>
+              <td class="center">
+                <span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; ${
+                  (invoice['Para Birimi'] || 'TRY') === 'TRY' 
+                    ? 'background-color: #dbeafe; color: #1e40af;' 
+                    : 'background-color: #e9d5ff; color: #7c3aed;'
+                }">
+                  ${invoice['Para Birimi'] || 'TRY'}
+                </span>
+              </td>
+              <td class="center">${invoice['Fatura Tarihi']}</td>
+              <td class="center">${invoice['Oluşturma Tarihi']}</td>
+              <td class="center">${invoice['Gönderici VKN']}</td>
+              <td class="center">${invoice['Alıcı VKN']}</td>
+              <td class="number currency">
+                ${formatCurrency(invoice['Toplam Tutar'], invoice['Para Birimi'] || 'TRY')}
+              </td>
+              <td class="number currency">
+                ${formatCurrency(invoice['Vergi Hariç Tutar'], invoice['Para Birimi'] || 'TRY')}
+              </td>
+              <td class="number currency">
+                ${formatCurrency(invoice['KDV Toplamı'], invoice['Para Birimi'] || 'TRY')}
+              </td>
+              <td>${invoice['Gönderici Adı']}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ` : '';
+
       const printContent = `
         <!DOCTYPE html>
         <html>
@@ -627,12 +752,11 @@ export default function ExcelCompare() {
             .pdf-info strong { color: #92400e; }
             
             /* İstatistik Kutuları */
-            .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
             .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
             .stat-box.primary { border-color: #991b1b; background-color: #fef2f2; }
             .stat-box.danger { border-color: #dc2626; background-color: #fef2f2; }
             .stat-box.success { border-color: #059669; background-color: #ecfdf5; }
-            .stat-box.warning { border-color: #d97706; background-color: #fffbeb; }
             .stat-box.orange { border-color: #ea580c; background-color: #fff7ed; }
             .stat-title { font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
             .stat-value { font-size: 14px; font-weight: bold; color: #1f2937; }
@@ -651,7 +775,7 @@ export default function ExcelCompare() {
             @media print {
               body { margin: 0; font-size: 10px; }
               .pdf-info { display: none; }
-              .stats-grid { grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 15px; }
+              .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; }
               .stat-box { padding: 8px; }
               table { font-size: 8px; }
               th, td { padding: 3px; }
@@ -710,127 +834,15 @@ export default function ExcelCompare() {
               <div class="stat-value">${result.mismatchedInvoices || 0}</div>
               <div class="stat-subtitle">Tutar veya KDV farklı</div>
             </div>
-            
-            <div class="stat-box warning">
-              <div class="stat-title">Rapor Tarihi</div>
-              <div class="stat-value">${new Date().toLocaleDateString('tr-TR')}</div>
-              <div class="stat-subtitle">Analiz tarihi</div>
-            </div>
           </div>
 
-          ${(result.mismatchedInvoicesDetails || []).length > 0 ? `
-          <h3 class="section-title">TUTARI UYUMSUZ FATURALAR</h3>
-          
-          <table>
-            <thead>
-              <tr>
-                <th class="orange">Fatura No</th>
-                <th class="orange">Excel Toplam Tutar</th>
-                <th class="orange">LOGO Toplam Tutar</th>
-                <th class="orange">Excel KDV Toplamı</th>
-                <th class="orange">LOGO KDV Toplamı</th>
-                <th class="orange">Durum</th>
-                <th class="orange">Gönderici Adı</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(result.mismatchedInvoicesDetails || []).map((invoice: any) => `
-                <tr>
-                  <td><strong>${invoice['Fatura No']}</strong></td>
-                  <td class="number currency">
-                    ${typeof invoice['Excel Toplam Tutar'] === 'number' 
-                      ? invoice['Excel Toplam Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['Excel Toplam Tutar']}
-                  </td>
-                  <td class="number currency">
-                    ${typeof invoice['LOGO Toplam Tutar'] === 'number' 
-                      ? invoice['LOGO Toplam Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['LOGO Toplam Tutar']}
-                  </td>
-                  <td class="number currency">
-                    ${typeof invoice['Excel KDV Toplamı'] === 'number' 
-                      ? invoice['Excel KDV Toplamı'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['Excel KDV Toplamı']}
-                  </td>
-                  <td class="number currency">
-                    ${typeof invoice['LOGO KDV Toplamı'] === 'number' 
-                      ? invoice['LOGO KDV Toplamı'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['LOGO KDV Toplamı']}
-                  </td>
-                  <td class="center">
-                    ${!invoice['Tutar Uyumlu'] ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fecaca; color: #991b1b;">Tutar Farklı</span>' : ''}
-                    ${!invoice['KDV Uyumlu'] ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fed7aa; color: #ea580c;">KDV Farklı</span>' : ''}
-                  </td>
-                  <td>${invoice['Gönderici Adı']}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : ''}
-
-          ${(result.missingInvoicesDetails || []).length > 0 ? `
-          <h3 class="section-title">EKSİK FATURALAR DETAYI</h3>
-          
-          <table>
-            <thead>
-              <tr>
-                <th>Fatura No</th>
-                <th>Tür</th>
-                <th>Fatura Tarihi</th>
-                <th>Oluşturma Tarihi</th>
-                <th>Gönderici VKN</th>
-                <th>Alıcı VKN</th>
-                <th>Toplam Tutar</th>
-                <th>Vergi Hariç Tutar</th>
-                <th>KDV Toplamı</th>
-                <th>Gönderici Adı</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(result.missingInvoicesDetails || []).map((invoice: any) => `
-                <tr>
-                  <td><strong>${invoice['Fatura No']}</strong></td>
-                  <td class="center">
-                    <span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; ${
-                      invoice['Tür'] === 'Satış' 
-                        ? 'background-color: #dcfce7; color: #166534;' 
-                        : invoice['Tür'] === 'Alış'
-                        ? 'background-color: #dbeafe; color: #1e40af;'
-                        : 'background-color: #f3f4f6; color: #374151;'
-                    }">
-                      ${invoice['Tür']}
-                    </span>
-                  </td>
-                  <td class="center">${invoice['Fatura Tarihi']}</td>
-                  <td class="center">${invoice['Oluşturma Tarihi']}</td>
-                  <td class="center">${invoice['Gönderici VKN']}</td>
-                  <td class="center">${invoice['Alıcı VKN']}</td>
-                  <td class="number currency">
-                    ${typeof invoice['Toplam Tutar'] === 'number' 
-                      ? invoice['Toplam Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['Toplam Tutar']}
-                  </td>
-                  <td class="number currency">
-                    ${typeof invoice['Vergi Hariç Tutar'] === 'number'
-                      ? invoice['Vergi Hariç Tutar'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['Vergi Hariç Tutar']}
-                  </td>
-                  <td class="number currency">
-                    ${typeof invoice['KDV Toplamı'] === 'number'
-                      ? invoice['KDV Toplamı'].toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
-                      : invoice['KDV Toplamı']}
-                  </td>
-                  <td>${invoice['Gönderici Adı']}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          ` : ''}
+          ${mismatchedInvoicesHTML}
+          ${missingInvoicesHTML}
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
             <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
             Eksik faturalar LOGO ERP sisteminde bulunamayan faturalardır. Tutarsız faturalar LOGO'da mevcut ancak tutar veya KDV değerleri farklı olan faturalardır. 
-            Tüm tutarlar Türk Lirası (₺) cinsindendir.
+            Tüm tutarlar ilgili para birimi cinsinden gösterilmiştir.
           </div>
           
           <script>
@@ -1136,64 +1148,79 @@ export default function ExcelCompare() {
             {result.success ? (
               <div className="space-y-4">
                 {/* İstatistikler */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-blue-800">Toplam Fatura</p>
+                          <p className="text-2xl font-bold text-blue-900">{result.totalInvoices || 0}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-blue-800">Toplam Fatura</p>
-                        <p className="text-2xl font-bold text-blue-900">{result.totalInvoices || 0}</p>
+                    </div>
+
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-green-800">Tam Uyumlu</p>
+                          <p className="text-2xl font-bold text-green-900">{result.existingInvoices || 0}</p>
+                          <p className="text-xs text-green-600">Fatura no, tutar ve KDV uyumlu</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-red-800">Eksik Faturalar</p>
+                          <p className="text-2xl font-bold text-red-900">{result.missingInvoices || 0}</p>
+                          <p className="text-xs text-red-600">LOGO'da bulunamayan</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-orange-800">Tutarı Uyumsuz</p>
+                          <p className="text-2xl font-bold text-orange-900">{result.mismatchedInvoices || 0}</p>
+                          <p className="text-xs text-orange-600">Tutar veya KDV farklı</p>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-green-800">Tam Uyumlu</p>
-                        <p className="text-2xl font-bold text-green-900">{result.existingInvoices || 0}</p>
-                        <p className="text-xs text-green-600">Fatura no, tutar ve KDV uyumlu</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-red-800">Eksik Faturalar</p>
-                        <p className="text-2xl font-bold text-red-900">{result.missingInvoices || 0}</p>
-                        <p className="text-xs text-red-600">LOGO'da bulunamayan</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                        <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-orange-800">Tutarı Uyumsuz</p>
-                        <p className="text-2xl font-bold text-orange-900">{result.mismatchedInvoices || 0}</p>
-                        <p className="text-xs text-orange-600">Tutar veya KDV farklı</p>
-                      </div>
-                    </div>
+                  {/* PDF Export Butonu */}
+                  <div className="ml-6">
+                    <button
+                      onClick={exportToPDF}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                    >
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                      </svg>
+                      Raporu Yazdır/PDF
+                    </button>
                   </div>
                 </div>
 
@@ -1275,23 +1302,26 @@ export default function ExcelCompare() {
                                 {typeof invoice['LOGO Toplam Tutar'] === 'number' 
                                   ? invoice['LOGO Toplam Tutar'].toLocaleString('tr-TR', { 
                                       style: 'currency', 
-                                      currency: invoice['Para Birimi'] === 'TRY' ? 'TRY' : 'USD'
+                                      currency: 'TRY'  // TRNET her zaman TL karşılığıdır
                                     })
                                   : invoice['LOGO Toplam Tutar']
                                 }
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {typeof invoice['Excel KDV Toplamı'] === 'number' 
-                                  ? invoice['Excel KDV Toplamı'].toLocaleString('tr-TR', { 
-                                      style: 'currency', 
-                                      currency: 'TRY' 
-                                    })
-                                  : invoice['Excel KDV Toplamı']
-                                }
+                                {invoice['Excel KDV Toplamı'] === '-' ? (
+                                  <span className="text-gray-400 italic">-</span>
+                                ) : (
+                                  typeof invoice['Excel KDV Toplamı'] === 'number' 
+                                    ? invoice['Excel KDV Toplamı'].toLocaleString('tr-TR', { 
+                                        style: 'currency', 
+                                        currency: invoice['Para Birimi'] || 'TRY'  // Para birimine göre formatla
+                                      })
+                                    : invoice['Excel KDV Toplamı']
+                                )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {invoice['LOGO KDV Toplamı'] === 'Karşılaştırılmadı (Dövizli)' ? (
-                                  <span className="text-gray-400 italic">Karşılaştırılmadı (Dövizli)</span>
+                                {invoice['LOGO KDV Toplamı'] === '-' ? (
+                                  <span className="text-gray-400 italic">-</span>
                                 ) : (
                                   typeof invoice['LOGO KDV Toplamı'] === 'number' 
                                     ? invoice['LOGO KDV Toplamı'].toLocaleString('tr-TR', { 
@@ -1342,17 +1372,7 @@ export default function ExcelCompare() {
                           </svg>
                           Excel
                         </button>
-                        
-                        {/* Yazdır/PDF Butonu */}
-                        <button
-                          onClick={exportToPDF}
-                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
-                        >
-                          <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                          </svg>
-                          Yazdır/PDF
-                        </button>
+
                       </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -1451,13 +1471,16 @@ export default function ExcelCompare() {
                                 }
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {typeof invoice['KDV Toplamı'] === 'number'
-                                  ? invoice['KDV Toplamı'].toLocaleString('tr-TR', { 
-                                      style: 'currency', 
-                                      currency: 'TRY' 
-                                    })
-                                  : invoice['KDV Toplamı']
-                                }
+                                {invoice['Excel KDV Toplamı'] === '-' ? (
+                                  <span className="text-gray-400 italic">-</span>
+                                ) : (
+                                  typeof invoice['Excel KDV Toplamı'] === 'number' 
+                                    ? invoice['Excel KDV Toplamı'].toLocaleString('tr-TR', { 
+                                        style: 'currency', 
+                                        currency: 'TRY' 
+                                      })
+                                    : invoice['Excel KDV Toplamı']
+                                )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {invoice['Gönderici Adı']}
