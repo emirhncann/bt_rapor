@@ -19,11 +19,12 @@ interface CBakiyeTableProps {
   preloadedDetails?: {[key: string]: any[]};
   onPageChange?: (pageData: any[], currentPage: number, itemsPerPage: number) => void;
   selectedCurrencies?: number[];
+  onUpdatePreloadedDetails?: (clientRef: string, details: any[]) => void;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange, selectedCurrencies = [] }: CBakiyeTableProps) {
+export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange, selectedCurrencies = [], onUpdatePreloadedDetails }: CBakiyeTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -335,8 +336,16 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       const result = await response.json();
 
       if (response.ok && (result.success || result.status === 'success')) {
-        setClientDetails(result.data || []);
-        console.log(`📋 ${result.data?.length || 0} adet müşteri hareketi yüklendi`);
+        const newDetails = result.data || [];
+        setClientDetails(newDetails);
+        
+        // ⚡ Önemli: Preloaded cache'i de güncelle (özellikle yenile butonunda)
+        if (bypassCache && clientRef && onUpdatePreloadedDetails) {
+          onUpdatePreloadedDetails(clientRef, newDetails);
+          console.log(`🔄 ClientRef ${clientRef} için cache güncellendi: ${newDetails.length} hareket`);
+        }
+        
+        console.log(`📋 ${newDetails.length} adet müşteri hareketi yüklendi`);
       } else {
         console.error('Detay sorgusu hatası:', result);
         alert('Müşteri detayları yüklenirken hata oluştu: ' + (result.error || 'Bilinmeyen hata'));
@@ -2133,14 +2142,14 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           ></div>
           
           {/* Modal */}
-          <div className="flex min-h-full items-center justify-center p-2 sm:p-4">
-            <div className="relative w-full max-w-[98vw] xl:max-w-[90vw] bg-white rounded-lg shadow-xl">
+          <div className="flex min-h-full items-start sm:items-center justify-center p-0 sm:p-4">
+            <div className="relative w-full h-full sm:h-auto sm:max-w-[95vw] lg:max-w-[90vw] xl:max-w-[85vw] bg-white sm:rounded-lg shadow-xl sm:my-8">
               {/* Modal Header */}
-              <div className="bg-gradient-to-r from-red-800 to-red-900 text-white p-6 rounded-t-lg">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-xl font-bold">📋 Müşteri Hesap Hareketleri</h3>
-                    <p className="text-red-100 text-sm mt-2">
+              <div className="bg-gradient-to-r from-red-800 to-red-900 text-white p-4 sm:p-6 sm:rounded-t-lg">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg sm:text-xl font-bold">📋 Müşteri Hesap Hareketleri</h3>
+                    <p className="text-red-100 text-xs sm:text-sm mt-2 break-words">
                       Müşteri Kodu: {selectedClientRef} {clientDetails.length > 0 && `• ${clientDetails.length} hareket bulundu`}
                       {(() => {
                         const selectedTRCURRValues = getSelectedTRCURRValues();
@@ -2159,39 +2168,40 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                       })()}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {/* Excel Export Button - Dikkat Çekici */}
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    {/* Excel Export Button - Mobil Responsive */}
                     <button
                       onClick={() => exportClientDetailsToExcel()}
                       disabled={loadingDetails || clientDetails.length === 0}
-                      className="bg-green-500 text-white font-bold px-4 py-2 rounded-lg hover:bg-green-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-green-300 shadow-md"
+                      className="bg-green-500 text-white font-bold px-3 py-2 sm:px-4 sm:py-2 rounded-lg hover:bg-green-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-green-300 shadow-md"
                       title="Müşteri hareketlerini Excel'e aktar"
                     >
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h10v2H7v-2z"/>
                           <path d="M9 9h6v6H9V9zm1 1v4h4v-4h-4z"/>
                         </svg>
-                        <span className="text-sm font-bold">EXCEL</span>
+                        <span className="text-xs sm:text-sm font-bold">EXCEL</span>
                       </div>
                     </button>
 
-                    {/* PDF Export Button - Dikkat Çekici */}
+                    {/* PDF Export Button - Mobil Responsive */}
                     <button
                       onClick={() => exportClientDetailsToPDF()}
                       disabled={loadingDetails || clientDetails.length === 0}
-                      className="bg-blue-500 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-blue-300 shadow-md"
+                      className="bg-blue-500 text-white font-bold px-3 py-2 sm:px-4 sm:py-2 rounded-lg hover:bg-blue-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-blue-300 shadow-md"
                       title="Müşteri hareketlerini PDF'e aktar"
                     >
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                         </svg>
-                        <span className="text-sm font-bold">YAZDIR/PDF</span>
+                        <span className="text-xs sm:text-sm font-bold hidden sm:inline">YAZDIR/</span>
+                        <span className="text-xs sm:text-sm font-bold">PDF</span>
                       </div>
                     </button>
 
-                    {/* Refresh Button */}
+                    {/* Refresh Button - Mobil Responsive */}
                     <button
                       onClick={() => {
                         if (selectedClientRef) {
@@ -2208,7 +2218,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                       className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Hareketleri yenile (Veritabanından güncel veri çek)"
                     >
-                      <svg className={`w-6 h-6 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-5 h-5 sm:w-6 sm:h-6 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     </button>
@@ -2217,7 +2227,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                       className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700"
                       title="Detayları kapat"
                     >
-                      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
@@ -2226,7 +2236,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
               </div>
 
               {/* Modal Body */}
-              <div className="p-3 sm:p-6 max-h-[80vh] overflow-y-auto">
+              <div className="p-3 sm:p-6 max-h-[75vh] sm:max-h-[80vh] overflow-y-auto">
                 {loadingDetails ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     {loadingAnimation && (
@@ -2439,14 +2449,14 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
               </div>
 
               {/* Modal Footer */}
-              <div className="bg-gray-50 px-6 py-4 rounded-b-lg">
-                <div className="flex justify-between items-center">
-                  <div className="text-sm text-gray-600">
+              <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 sm:rounded-b-lg">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                  <div className="text-xs sm:text-sm text-gray-600">
                     {clientDetails.length > 0 && (
-                      <span>Toplam {clientDetails.length} hareket • En eski tarihten en yeniye sıralı</span>
+                      <span>Toplam {clientDetails.length} hareket<span className="hidden sm:inline"> • En eski tarihten en yeniye sıralı</span></span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3 justify-end">
                     <button
                       onClick={() => {
                         if (selectedClientRef) {
@@ -2459,16 +2469,16 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                         }
                       }}
                       disabled={loadingDetails}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      className="px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
                     >
                       <svg className={`w-4 h-4 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                      {loadingDetails ? 'Yenileniyor...' : 'Yenile'}
+                      <span className="hidden sm:inline">{loadingDetails ? 'Yenileniyor...' : 'Yenile'}</span>
                     </button>
                     <button
                       onClick={closeDetails}
-                      className="px-6 py-2 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium"
+                      className="px-4 py-2 sm:px-6 sm:py-2 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium text-sm"
                     >
                       Kapat
                     </button>

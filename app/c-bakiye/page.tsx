@@ -33,6 +33,12 @@ export default function CBakiye() {
   useEffect(() => {
     preloadedDetailsRef.current = preloadedDetails;
   }, [preloadedDetails]);
+
+  // ⚡ Kur değişikliklerinde cache'i temizle (farklı kurlar farklı sonuçlar getirir)
+  useEffect(() => {
+    console.log('💱 Seçili kurlar değişti, cache temizleniyor...', selectedCurrencies);
+    setPreloadedDetails({});
+  }, [selectedCurrencies]);
   
   // Animation data'yı yükleyelim
   const [animationData, setAnimationData] = useState(null);
@@ -197,7 +203,7 @@ export default function CBakiye() {
       // ClientRef'leri IN sorgusu için hazırla
       const clientRefList = clientRefs.map(ref => `'${ref}'`).join(', ');
       
-      // Currency No'yu TRCURR değerine map et
+      // Currency No'yu TRCURR değerine map et (Modal'dakiyle aynı)
       const mapCurrencyNoToTRCURR = (currencyNo: number): number => {
         switch(currencyNo) {
           case 53: return 0;  // TL -> TRCURR 0
@@ -207,7 +213,7 @@ export default function CBakiye() {
         }
       };
 
-      // Seçili kurları TRCURR değerlerine çevir
+      // ⚡ GÜNCEL: Modal'dakiyle aynı kur filtreleme mantığı
       const getSelectedTRCURRValues = (): number[] => {
         if (!selectedCurrencies || selectedCurrencies.length === 0) {
           return []; // Hiç kur seçilmemişse tüm kurları göster
@@ -215,7 +221,7 @@ export default function CBakiye() {
         return selectedCurrencies.map(mapCurrencyNoToTRCURR);
       };
 
-      // SQL sorgusu - detay sorgusu (CBakiyeTable.tsx ile aynı)
+      // ⚡ GÜNCEL SQL SORGUSU - Modal'da yenile butonundakiyle %100 aynı (toplu hali)
       const detailQuery = `
         SELECT 
           CLIENTREF,
@@ -494,7 +500,7 @@ export default function CBakiye() {
     } finally {
       setIsPreloading(false);
     }
-  }, []);
+  }, [selectedCurrencies]); // ⚡ GÜNCEL: selectedCurrencies değiştiğinde throttle fonksiyonu da yenilenmeli
 
   // onPageChange callback'ini memoize et
   const handlePageChange = useCallback((pageData: any[], currentPage: number, itemsPerPage: number) => {
@@ -518,7 +524,16 @@ export default function CBakiye() {
         throttledPreloadClientDetails(pageClientRefs);
       }, 300);
     }
-  }, [throttledPreloadClientDetails]);
+  }, [throttledPreloadClientDetails]); // ⚡ throttledPreloadClientDetails artık selectedCurrencies'e bağlı
+
+  // Preloaded details güncelleme callback'i
+  const handleUpdatePreloadedDetails = useCallback((clientRef: string, details: any[]) => {
+    setPreloadedDetails(prev => ({
+      ...prev,
+      [clientRef]: details
+    }));
+    console.log(`✅ Cache güncellendi - ClientRef ${clientRef}: ${details.length} hareket`);
+  }, []);
 
   // Multi-currency istatistikleri hesapla
   const calculateMultiCurrencyStats = () => {
@@ -1299,6 +1314,7 @@ export default function CBakiye() {
           preloadedDetails={preloadedDetails}
           onPageChange={handlePageChange}
           selectedCurrencies={selectedCurrencies}
+          onUpdatePreloadedDetails={handleUpdatePreloadedDetails}
         />
       ) : (
           <div className="bg-white rounded-lg shadow p-12">
