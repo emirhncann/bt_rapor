@@ -301,6 +301,18 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               <span className="ml-3">📦 Envanter Raporu</span>
             </a>
             
+            {/* Akaryakıt Modülü - Test Raporu */}
+            <a
+              href="/akaryakit-modulu"
+              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-lg group transition-colors duration-200"
+              title="Akaryakıt istasyonu tank durumu, pompa verileri ve satış analizi"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="ml-3">⛽ Akaryakıt Modülü</span>
+            </a>
+            
             {/* Hareket Görmeyen Cariler */}
             <a
               href="/hareket-gormeyen-cariler"

@@ -47,7 +47,7 @@ export default function CurrencySelector({ selectedCurrencies, onCurrencyChange,
     <div className={`bg-white rounded-lg border border-gray-200 p-4 ${className}`}>
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          💱 Kur Seçimi
+          💱 Döviz Türü Seçimi
         </h3>
         <p className="text-sm text-gray-600">
           Raporda görmek istediğiniz para birimlerini seçin. Seçilen kurlar için ayrı ayrı borç, alacak ve bakiye sütunları oluşturulacaktır.

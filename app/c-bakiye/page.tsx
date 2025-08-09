@@ -34,9 +34,9 @@ export default function CBakiye() {
     preloadedDetailsRef.current = preloadedDetails;
   }, [preloadedDetails]);
 
-  // ⚡ Kur değişikliklerinde cache'i temizle (farklı kurlar farklı sonuçlar getirir)
+  // ⚡ Döviz türü değişikliklerinde cache'i temizle (farklı döviz türleri farklı sonuçlar getirir)
   useEffect(() => {
-    console.log('💱 Seçili kurlar değişti, cache temizleniyor...', selectedCurrencies);
+    console.log('💱 Seçili döviz türleri değişti, cache temizleniyor...', selectedCurrencies);
     setPreloadedDetails({});
   }, [selectedCurrencies]);
   
@@ -213,10 +213,10 @@ export default function CBakiye() {
         }
       };
 
-      // ⚡ GÜNCEL: Modal'dakiyle aynı kur filtreleme mantığı
+      // ⚡ GÜNCEL: Modal'dakiyle aynı döviz türü filtreleme mantığı
       const getSelectedTRCURRValues = (): number[] => {
         if (!selectedCurrencies || selectedCurrencies.length === 0) {
-          return []; // Hiç kur seçilmemişse tüm kurları göster
+          return []; // Hiç döviz türü seçilmemişse tüm döviz türlerini göster
         }
         return selectedCurrencies.map(mapCurrencyNoToTRCURR);
       };
@@ -366,7 +366,7 @@ export default function CBakiye() {
           }
         }
       }
-
+      
       if (!response || !response.ok) {
         console.warn(`⚠️ Çoklu müşteri sorgusu için detay çekilemedi: HTTP ${response?.status || 'Bilinmeyen'}`);
         return {};
@@ -541,7 +541,7 @@ export default function CBakiye() {
       return { currencies: [], totalCustomers: 0 };
     }
 
-    // Seçili kurlar için istatistik toplama
+    // Seçili döviz türleri için istatistik toplama
     const currencyStats: { [key: string]: { code: string, borc: number, alacak: number, bakiye: number } } = {};
     
     // Veri satırlarını işle
@@ -1134,7 +1134,7 @@ export default function CBakiye() {
               <div>
                 <h2 className="text-2xl lg:text-3xl font-bold mb-2">Cari Bakiye Raporu</h2>
                 <p className="text-red-100 text-sm">
-                  Seçili Kurlar: {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).join(', ')}
+                  Seçili Döviz Türleri: {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).join(', ')}
                 </p>
               </div>
             </div>
@@ -1148,7 +1148,7 @@ export default function CBakiye() {
                   onClick={() => setShowCurrencySelector(!showCurrencySelector)}
                   className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium"
                 >
-                  💱 Kur Seçimi
+                  💱 Döviz Türü Seçimi
                 </button>
                 <button
                   onClick={fetchSqlData}
@@ -1201,7 +1201,7 @@ export default function CBakiye() {
                   </div>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Seçili Kurlar</p>
+                  <p className="text-sm font-medium text-gray-500">Seçili Döviz Türleri</p>
                   <p className="text-2xl font-semibold text-gray-900">{selectedCurrencies.length}</p>
                   <p className="text-xs text-gray-500 mt-1">
                     {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).slice(0, 3).join(', ')}
@@ -1214,10 +1214,10 @@ export default function CBakiye() {
 
           </div>
 
-          {/* Kur Bazlı İstatistikler - Basitleştirilmiş */}
+          {/* Döviz Türü Bazlı İstatistikler - Basitleştirilmiş */}
           {multiCurrencyStats.currencies.length > 0 && (
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">💰 Kur Bazlı Özet</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">💰 Döviz Türü Bazlı Özet</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {multiCurrencyStats.currencies.map((currency, index) => (
                   <div key={currency.code} className="border rounded-lg p-4">

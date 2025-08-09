@@ -111,17 +111,17 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       case 53: return 0;  // TL -> TRCURR 0
       case 1: return 1;   // USD -> TRCURR 1
       case 20: return 20; // EUR -> TRCURR 20
-      default: return currencyNo; // Diğer kurlar için aynı değer
+              default: return currencyNo; // Diğer döviz türleri için aynı değer
     }
   };
 
-  // Seçili kurları TRCURR değerlerine çevir
-  const getSelectedTRCURRValues = (): number[] => {
-    if (!selectedCurrencies || selectedCurrencies.length === 0) {
-      return []; // Hiç kur seçilmemişse tüm kurları göster
-    }
-    return selectedCurrencies.map(mapCurrencyNoToTRCURR);
-  };
+      // Seçili döviz türlerini TRCURR değerlerine çevir
+    const getSelectedTRCURRValues = (): number[] => {
+      if (!selectedCurrencies || selectedCurrencies.length === 0) {
+        return []; // Hiç döviz türü seçilmemişse tüm döviz türlerini göster
+      }
+      return selectedCurrencies.map(mapCurrencyNoToTRCURR);
+    };
 
   // Müşteri detaylarını getir
   const fetchClientDetails = async (clientRef: string, clientName: string, bypassCache: boolean = false) => {
@@ -592,19 +592,19 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
               
               ${isMultiCurrency ? `
               <div class="stat-box success">
-                <div class="stat-title">Aktif Kurlar</div>
+                <div class="stat-title">Aktif Döviz Türleri</div>
                 <div class="stat-value">${currencyStats.length}</div>
               </div>
               ` : `
               <div class="stat-box success">
                 <div class="stat-title">Rapor Formatı</div>
-                <div class="stat-value">Tekli Kur</div>
+                <div class="stat-value">Tekli Döviz Türü</div>
               </div>
               `}
             </div>
             
             ${isMultiCurrency ? `
-            <h3 style="color: #991b1b; font-size: 14px; margin: 15px 0 10px 0;">💰 Kur Bazlı Toplamlar</h3>
+            <h3 style="color: #991b1b; font-size: 14px; margin: 15px 0 10px 0;">💰 Döviz Türü Bazlı Toplamlar</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
               ${currencyStats.map(currency => `
               <div class="stat-box" style="border-left: 4px solid #991b1b;">
@@ -1590,11 +1590,11 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
             <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700">
               <p className="font-medium mb-1">ℹ️ Kategori Filtreleme İpuçları:</p>
               <ul className="list-disc list-inside space-y-1 text-blue-600">
-                <li><strong>🔴 Borç:</strong> Tüm kur türlerindeki borç sütunlarını kapsar (TRY_Borç, USD_Borç, EUR_Borç vb.)</li>
-                <li><strong>🟢 Alacak:</strong> Tüm kur türlerindeki alacak sütunlarını kapsar (TRY_Alacak, USD_Alacak, EUR_Alacak vb.)</li>
-                <li><strong>⚖️ Bakiye:</strong> Tüm kur türlerindeki bakiye sütunlarını kapsar - Negatif: (A), Pozitif: (B)</li>
+                <li><strong>🔴 Borç:</strong> Tüm döviz türlerindeki borç sütunlarını kapsar (TRY_Borç, USD_Borç, EUR_Borç vb.)</li>
+                <li><strong>🟢 Alacak:</strong> Tüm döviz türlerindeki alacak sütunlarını kapsar (TRY_Alacak, USD_Alacak, EUR_Alacak vb.)</li>
+                <li><strong>⚖️ Bakiye:</strong> Tüm döviz türlerindeki bakiye sütunlarını kapsar - Negatif: (A), Pozitif: (B)</li>
                 <li><strong>Para formatları:</strong> "1.234,56" ve "1234,56" formatları desteklenir</li>
-                <li><strong>Örnek Borç filtresi:</strong> Min: 1000 → Herhangi bir kurda 1000+ borcu olan müşteriler</li>
+                <li><strong>Örnek Borç filtresi:</strong> Min: 1000 → Herhangi bir döviz türünde 1000+ borcu olan müşteriler</li>
                 <li><strong>Örnek Bakiye filtresi:</strong> Min: -5000, Max: 0 → Alacaklı olan müşteriler</li>
               </ul>
             </div>
@@ -2143,9 +2143,9 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           
           {/* Modal */}
           <div className="flex min-h-full items-start sm:items-center justify-center p-0 sm:p-4">
-            <div className="relative w-full h-full sm:h-auto sm:max-w-[95vw] lg:max-w-[90vw] xl:max-w-[85vw] bg-white sm:rounded-lg shadow-xl sm:my-8">
+            <div className="relative w-full h-full sm:h-auto sm:max-w-[95vw] lg:max-w-[90vw] xl:max-w-[85vw] sm:max-h-[90vh] bg-white sm:rounded-lg shadow-xl sm:my-8 flex flex-col">
               {/* Modal Header */}
-              <div className="bg-gradient-to-r from-red-800 to-red-900 text-white p-4 sm:p-6 sm:rounded-t-lg">
+              <div className="flex-shrink-0 bg-gradient-to-r from-red-800 to-red-900 text-white p-4 sm:p-6 sm:rounded-t-lg">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg sm:text-xl font-bold">📋 Müşteri Hesap Hareketleri</h3>
@@ -2164,44 +2164,43 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                           });
                           return ` • Sadece: ${currencyNames.join(', ')}`;
                         }
-                        return ' • Tüm kurlar';
+                                                  return ' • Tüm döviz türleri';
                       })()}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    {/* Excel Export Button - Mobil Responsive */}
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:gap-4">
+                    {/* Excel Export Button - Tam Responsive */}
                     <button
                       onClick={() => exportClientDetailsToExcel()}
                       disabled={loadingDetails || clientDetails.length === 0}
-                      className="bg-green-500 text-white font-bold px-3 py-2 sm:px-4 sm:py-2 rounded-lg hover:bg-green-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-green-300 shadow-md"
+                      className="bg-green-500 text-white font-bold px-3 py-2 sm:px-4 sm:py-2 lg:px-5 lg:py-3 rounded-lg hover:bg-green-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-green-300 shadow-md"
                       title="Müşteri hareketlerini Excel'e aktar"
                     >
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1 sm:gap-2 lg:gap-2">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 lg:w-5 lg:h-5" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h10v2H7v-2z"/>
                           <path d="M9 9h6v6H9V9zm1 1v4h4v-4h-4z"/>
                         </svg>
-                        <span className="text-xs sm:text-sm font-bold">EXCEL</span>
+                        <span className="text-xs sm:text-sm lg:text-base font-bold">EXCEL</span>
                       </div>
                     </button>
 
-                    {/* PDF Export Button - Mobil Responsive */}
+                    {/* PDF Export Button - Tam Responsive */}
                     <button
                       onClick={() => exportClientDetailsToPDF()}
                       disabled={loadingDetails || clientDetails.length === 0}
-                      className="bg-blue-500 text-white font-bold px-3 py-2 sm:px-4 sm:py-2 rounded-lg hover:bg-blue-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-blue-300 shadow-md"
+                      className="bg-blue-500 text-white font-bold px-3 py-2 sm:px-4 sm:py-2 lg:px-5 lg:py-3 rounded-lg hover:bg-blue-400 hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none border-2 border-blue-300 shadow-md"
                       title="Müşteri hareketlerini PDF'e aktar"
                     >
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1 sm:gap-2 lg:gap-2">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 lg:w-5 lg:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                         </svg>
-                        <span className="text-xs sm:text-sm font-bold hidden sm:inline">YAZDIR/</span>
-                        <span className="text-xs sm:text-sm font-bold">PDF</span>
+                        <span className="text-xs sm:text-sm lg:text-base font-bold">YAZDIR/PDF</span>
                       </div>
                     </button>
 
-                    {/* Refresh Button - Mobil Responsive */}
+                    {/* Refresh Button - Tam Responsive */}
                     <button
                       onClick={() => {
                         if (selectedClientRef) {
@@ -2215,19 +2214,19 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                         }
                       }}
                       disabled={loadingDetails}
-                      className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="text-white hover:text-red-200 transition-colors p-2 lg:p-3 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Hareketleri yenile (Veritabanından güncel veri çek)"
                     >
-                      <svg className={`w-5 h-5 sm:w-6 sm:h-6 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-5 h-5 sm:w-6 sm:h-6 lg:w-6 lg:h-6 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     </button>
                     <button
                       onClick={closeDetails}
-                      className="text-white hover:text-red-200 transition-colors p-2 rounded-lg hover:bg-red-700"
+                      className="text-white hover:text-red-200 transition-colors p-2 lg:p-3 rounded-lg hover:bg-red-700"
                       title="Detayları kapat"
                     >
-                      <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-6 h-6 sm:w-7 sm:h-7 lg:w-7 lg:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
@@ -2236,7 +2235,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
               </div>
 
               {/* Modal Body */}
-              <div className="p-3 sm:p-6 max-h-[75vh] sm:max-h-[80vh] overflow-y-auto">
+              <div className="flex-1 p-3 sm:p-6 overflow-y-auto min-h-0">
                 {loadingDetails ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     {loadingAnimation && (
@@ -2449,14 +2448,14 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
               </div>
 
               {/* Modal Footer */}
-              <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 sm:rounded-b-lg">
+              <div className="flex-shrink-0 bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 sm:rounded-b-lg border-t border-gray-200">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <div className="text-xs sm:text-sm text-gray-600">
                     {clientDetails.length > 0 && (
                       <span>Toplam {clientDetails.length} hareket<span className="hidden sm:inline"> • En eski tarihten en yeniye sıralı</span></span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 sm:gap-3 justify-end">
+                  <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 justify-end">
                     <button
                       onClick={() => {
                         if (selectedClientRef) {
@@ -2469,16 +2468,16 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                         }
                       }}
                       disabled={loadingDetails}
-                      className="px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+                      className="px-3 py-2 sm:px-4 sm:py-2 lg:px-5 lg:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm lg:text-base"
                     >
-                      <svg className={`w-4 h-4 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-4 h-4 lg:w-5 lg:h-5 ${loadingDetails ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                       <span className="hidden sm:inline">{loadingDetails ? 'Yenileniyor...' : 'Yenile'}</span>
                     </button>
                     <button
                       onClick={closeDetails}
-                      className="px-4 py-2 sm:px-6 sm:py-2 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium text-sm"
+                      className="px-4 py-2 sm:px-6 sm:py-2 lg:px-8 lg:py-3 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium text-sm lg:text-base"
                     >
                       Kapat
                     </button>
