@@ -20,6 +20,16 @@ export default function Settings() {
   const [userToDelete, setUserToDelete] = useState<{id: number, name: string} | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   
+  // Akaryakıt modülü ayarları (dinamik liste)
+  type FuelSetting = {
+    id: string;
+    stationName: string;
+    automationName: string;
+    filePath: string;
+    onlineFilePath: string;
+  };
+  const [fuelSettings, setFuelSettings] = useState<FuelSetting[]>([]);
+  
   // Rapor yetkilendirme states
   const [companyReports, setCompanyReports] = useState<any[]>([]);
   const [userReportPermissions, setUserReportPermissions] = useState<{[userId: number]: number[]}>({});
@@ -122,6 +132,38 @@ export default function Settings() {
 
     checkAuth();
   }, [router]);
+
+  // Akaryakıt modülü ayarlarını yükle (localStorage - şirket bazlı)
+  const loadFuelSettings = () => {
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) return;
+      const key = `fuel_module_settings_${companyRef}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as FuelSetting[];
+        if (Array.isArray(parsed)) {
+          setFuelSettings(parsed.map((item) => ({
+            id: String(item.id ?? `${Date.now()}_${Math.random().toString(36).slice(2,8)}`),
+            stationName: item.stationName ?? '',
+            automationName: item.automationName ?? '',
+            filePath: item.filePath ?? '',
+            onlineFilePath: item.onlineFilePath ?? ''
+          })));
+        }
+      }
+    } catch (e) {
+      console.warn('Akaryakıt ayarları yüklenemedi:', e);
+    }
+  };
+
+  // İlk render sonrası akaryakıt ayarlarını da getir
+  useEffect(() => {
+    // Auth state set edildikten sonra çalışması yeterli
+    if (typeof window !== 'undefined') {
+      loadFuelSettings();
+    }
+  }, []);
 
   // Şirket raporlarını yükle
   const loadCompanyReports = async () => {
@@ -637,6 +679,106 @@ export default function Settings() {
     }
   };
 
+  // Akaryakıt ayarlarında tek satırı güncelle
+  const updateFuelSetting = (id: string, field: keyof Omit<FuelSetting, 'id'>, value: string) => {
+    setFuelSettings((prev) => prev.map((row) => row.id === id ? { ...row, [field]: value } : row));
+  };
+
+  // Yeni akaryakıt istasyonu satırı ekle
+  const addFuelSetting = () => {
+    const newId = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    setFuelSettings((prev) => ([
+      ...prev,
+      { id: newId, stationName: '', automationName: '', filePath: '', onlineFilePath: '' }
+    ]));
+  };
+
+  // Satırı sil
+  const removeFuelSetting = (id: string) => {
+    setFuelSettings((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  // Akaryakıt ayarlarını kaydet (localStorage + PHP API)
+  const handleSaveFuelSettings = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    
+    console.log('🚀 handleSaveFuelSettings fonksiyonu başlatıldı!');
+    alert('Debug: handleSaveFuelSettings fonksiyonu başlatıldı!');
+    
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      const userId = localStorage.getItem('userId');
+      
+      console.log('🔍 localStorage Değerleri:', { companyRef, userId });
+      alert(`Debug: localStorage - companyRef: ${companyRef}, userId: ${userId}`);
+      
+      if (!companyRef || !userId) {
+        await loadAnimation('failed', 'Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      console.log('📋 fuelSettings:', fuelSettings);
+      alert(`Debug: fuelSettings array - ${fuelSettings.length} adet ayar var`);
+
+      // Her bir akaryakıt ayarını PHP API'sine gönder
+      for (const setting of fuelSettings) {
+        const payload = {
+          company_ref: parseInt(companyRef),
+          branch_name: setting.stationName,
+          file_type: setting.automationName,
+          path: setting.filePath,
+          online_path: setting.onlineFilePath,
+          user_by: parseInt(userId)
+        };
+
+        console.log('🚀 Akaryakıt ayarı kaydediliyor:', payload);
+        console.log('📤 Gönderilen JSON:', JSON.stringify(payload, null, 2));
+        alert(`Debug: API'ye gönderilecek veri:\n${JSON.stringify(payload, null, 2)}`);
+
+        const response = await fetch('https://api.btrapor.com/akaryakit-save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload)
+        });
+
+        console.log('📡 HTTP Yanıt Durumu:', response.status, response.statusText);
+        console.log('📡 HTTP Yanıt Başlıkları:', Object.fromEntries(response.headers.entries()));
+
+        const result = await response.json();
+        console.log('📥 API Yanıtı (Ham):', result);
+        console.log('📥 API Yanıtı (JSON):', JSON.stringify(result, null, 2));
+        alert(`Debug: API Yanıtı:\n${JSON.stringify(result, null, 2)}`);
+        
+        if (result.status === 'success') {
+          console.log('✅ Akaryakıt ayarı kaydedildi:', result);
+          alert('✅ API başarılı yanıt aldı!');
+        } else {
+          console.error('❌ Akaryakıt ayarı kaydedilemedi:', result);
+          console.error('❌ Hata Detayı:', result.message);
+          alert(`❌ API Hatası: ${result.message}`);
+          await loadAnimation('failed', `❌ Hata: ${result.message}`);
+          return;
+        }
+      }
+
+      // Başarılı ise localStorage'a da kaydet
+      const key = `fuel_module_settings_${companyRef}`;
+      localStorage.setItem(key, JSON.stringify(fuelSettings));
+      
+      await loadAnimation('success', 'Tüm akaryakıt modülü ayarları başarıyla kaydedildi!');
+      
+    } catch (error) {
+      console.error('❌ Akaryakıt ayarları kaydedilirken hata:', error);
+      console.error('❌ Hata Türü:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('❌ Hata Mesajı:', error instanceof Error ? error.message : String(error));
+      console.error('❌ Hata Stack:', error instanceof Error ? error.stack : 'Stack trace yok');
+      alert(`❌ Hata oluştu:\n${error instanceof Error ? error.message : String(error)}`);
+      await loadAnimation('failed', 'Akaryakıt ayarları kaydedilirken bir hata oluştu!');
+    }
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -903,6 +1045,8 @@ export default function Settings() {
                     </div>
                   </div>
 
+                
+
                   {/* Logo Kurulum Veritabanı Adı */}
                   <div className="border-2 border-orange-300 bg-orange-50 rounded-lg p-4">
                     <h4 className="text-md font-medium text-orange-900 mb-4">Logo Kurulum Veritabanı</h4>
@@ -1162,7 +1306,107 @@ export default function Settings() {
                       </div>
                     </div>
                   </div>
+                    {/* Akaryakıt Modülü Ayarları */}
+                    <div className="border-2 border-indigo-300 bg-indigo-50 rounded-lg p-4 mt-12 pt-8">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-md font-medium text-indigo-900">Akaryakıt Modülü Ayarları</h4>
+                        <p className="text-xs text-indigo-700 mt-1">Birden fazla istasyon/otomasyon için ayar ekleyebilirsiniz</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addFuelSetting}
+                        className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                        title="İstasyon ayarı ekle"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Ekle
+                      </button>
+                    </div>
+
+                    {fuelSettings.length === 0 ? (
+                      <div className="bg-white border border-indigo-200 rounded-lg p-4 text-sm text-indigo-900">
+                        Henüz bir ayar eklenmemiş. Yeni bir istasyon/otomasyon eklemek için "Ekle" butonuna basın.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {fuelSettings.map((row) => (
+                          <div key={row.id} className="bg-white border border-indigo-200 rounded-lg p-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">İstasyon Adı</label>
+                                <input
+                                  type="text"
+                                  value={row.stationName}
+                                  onChange={(e) => updateFuelSetting(row.id, 'stationName', e.target.value)}
+                                  placeholder="Örn: Merkez İstasyon"
+                                  className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Otomasyon Adı</label>
+                                <input
+                                  type="text"
+                                  value={row.automationName}
+                                  onChange={(e) => updateFuelSetting(row.id, 'automationName', e.target.value)}
+                                  placeholder="Örn: TURPAK / Asis / Petronet"
+                                  className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Dosya Yolu</label>
+                                <input
+                                  type="text"
+                                  value={row.filePath}
+                                  onChange={(e) => updateFuelSetting(row.id, 'filePath', e.target.value)}
+                                  placeholder="Örn: C:\\TURPAK\\Reports"
+                                  className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Online Dosya Yolu</label>
+                                <input
+                                  type="text"
+                                  value={row.onlineFilePath}
+                                  onChange={(e) => updateFuelSetting(row.id, 'onlineFilePath', e.target.value)}
+                                  placeholder="Örn: \\ Fileserver\\share\\TURPAK"
+                                  className="w-full px-3 py-3 md:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => removeFuelSetting(row.id)}
+                                className="inline-flex items-center px-3 py-2 text-sm text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg"
+                                title="Satırı kaldır"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0h8l-1-2H10l-1 2z" />
+                                </svg>
+                                Kaldır
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="text-xs text-indigo-700">Değişiklikleri kaydetmeyi unutmayın</div>
+                      <button
+                        type="button"
+                        onClick={handleSaveFuelSettings}
+                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                      >
+                        Kaydet
+                      </button>
+                    </div>
+                  </div>
               </div>
+              
             )}
 
             {/* Kullanıcı Yönetimi Tab */}

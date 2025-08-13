@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
+import { sendSecureProxyRequest, encryptPayloadSecure } from '../utils/api';
 
 // XML verisinden çıkarılan örnek veriler
 const sampleData = {
@@ -131,7 +132,18 @@ const sampleData = {
   ]
 };
 
+// Akaryakıt istasyonu ayarları için tip tanımı
+type FuelStationSetting = {
+  id?: string;
+  branch_name: string;
+  file_type: string;
+  path: string;
+  online_path: string;
+};
+
 export default function AkaryakitModulu() {
+  console.log('🚀 AkaryakitModulu bileşeni yüklendi!');
+  
   const [selectedTab, setSelectedTab] = useState('upload');
   const [tankData, setTankData] = useState(sampleData.tankTotals);
   const [pumpData, setPumpData] = useState(sampleData.pumpTotalizers);
@@ -141,7 +153,135 @@ export default function AkaryakitModulu() {
   const [xmlInput, setXmlInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [parseError, setParseError] = useState('');
+  
+  // Akaryakıt ayarları için state'ler
+  const [fuelSettings, setFuelSettings] = useState<FuelStationSetting[]>([]);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
 
+  // Dosya okuma için state'ler
+  const [isReadingFile, setIsReadingFile] = useState(false);
+  const [fileReadMessage, setFileReadMessage] = useState('');
+  const [manualFilePath, setManualFilePath] = useState('');
+  const [fileResponseData, setFileResponseData] = useState<any>(null);
+
+  // Akaryakıt ayarlarını kaydet
+  const saveFuelSettings = async () => {
+    try {
+      // İlk olarak basit bir test logu
+      console.log('🚀 saveFuelSettings fonksiyonu başlatıldı!');
+      alert('Debug: saveFuelSettings fonksiyonu başlatıldı!');
+      
+      setIsSavingSettings(true);
+      setSaveMessage('');
+
+      const companyRef = localStorage.getItem('companyRef');
+      const userId = localStorage.getItem('userId');
+
+      console.log('🔍 localStorage Değerleri:', { companyRef, userId });
+      alert(`Debug: localStorage - companyRef: ${companyRef}, userId: ${userId}`);
+
+      if (!companyRef || !userId) {
+        console.error('❌ localStorage eksik:', { companyRef, userId });
+        setSaveMessage('❌ Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      console.log('📋 İşlenecek fuelSettings:', fuelSettings);
+      console.log('📋 fuelSettings uzunluğu:', fuelSettings.length);
+
+      // Her bir ayar için API çağrısı yap
+      for (const setting of fuelSettings) {
+        console.log('🔍 İşlenen setting:', setting);
+        
+        if (!setting.branch_name || !setting.file_type || !setting.path || !setting.online_path) {
+          console.log('⏭️ Eksik alanlar nedeniyle atlanıyor:', {
+            branch_name: !!setting.branch_name,
+            file_type: !!setting.file_type,
+            path: !!setting.path,
+            online_path: !!setting.online_path
+          });
+          continue; // Eksik alanları atla
+        }
+
+        const payload = {
+          company_ref: parseInt(companyRef),
+          branch_name: setting.branch_name,
+          file_type: setting.file_type,
+          path: setting.path,
+          online_path: setting.online_path,
+          user_by: parseInt(userId)
+        };
+
+        console.log('🚀 Akaryakıt ayarı kaydediliyor:', payload);
+        console.log('📤 Gönderilen JSON:', JSON.stringify(payload, null, 2));
+        alert(`Debug: API'ye gönderilecek veri:\n${JSON.stringify(payload, null, 2)}`);
+
+        const response = await fetch('https://api.btrapor.com/akaryakit-save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload)
+        });
+
+        console.log('📡 HTTP Yanıt Durumu:', response.status, response.statusText);
+        console.log('📡 HTTP Yanıt Başlıkları:', Object.fromEntries(response.headers.entries()));
+
+        const result = await response.json();
+        console.log('📥 API Yanıtı (Ham):', result);
+        console.log('📥 API Yanıtı (JSON):', JSON.stringify(result, null, 2));
+        alert(`Debug: API Yanıtı:\n${JSON.stringify(result, null, 2)}`);
+        
+        if (result.status === 'success') {
+          console.log('✅ Akaryakıt ayarı kaydedildi:', result);
+          alert('✅ API başarılı yanıt aldı!');
+        } else {
+          console.error('❌ Akaryakıt ayarı kaydedilemedi:', result);
+          console.error('❌ Hata Detayı:', result.message);
+          alert(`❌ API Hatası: ${result.message}`);
+          setSaveMessage(`❌ Hata: ${result.message}`);
+          return;
+        }
+      }
+
+      setSaveMessage('✅ Tüm akaryakıt ayarları başarıyla kaydedildi!');
+      
+      // 3 saniye sonra mesajı temizle
+      setTimeout(() => setSaveMessage(''), 3000);
+
+    } catch (error) {
+      console.error('❌ Akaryakıt ayarları kaydedilirken hata:', error);
+      console.error('❌ Hata Türü:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('❌ Hata Mesajı:', error instanceof Error ? error.message : String(error));
+      console.error('❌ Hata Stack:', error instanceof Error ? error.stack : 'Stack trace yok');
+      alert(`❌ Hata oluştu:\n${error instanceof Error ? error.message : String(error)}`);
+      setSaveMessage('❌ Akaryakıt ayarları kaydedilirken bir hata oluştu!');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  // Akaryakıt ayarlarında tek satırı güncelle
+  const updateFuelSetting = (index: number, field: keyof FuelStationSetting, value: string) => {
+    setFuelSettings((prev) => prev.map((row, i) => 
+      i === index ? { ...row, [field]: value } : row
+    ));
+  };
+
+  // Yeni akaryakıt istasyonu satırı ekle
+  const addFuelSetting = () => {
+    setFuelSettings((prev) => ([
+      ...prev,
+      { branch_name: '', file_type: 'XML', path: '', online_path: '' }
+    ]));
+  };
+
+  // Satırı sil
+  const removeFuelSetting = (index: number) => {
+    setFuelSettings((prev) => prev.filter((_, i) => i !== index));
+  };
+        
   // Tank durumu renk kodları
   const getTankStatus = (currentVolume: number, previousVolume: number) => {
     const percentage = (currentVolume / previousVolume) * 100;
@@ -152,9 +292,9 @@ export default function AkaryakitModulu() {
   };
 
   // Yakıt türü ikonu
-  const getFuelIcon = (fuelType: string) => {
+  const getFuelIcon = (fuelType: string) => {                       
     if (fuelType.includes('LPG')) {
-      return (
+      return (              
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
@@ -541,6 +681,152 @@ export default function AkaryakitModulu() {
     }
   };
 
+  // Akaryakıt dosyasını şifreli olarak oku
+  const readAkaryakitFile = async (filePath: string) => {
+    try {
+      console.log('🚀 Akaryakıt dosyası okuma başlatıldı:', filePath);
+      setIsReadingFile(true);
+      setFileReadMessage('');
+
+      const companyRef = localStorage.getItem('companyRef');
+      if (!companyRef) {
+        throw new Error('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+      }
+
+      // Yeni akaryakıt proxy formatı
+      const moduleData = {
+        id: 2,
+        mode: 'offline' // Dosya okuma için offline mode
+      };
+
+      const payloadData = {
+        filePath: filePath
+      };
+
+      console.log('📤 Akaryakıt proxy payload:', { moduleData, payloadData });
+      console.log('🔐 === AKARYAKIT PROXY DETAYLARI ===');
+      console.log('📍 Company Ref:', companyRef);
+      console.log('🔗 Proxy URL:', 'https://api.btrapor.com/akaryakit-proxy');
+      console.log('🎯 Hedef URL:', 'http://PUBLIC_IP/sql/akaryakit');
+      console.log('🔐 Module ID:', moduleData.id);
+      console.log('🔐 Mode:', moduleData.mode);
+      console.log('📁 Dosya Yolu:', filePath);
+      console.log('⏱️ Timeout:', '60000ms (1 dakika)');
+      console.log('🔄 Max Retries:', '2');
+      console.log('📏 Max Response Size:', '100MB');
+      console.log('================================');
+
+      // Module ve payload'ı şifrele
+      const encryptedModule = await encryptPayloadSecure(moduleData, companyRef);
+      const encryptedPayload = await encryptPayloadSecure(payloadData, companyRef);
+
+      // Yeni akaryakıt proxy formatında request body
+      const requestBody = {
+        companyRef: companyRef,
+        encryptedModule: encryptedModule,
+        encryptedPayload: encryptedPayload,
+        timestamp: Date.now(),
+        nonce: Math.random().toString(36).substring(2, 15)
+      };
+
+      console.log('🔐 Şifreli request body hazırlandı');
+      console.log('📋 === ŞİFRELİ VERİLER ===');
+      console.log('🔐 Encrypted Module:', encryptedModule);
+      console.log('🔐 Encrypted Payload:', encryptedPayload);
+      console.log('📋 === ŞİFRESİZ VERİLER ===');
+      console.log('📄 Module Data (şifresiz):', JSON.stringify(moduleData, null, 2));
+      console.log('📄 Payload Data (şifresiz):', JSON.stringify(payloadData, null, 2));
+      console.log('📄 Full Request Body (şifresiz):', JSON.stringify(requestBody, null, 2));
+      console.log('================================');
+
+      // Akaryakıt proxy'ye gönder
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      try {
+        const response = await fetch('https://api.btrapor.com/akaryakit-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Company-Ref': companyRef
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        console.log('📡 Akaryakıt proxy yanıtı:', response.status, response.statusText);
+        console.log('📡 Response Headers:', Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('❌ Akaryakıt proxy hatası detayları:', errorData);
+          throw new Error(`Akaryakıt proxy hatası: ${response.status} - ${errorData.message || response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log('📥 Akaryakıt proxy sonucu:', result);
+
+        // Response'u state'e kaydet
+        setFileResponseData(result);
+
+                              if (result.success || result.data || result.status === 'success') {
+          setFileReadMessage('✅ Dosya başarıyla okundu ve işlendi!');
+          
+          // Dosya içeriğini çıkar
+          let fileContent = '';
+          
+          if (result.data && result.data.content) {
+            fileContent = result.data.content;
+          } else if (result.data && result.data.xmlContent) {
+            fileContent = result.data.xmlContent;
+          } else if (result.data && typeof result.data === 'string') {
+            fileContent = result.data;
+          } else if (result.content) {
+            fileContent = result.content;
+          } else {
+            // Ham sonucu göster
+            fileContent = JSON.stringify(result, null, 2);
+          }
+          
+          if (fileContent) {
+            console.log('📄 Dosya içeriği alındı, parse ediliyor...');
+            setXmlInput(fileContent);
+            
+            // XML formatı kontrol et ve parse et
+            if (fileContent.includes('<?xml') || fileContent.includes('<SaleData') || fileContent.includes('<')) {
+              parseXmlData(fileContent);
+            } else {
+              console.log('📄 XML formatı değil, ham içerik gösteriliyor');
+            }
+          }
+          
+          // 3 saniye sonra mesajı temizle
+          setTimeout(() => setFileReadMessage(''), 3000);
+        } else {
+          throw new Error(result.message || 'Dosya okuma başarısız');
+        }
+
+      } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+      }
+
+    } catch (error) {
+      console.error('❌ Akaryakıt dosya okuma hatası:', error);
+      setFileReadMessage(`❌ Hata: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
+
+  // Test dosyası okuma fonksiyonu
+  const testFileRead = async () => {
+    const testFilePath = "C:\\temp\\akaryakit\\data.xml";
+    await readAkaryakitFile(testFilePath);
+  };
+
   return (
     <DashboardLayout title="Akaryakıt Modülü - Test Raporu">
       <div className="space-y-6">
@@ -633,7 +919,8 @@ export default function AkaryakitModulu() {
                 { id: 'pumps', name: 'Pompa Verileri', icon: '⛽' },
                 { id: 'attendants', name: 'Pompacılar', icon: '👨‍💼' },
                 { id: 'sales', name: 'Satış Detayları', icon: '💳' },
-                { id: 'analysis', name: 'Yakıt Analizi', icon: '📊' }
+                { id: 'analysis', name: 'Yakıt Analizi', icon: '📊' },
+                { id: 'settings', name: 'Ayarlar', icon: '⚙️' }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -673,13 +960,81 @@ export default function AkaryakitModulu() {
                       <p className="text-red-800 text-sm">❌ {parseError}</p>
                     </div>
                   )}
+                  {/* Dosya okuma mesajı */}
+                  {fileReadMessage && (
+                    <div className={`mt-3 p-3 rounded-lg ${
+                      fileReadMessage.includes('✅') 
+                        ? 'bg-green-100 border border-green-300 text-green-800' 
+                        : 'bg-red-100 border border-red-300 text-red-800'
+                    }`}>
+                      <p className="text-sm">{fileReadMessage}</p>
+                    </div>
+                  )}
+
+                  {/* Manuel Dosya Yolu Girişi */}
+                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <h5 className="font-medium text-yellow-900 mb-3">🧪 Test Amaçlı Manuel Dosya Yolu</h5>
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={manualFilePath}
+                        onChange={(e) => setManualFilePath(e.target.value)}
+                        placeholder="Örn: C:\temp\akaryakit\data.xml"
+                        className="flex-1 px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-sm"
+                      />
+                      <button
+                        onClick={() => readAkaryakitFile(manualFilePath)}
+                        disabled={isReadingFile || !manualFilePath.trim()}
+                        className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2 text-sm"
+                      >
+                        {isReadingFile ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Oku</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>Manuel Oku</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-yellow-700 mt-2">
+                      Test amaçlı olarak farklı dosya yollarını deneyebilirsiniz. Dosya yolu tam olarak yazılmalıdır.
+                    </p>
+                  </div>
+
                   <div className="flex items-center justify-between mt-4">
+                    <div className="flex space-x-2">
                     <button
                       onClick={() => setXmlInput('')}
                       className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
                     >
                       Temizle
                     </button>
+                      <button
+                        onClick={testFileRead}
+                        disabled={isReadingFile}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                      >
+                        {isReadingFile ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Okunuyor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>Test Dosyası Oku</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                     <button
                       onClick={() => parseXmlData(xmlInput)}
                       disabled={!xmlInput.trim() || isLoading}
@@ -746,6 +1101,85 @@ export default function AkaryakitModulu() {
                      </div>
                    </div>
                  </div>
+
+                 {/* Response Display Section */}
+                 {fileResponseData && (
+                   <div className="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                     <div className="flex items-center justify-between mb-4">
+                       <h4 className="font-semibold text-gray-900">📥 Dosya Okuma Yanıtı</h4>
+                       <button
+                         onClick={() => setFileResponseData(null)}
+                         className="px-3 py-1 text-gray-500 hover:text-gray-700 transition-colors"
+                       >
+                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                         </svg>
+                       </button>
+                     </div>
+                     
+                     <div className="space-y-4">
+                                             {/* Response Status */}
+                      <div className="flex items-center space-x-2">
+                        <span className={`w-3 h-3 rounded-full ${fileResponseData.success || fileResponseData.data || fileResponseData.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                        <span className="text-sm font-medium">
+                          {fileResponseData.success || fileResponseData.data || fileResponseData.status === 'success' ? 'Başarılı' : 'Hata'}
+                        </span>
+                      </div>
+
+                       {/* Raw Response */}
+                       <div>
+                         <h5 className="font-medium text-gray-800 mb-2">📋 Ham Yanıt (JSON)</h5>
+                         <pre className="bg-gray-50 p-4 rounded-lg text-xs text-gray-700 border overflow-x-auto max-h-96">
+                           {JSON.stringify(fileResponseData, null, 2)}
+                         </pre>
+                       </div>
+
+                       {/* Extracted Content */}
+                       {fileResponseData.data && (
+                         <div>
+                           <h5 className="font-medium text-gray-800 mb-2">📄 Çıkarılan İçerik</h5>
+                           <div className="bg-gray-50 p-4 rounded-lg border">
+                             {fileResponseData.data.content && (
+                               <div className="mb-4">
+                                 <h6 className="font-medium text-gray-700 mb-2">Content:</h6>
+                                 <pre className="text-xs text-gray-600 overflow-x-auto max-h-48">
+                                   {fileResponseData.data.content}
+                                 </pre>
+                               </div>
+                             )}
+                             {fileResponseData.data.xmlContent && (
+                               <div className="mb-4">
+                                 <h6 className="font-medium text-gray-700 mb-2">XML Content:</h6>
+                                 <pre className="text-xs text-gray-600 overflow-x-auto max-h-48">
+                                   {fileResponseData.data.xmlContent}
+                                 </pre>
+                               </div>
+                             )}
+                             {!fileResponseData.data.content && !fileResponseData.data.xmlContent && (
+                               <div>
+                                 <h6 className="font-medium text-gray-700 mb-2">Data:</h6>
+                                 <pre className="text-xs text-gray-600 overflow-x-auto max-h-48">
+                                   {typeof fileResponseData.data === 'string' 
+                                     ? fileResponseData.data 
+                                     : JSON.stringify(fileResponseData.data, null, 2)
+                                   }
+                                 </pre>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       )}
+
+                       {/* Error Message */}
+                       {fileResponseData.message && (
+                         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                           <h5 className="font-medium text-red-800 mb-2">❌ Hata Mesajı</h5>
+                           <p className="text-red-700 text-sm">{fileResponseData.message}</p>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
               </div>
             )}
             
@@ -1146,6 +1580,182 @@ export default function AkaryakitModulu() {
                       </div>
                       <div className="text-sm text-gray-600">İşlem Başı Tutar</div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedTab === 'settings' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-900">Akaryakıt İstasyonu Ayarları</h3>
+                
+                {/* Mesajlar */}
+                {(saveMessage || fileReadMessage) && (
+                  <div className={`p-4 rounded-lg ${
+                    (saveMessage || fileReadMessage).includes('✅') 
+                      ? 'bg-green-100 border border-green-300 text-green-800' 
+                      : 'bg-red-100 border border-red-300 text-red-800'
+                  }`}>
+                    {saveMessage && <p className="mb-2">{saveMessage}</p>}
+                    {fileReadMessage && <p>{fileReadMessage}</p>}
+                  </div>
+                )}
+
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h4 className="font-semibold text-gray-900">İstasyon Bilgileri</h4>
+                    <button
+                      onClick={addFuelSetting}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      <span>İstasyon Ekle</span>
+                    </button>
+                  </div>
+
+                  {fuelSettings.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      <p>Henüz istasyon eklenmemiş</p>
+                      <button
+                        onClick={addFuelSetting}
+                        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        İlk İstasyonu Ekle
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {fuelSettings.map((setting, index) => (
+                        <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                İstasyon Adı *
+                              </label>
+                              <input
+                                type="text"
+                                value={setting.branch_name}
+                                onChange={(e) => updateFuelSetting(index, 'branch_name', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Örn: Merkez İstasyonu"
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Dosya Türü *
+                              </label>
+                              <select
+                                value={setting.file_type}
+                                onChange={(e) => updateFuelSetting(index, 'file_type', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              >
+                                <option value="XML">XML</option>
+                                <option value="D1A">D1A</option>
+                                <option value="CSV">CSV</option>
+                                <option value="TXT">TXT</option>
+                              </select>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Yerel Dosya Yolu *
+                              </label>
+                              <input
+                                type="text"
+                                value={setting.path}
+                                onChange={(e) => updateFuelSetting(index, 'path', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="C:\Akaryakit\data\"
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Online Dosya Yolu *
+                              </label>
+                              <input
+                                type="text"
+                                value={setting.online_path}
+                                onChange={(e) => updateFuelSetting(index, 'online_path', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="https://example.com/data/"
+                              />
+                            </div>
+                            
+                            <div className="flex items-end space-x-2">
+                              <button
+                                onClick={() => readAkaryakitFile(setting.path)}
+                                disabled={isReadingFile || !setting.path}
+                                className="flex-1 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+                              >
+                                {isReadingFile ? (
+                                  <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Oku</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>Oku</span>
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => removeFuelSetting(index)}
+                                className="flex-1 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center justify-center space-x-2"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                <span>Sil</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      <div className="flex justify-end pt-4">
+                        <button
+                          onClick={saveFuelSettings}
+                          disabled={isSavingSettings}
+                          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                        >
+                          {isSavingSettings ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              <span>Kaydediliyor...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>Ayarları Kaydet</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bilgilendirme */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                  <h4 className="font-semibold text-blue-900 mb-3">ℹ️ Akaryakıt Modülü Ayarları</h4>
+                  <div className="space-y-2 text-blue-800 text-sm">
+                    <p>• <strong>İstasyon Adı:</strong> Akaryakıt istasyonunuzun adını girin</p>
+                    <p>• <strong>Dosya Türü:</strong> TURPAK sisteminden aldığınız dosya formatını seçin</p>
+                    <p>• <strong>Yerel Dosya Yolu:</strong> Dosyaların bilgisayarınızda bulunduğu klasör yolu</p>
+                    <p>• <strong>Online Dosya Yolu:</strong> Dosyaların web üzerinden erişilebilir adresi</p>
+                    <p>• Ayarlar kaydedildikten sonra sistem otomatik olarak bu yollardan veri çekecektir</p>
                   </div>
                 </div>
               </div>
