@@ -63,6 +63,7 @@ export default function AkaryakitPage() {
     pumps?: PumpData[];
     sales?: SalesData;
     globalParams?: any;
+    rawRows?: any[];
   } | null>(null);
 
   // Desteklenen dosya tipleri
@@ -216,91 +217,118 @@ export default function AkaryakitPage() {
       let pumps: any[] = [];
       let sales: any = {};
       let globalParams: any = {};
+      let rawRows: any[] | undefined = undefined;
 
-             // D1A dosya formatı için özel parse
-       if (fileType === 'd1a' && typeof data === 'string') {
-         console.log('🔍 D1A Parse başlıyor...');
-         console.log('🔍 Raw data:', data);
-         
-         const lines = data.split('\r\n').filter(line => line.trim());
-         
-         console.log('🔍 D1A Lines:', lines);
-         console.log('🔍 Lines length:', lines.length);
-         
-         // İlk satır zaman damgası, ikinci satır başlık, veriler 3. satırdan başlıyor
-         const dataLines = lines.slice(2);
-         console.log('🔍 Data Lines:', dataLines);
-         console.log('🔍 Data Lines length:', dataLines.length);
-         
-         movements = dataLines.map((line: string, index: number) => {
-           console.log('Processing line:', line);
-           
-           // D1A formatı: TARIH SAAT FILO_ADI KODU PLAKA YAKIT LITRE FYT TUTAR TBNCPU FIS_NO PLAKA YK_FNO KM AMR_GIRIS
-           const parts = line.split(/\s+/);
-           
-           console.log('Parts:', parts);
-           
-           if (parts.length >= 13) {
-             const tarih = parts[0];
-             const saat = parts[1];
-             
-             // FILO ADI kısmını bul - KODU'dan önceki tüm kısım
-             let filoAdi = "";
-             let koduIndex = -1;
-             
-             // KODU'yu bul (genellikle C ile başlayan 4-5 karakterli kod)
-             for (let i = 2; i < parts.length - 11; i++) {
-               if (parts[i].match(/^[A-Z]\d{3,4}$/)) {
-                 koduIndex = i;
-                 break;
-               }
-             }
-             
-             if (koduIndex > 2) {
-               filoAdi = parts.slice(2, koduIndex).join(' ');
-             }
-             
-             const kodu = koduIndex > 0 ? parts[koduIndex] : parts[parts.length - 12];
-             const plaka = parts[parts.length - 11];
-             const yakit = parts[parts.length - 10];
-             const litre = parseFloat(parts[parts.length - 9]) || 0;
-             const fyt = parseFloat(parts[parts.length - 8]) || 0;
-             const tutar = parseFloat(parts[parts.length - 7]) || 0;
-             const tbncpu = parts[parts.length - 6];
-             const fisNo = parts[parts.length - 5];
-             const plaka2 = parts[parts.length - 4];
-             const ykFno = parts[parts.length - 3];
-             const km = parseFloat(parts[parts.length - 2]) || 0;
-             const amrGiris = parts[parts.length - 1];
+      // D1A dosya formatı için özel parse (sabit kolonlu)
+      if (fileType === 'd1a' && typeof data === 'string') {
+        console.log('🔍 D1A Parse (fixed-width) başlıyor...');
+        const lines = data.split('\r\n').filter(line => line.length > 0);
 
-             console.log('Parsed data:', {
-               tarih, saat, filoAdi, kodu, plaka, yakit, litre, fyt, tutar,
-               tbncpu, fisNo, plaka2, ykFno, km, amrGiris
-             });
+        if (lines.length < 3) {
+          console.warn('D1A: Yetersiz satır sayısı');
+          movements = [];
+        } else {
+          const headerLine = lines[1];
 
-             return {
-               id: index + 1,
-               date: tarih,
-               time: saat,
-               pumpNo: tbncpu,
-               nozzleNo: ykFno,
-               fuelType: yakit,
-               volume: litre,
-               amount: tutar * 100, // Kuruş cinsine çevir
-               unitPrice: fyt * 100, // Kuruş cinsine çevir
-               transactionType: "Nakit",
-               attendantName: filoAdi || "Bilinmeyen",
-               vehiclePlate: plaka || plaka2,
-               cardNumber: "",
-               fileName: fileName,
-               fileType: fileType.toUpperCase(),
-               fisNo: fisNo,
-               km: km,
-               kodu: kodu
-             };
-           }
-           return null;
-                  }).filter(Boolean);
+          // Başlık üzerinde kolon başlangıçlarını bul
+          const findAll = (str: string, label: string): number[] => {
+            const idxs: number[] = [];
+            let pos = 0;
+            while (true) {
+              const i = str.indexOf(label, pos);
+              if (i === -1) break;
+              idxs.push(i);
+              pos = i + label.length;
+            }
+            return idxs;
+          };
+
+          const positionsRaw: { key: string; label: string; pos: number }[] = [];
+          const pushPos = (key: string, label: string, occIndex = 0) => {
+            const arr = findAll(headerLine, label);
+            const pos = arr[occIndex] ?? -1;
+            positionsRaw.push({ key, label, pos });
+          };
+
+          pushPos('date', 'TARIH');
+          pushPos('time', 'SAAT');
+          pushPos('filo', 'FILO ADI');
+          pushPos('kodu', 'KODU');
+          pushPos('plaka1', 'PLAKA', 0);
+          pushPos('yakit', 'YAKIT');
+          pushPos('litre', 'LITRE');
+          pushPos('fyt', 'FYT');
+          pushPos('tutar', 'TUTAR');
+          pushPos('tbncpu', 'TBNCPU');
+          pushPos('fisno', 'FIS NO');
+          pushPos('plaka2', 'PLAKA', 1);
+          pushPos('ykfno', 'YK.FNO');
+          pushPos('km', 'KM');
+          pushPos('amr', 'AMR GIRIS');
+
+          const columns = positionsRaw
+            .filter(c => c.pos >= 0)
+            .sort((a, b) => a.pos - b.pos)
+            .map((c, i, arr) => ({
+              key: c.key,
+              start: c.pos,
+              end: i < arr.length - 1 ? arr[i + 1].pos : headerLine.length + 50 // bir miktar pay bırak
+            }));
+
+          const pick = (line: string, key: string) => {
+            const col = columns.find(c => c.key === key);
+            if (!col) return '';
+            return line.slice(col.start, col.end).trim();
+          };
+
+          const dataLines = lines.slice(2);
+          movements = dataLines.map((line: string, idx: number) => {
+            const tarih = pick(line, 'date');
+            const saat = pick(line, 'time');
+            const filoAdi = pick(line, 'filo');
+            const kodu = pick(line, 'kodu');
+            const plaka1 = pick(line, 'plaka1');
+            const yakit = pick(line, 'yakit');
+            const litreStr = pick(line, 'litre');
+            const fytStr = pick(line, 'fyt');
+            const tutarStr = pick(line, 'tutar');
+            const tbncpu = pick(line, 'tbncpu');
+            const fisNo = pick(line, 'fisno');
+            const plaka2 = pick(line, 'plaka2');
+            const ykFno = pick(line, 'ykfno');
+            const kmStr = pick(line, 'km');
+
+            const litreRaw = parseInt(litreStr.replace(/[^0-9-]/g, ''), 10) || 0; // 030000 => 30000? biz 300.00 için /100
+            const fytRaw = parseInt(fytStr.replace(/[^0-9-]/g, ''), 10) || 0;     // 5370 => 5.370 TL
+            const tutarRaw = parseInt(tutarStr.replace(/[^0-9-]/g, ''), 10) || 0; // kuruş
+            const kmRaw = parseInt(kmStr.replace(/[^0-9-]/g, ''), 10) || 0;
+
+            const volume = litreRaw / 100; // 030000 -> 300.00 L
+            const unitPriceKurus = Math.round(fytRaw / 10); // 5370 -> 537 kuruş (5.370 TL)
+            const amountKurus = tutarRaw; // 00001718 -> 1718 kuruş
+
+            return {
+              id: idx + 1,
+              date: tarih,
+              time: saat,
+              pumpNo: tbncpu,
+              nozzleNo: ykFno,
+              fuelType: yakit,
+              volume: volume,
+              amount: amountKurus,
+              unitPrice: unitPriceKurus,
+              transactionType: 'Nakit',
+              attendantName: filoAdi || 'Bilinmeyen',
+              vehiclePlate: plaka2 || plaka1,
+              cardNumber: '',
+              fileName: fileName,
+              fileType: fileType.toUpperCase(),
+              fisNo: fisNo,
+              km: kmRaw,
+              kodu: kodu
+            } as MovementData;
+          }).filter(Boolean) as MovementData[];
+        }
 
          console.log('🔍 Parsed movements:', movements);
          console.log('🔍 Movements length:', movements.length);
@@ -334,6 +362,161 @@ export default function AkaryakitPage() {
           reportDate: new Date().toLocaleDateString('tr-TR')
         };
 
+      } else if (fileType === 'xml' && typeof data === 'string') {
+        // XML parse
+        try {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(data, 'text/xml');
+          const ns = doc.documentElement.namespaceURI || undefined;
+
+          const q = (parent: Element | Document, tag: string) => {
+            return ns
+              ? (parent as any).getElementsByTagNameNS(ns, tag)
+              : (parent as any).getElementsByTagName(tag);
+          };
+
+          const textNode = (parent: Element | Document, tag: string): string => {
+            const nodes = q(parent, tag);
+            const n = nodes && nodes.length > 0 ? (nodes[0] as Element) : null;
+            return n && n.textContent ? n.textContent.trim() : '';
+          };
+
+          // Global params
+          const gpNodes = q(doc, 'GlobalParams');
+          if (gpNodes && gpNodes.length > 0) {
+            const gp = gpNodes[0] as Element;
+            globalParams = {
+              version: textNode(gp, 'Version'),
+              companyCode: textNode(gp, 'CompanyCode'),
+              stationCode: textNode(gp, 'StationCode'),
+              unitPriceDecimal: textNode(gp, 'UnitPriceDecimal'),
+              amountDecimal: textNode(gp, 'AmountDecimal'),
+              totalDecimal: textNode(gp, 'TotalDecimal'),
+              reportDate: new Date().toLocaleDateString('tr-TR')
+            };
+          }
+
+          // Fuel type map from TankTotals
+          const fuelTypeMap: Record<string, string> = {};
+          const tankTotalsNodes = q(doc, 'TankTotals');
+          if (tankTotalsNodes && tankTotalsNodes.length > 0) {
+            const details = q(tankTotalsNodes[0] as Element, 'TankDetails');
+            for (let i = 0; i < details.length; i++) {
+              const d = details[i] as Element;
+              const code = textNode(d, 'PmpFuelType');
+              const fname = sanitizeText(textNode(d, 'FuelType') || textNode(d, 'TankName'));
+              if (code) fuelTypeMap[code] = fname || code;
+            }
+          }
+
+          const toDateTime = (yyyymmddhhmmss: string) => {
+            if (!yyyymmddhhmmss || yyyymmddhhmmss.length < 14) return { date: '', time: '' };
+            const y = yyyymmddhhmmss.slice(0, 4);
+            const m = yyyymmddhhmmss.slice(4, 6);
+            const d = yyyymmddhhmmss.slice(6, 8);
+            const hh = yyyymmddhhmmss.slice(8, 10);
+            const mm = yyyymmddhhmmss.slice(10, 12);
+            const ss = yyyymmddhhmmss.slice(12, 14);
+            return { date: `${d}/${m}/${y}`, time: `${hh}:${mm}:${ss}` };
+          };
+
+          const paymentTypeName = (code: string): string => {
+            switch (code) {
+              case '0': return 'Nakit';
+              case '1': return 'Kredi Kartı';
+              case '2': return 'Diğer Kart';
+              case '3': return 'Cari/Diğer';
+              default: return 'Bilinmeyen';
+            }
+          };
+
+          movements = [];
+          const txnsNodes = q(doc, 'Txns');
+          const dynamicRows: any[] = [];
+          if (txnsNodes && txnsNodes.length > 0) {
+            const txnNodes = q(txnsNodes[0] as Element, 'Txn');
+            for (let i = 0; i < txnNodes.length; i++) {
+              const txn = txnNodes[i] as Element;
+              const tag = q(txn, 'TagDetails')[0] as Element;
+              const sale = q(txn, 'SaleDetails')[0] as Element;
+              if (!sale) continue;
+
+              const dt = textNode(sale, 'DateTime');
+              const { date: d, time: t } = toDateTime(dt);
+              const pumpNr = textNode(sale, 'PumpNr');
+              const nozzleNr = textNode(sale, 'NozzleNr');
+              const fuelCode = textNode(sale, 'FuelType');
+              const fuelName = sanitizeText(fuelTypeMap[fuelCode] || fuelCode);
+              const amountStr = textNode(sale, 'Amount');
+              const totalStr = textNode(sale, 'Total');
+              const fullUnitStr = textNode(sale, 'FullUnitPrice');
+              const unitPriceStr = textNode(sale, 'UnitPrice');
+              const payment = textNode(sale, 'PaymentType');
+              const fleetName = tag ? textNode(tag, 'FleetName') : '';
+              const tagPlate = tag ? textNode(tag, 'Plate') : '';
+              const ecrPlate = textNode(sale, 'ECRPlate');
+              const loyaltyCardNo = textNode(sale, 'LoyaltyCardNo');
+              const receipt = textNode(sale, 'ReceiptNr');
+
+              const volume = (parseInt((amountStr || '').replace(/[^0-9-]/g, ''), 10) || 0) / 100;
+              const unitPrice = (parseInt((fullUnitStr || '').replace(/[^0-9-]/g, ''), 10) || 0)
+                || (parseInt((unitPriceStr || '').replace(/[^0-9-]/g, ''), 10) || 0);
+              const totalKurus = parseInt((totalStr || '').replace(/[^0-9-]/g, ''), 10) || 0;
+
+              movements.push({
+                id: movements.length + 1,
+                date: sanitizeText(d),
+                time: sanitizeText(t),
+                pumpNo: sanitizeText(pumpNr),
+                nozzleNo: sanitizeText(nozzleNr),
+                fuelType: sanitizeText(fuelName),
+                volume: volume,
+                amount: totalKurus,
+                unitPrice: unitPrice,
+                transactionType: sanitizeText(paymentTypeName(payment)),
+                attendantName: sanitizeText(fleetName) || 'Bilinmeyen',
+                vehiclePlate: sanitizeText(ecrPlate || tagPlate),
+                cardNumber: sanitizeText(loyaltyCardNo),
+                fileName: fileName,
+                fileType: fileType.toUpperCase(),
+                fisNo: receipt
+              } as MovementData);
+
+              // Dinamik tablo için ham satır
+              const row: Record<string, string> = {};
+              if (tag) {
+                ['FleetCode','FleetName','TagNr','Plate','EngineHour','Odometer'].forEach(k => {
+                  const v = textNode(tag, k);
+                  if (v !== '') row[k] = v;
+                });
+              }
+              ['TxnType','DateTime','ReceiptNr','FuelType','UnitPrice','Amount','Total','PumpNr','NozzleNr','PaymentType','ECRPlate','ECRReceiptNr','Redemption','DiscountAmount','EarnedPoints','EarnedMoney','LoyaltyCardNo','LoyaltyCardType','FullUnitPrice']
+                .forEach(k => {
+                  const v = textNode(sale, k);
+                  if (v !== '') row[k] = v;
+                });
+              dynamicRows.push(row);
+            }
+          }
+
+          // Satış özeti
+          const totalTransactions = (movements as any[]).length;
+          const totalAmount = (movements as any[]).reduce((s: number, m: any) => s + m.amount, 0);
+          const totalVolume = (movements as any[]).reduce((s: number, m: any) => s + m.volume, 0);
+          const fuelTypes: any = {};
+          (movements as any[]).forEach((m: any) => {
+            if (!fuelTypes[m.fuelType]) fuelTypes[m.fuelType] = { volume: 0, amount: 0 };
+            fuelTypes[m.fuelType].volume += m.volume;
+            fuelTypes[m.fuelType].amount += m.amount;
+          });
+          sales = { totalTransactions, totalAmount, totalVolume, fuelTypes };
+          rawRows = dynamicRows;
+
+        } catch (e) {
+          console.error('XML parse hatası:', e);
+          movements = [];
+          sales = { totalTransactions: 0, totalAmount: 0, totalVolume: 0, fuelTypes: {} };
+        }
       } else {
         // Diğer dosya formatları için mevcut parse
         let parsedData;
@@ -369,7 +552,8 @@ export default function AkaryakitPage() {
          movements,
          pumps,
          sales,
-         globalParams
+         globalParams,
+         rawRows
        });
 
        console.log('✅ ParseAndDisplayData tamamlandı');
@@ -424,6 +608,179 @@ export default function AkaryakitPage() {
     }).format(price / 100); // Kuruş cinsinden geliyor
   };
 
+  // Türkçe karakter ve mojibake düzeltme yardımcıları
+  const fixTurkishMojibake = (input: string): string => {
+    if (!input) return '';
+    const map: Record<string, string> = {
+      'Ã‡': 'Ç', 'Ã§': 'ç',
+      'Ã–': 'Ö', 'Ã¶': 'ö',
+      'Ãœ': 'Ü', 'Ã¼': 'ü',
+      'Ä°': 'İ', 'Ä±': 'ı',
+      'ÅŸ': 'ş', 'Åž': 'Ş',
+      'ÄŸ': 'ğ', 'Äž': 'Ğ',
+      'â€“': '–', 'â€”': '—',
+      'â€˜': '‘', 'â€™': '’',
+      'â€œ': '“', 'â€	d': '”', 'â€': '”',
+      'â€¦': '…',
+      'â€¢': '•'
+    };
+    let s = input;
+    for (const [k, v] of Object.entries(map)) {
+      s = s.split(k).join(v);
+    }
+    return s;
+  };
+
+  // Şüpheli metinleri farklı encoding varsayımlarıyla tekrar decode etmeyi dener
+  const smartDecode = (input: string): string => {
+    try {
+      const bytes = new Uint8Array(Array.from(input, ch => ch.charCodeAt(0) & 0xff));
+      const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      const win1254 = new TextDecoder('windows-1254', { fatal: false }).decode(bytes);
+      const score = (s: string) => {
+        const turkish = (s.match(/[çğıöşüÇĞİÖŞÜ]/g) || []).length;
+        const repl = (s.match(/[\uFFFD]/g) || []).length;
+        return turkish * 5 - repl;
+      };
+      const candidates = [input, utf8, win1254].map(s => fixTurkishMojibake(s));
+      candidates.sort((a, b) => score(b) - score(a));
+      return candidates[0];
+    } catch {
+      return input;
+    }
+  };
+
+  const sanitizeText = (input: string): string => {
+    if (!input) return '';
+    let s = input
+      .replace(/\uFFFD/g, '') // replacement char
+      .replace(/[\x00-\x1F\x7F]/g, ' ') // kontrol karakterleri
+      .replace(/\u00A0/g, ' '); // NBSP
+    if (/Ã|Â|Å|Ä|Ð|Þ|ý|þ|ð/.test(s)) {
+      s = smartDecode(s);
+    }
+    s = fixTurkishMojibake(s);
+    s = s.normalize('NFKC').replace(/\s+/g, ' ').trim();
+    // Tamamı büyük harf ise Türkçe yerel kurallarla normalize et
+    if (s && s === s.toUpperCase()) {
+      s = s.toLocaleLowerCase('tr-TR').toLocaleUpperCase('tr-TR');
+    }
+    return s;
+  };
+
+  // Dinamik tablo başlık ve değer formatları
+  const dynamicHeaderMap: Record<string, string> = {
+    DateTime: 'Tarih Saat',
+    ReceiptNr: 'Fiş No',
+    FuelType: 'Yakıt Kodu',
+    UnitPrice: 'Birim Fiyat (TL/L)',
+    FullUnitPrice: 'Birim Fiyat (TL/L)',
+    Amount: 'Hacim (L)',
+    Total: 'Tutar (TL)',
+    PumpNr: 'Pompa No',
+    NozzleNr: 'Tabanca No',
+    PaymentType: 'Ödeme Tipi',
+    ECRPlate: 'ECR Plaka',
+    ECRReceiptNr: 'ECR Fiş No',
+    Redemption: 'Puan Kullanımı',
+    DiscountAmount: 'İndirim',
+    EarnedPoints: 'Kazanılan Puan',
+    EarnedMoney: 'Kazanılan Para',
+    LoyaltyCardNo: 'Sadakat Kart No',
+    LoyaltyCardType: 'Sadakat Kart Tipi',
+    FleetCode: 'Filo Kodu',
+    FleetName: 'Müşteri/Filo',
+    Plate: 'Plaka',
+    EngineHour: 'Motor Saati',
+    Odometer: 'Kilometre',
+    TagNr: 'Etiket No',
+    TxnType: 'İşlem Tipi'
+  };
+
+  const dynamicNumberColumns = new Set<string>([
+    'Amount', 'Total', 'UnitPrice', 'FullUnitPrice', 'DiscountAmount', 'EarnedPoints', 'EarnedMoney', 'Odometer', 'EngineHour'
+  ]);
+
+  const formatDateTime14 = (val: string) => {
+    const s = (val || '').toString().trim();
+    if (s.length !== 14) return s;
+    const y = s.slice(0, 4);
+    const m = s.slice(4, 6);
+    const d = s.slice(6, 8);
+    const hh = s.slice(8, 10);
+    const mm = s.slice(10, 12);
+    const ss = s.slice(12, 14);
+    return `${d}/${m}/${y} ${hh}:${mm}:${ss}`;
+  };
+
+  const formatPayment = (code: string) => {
+    switch (code) {
+      case '0': return 'Nakit';
+      case '1': return 'Kredi Kartı';
+      case '2': return 'Diğer Kart';
+      case '3': return 'Cari/Diğer';
+      default: return code;
+    }
+  };
+
+  const formatDynamicValue = (key: string, value: any) => {
+    const raw = sanitizeText((value ?? '').toString());
+    const toInt = (v: string) => parseInt(v.replace(/[^0-9-]/g, ''), 10) || 0;
+    if (key === 'DateTime') return formatDateTime14(raw);
+    if (key === 'Amount') return `${formatVolume(toInt(raw) / 100)} L`;
+    if (key === 'FullUnitPrice') return formatUnitPrice(toInt(raw)); // kuruş
+    if (key === 'UnitPrice') return formatUnitPrice(toInt(raw)); // kuruş
+    if (key === 'Total') return formatCurrency(toInt(raw));
+    if (key === 'PaymentType') return formatPayment(raw);
+    if (key === 'Odometer' || key === 'EngineHour') return toInt(raw).toString();
+    return raw;
+  };
+
+  // Dinamik tablo kolon genişlikleri (px)
+  const getDynamicColumnWidth = (key: string): number => {
+    switch (key) {
+      case 'DateTime':
+        return 160;
+      case 'ReceiptNr':
+      case 'ECRReceiptNr':
+        return 110;
+      case 'FuelType':
+        return 120;
+      case 'UnitPrice':
+      case 'FullUnitPrice':
+        return 150;
+      case 'Amount':
+        return 120;
+      case 'Total':
+        return 140;
+      case 'PumpNr':
+      case 'NozzleNr':
+        return 100;
+      case 'PaymentType':
+        return 130;
+      case 'ECRPlate':
+      case 'Plate':
+        return 130;
+      case 'FleetName':
+        return 220;
+      case 'FleetCode':
+      case 'LoyaltyCardNo':
+      case 'TagNr':
+        return 160;
+      case 'DiscountAmount':
+      case 'EarnedMoney':
+        return 130;
+      case 'EarnedPoints':
+      case 'LoyaltyCardType':
+        return 120;
+      case 'Odometer':
+      case 'EngineHour':
+        return 120;
+      default:
+        return 140;
+    }
+  };
+
   const getTestFilePath = (fileType: string) => {
     const basePath = 'C:\\temp\\akaryakit\\';
     const extensions = {
@@ -440,7 +797,7 @@ export default function AkaryakitPage() {
      return (
       <DashboardLayout title="Akaryakıt Raporu">
        <div className="p-6">
-         <div className="max-w-7xl mx-auto">
+         <div className="w-full">
            <div className="bg-white rounded-lg shadow-lg p-6">
              <h1 className="text-2xl font-bold text-gray-900 mb-6">
                ⛽ Akaryakıt Rapor Sayfası
@@ -584,68 +941,7 @@ export default function AkaryakitPage() {
                   </div>
                 )}
 
-                {/* Hareket Verileri */}
-                {parsedData.movements && parsedData.movements.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">🔄 Hareket Verileri</h3>
-                    <div className="overflow-x-auto">
-                                             <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-                         <thead className="bg-gray-50">
-                           <tr>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sıra</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dosya</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tip</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarih</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saat</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pompa</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lüle</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Yakıt</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hacim</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Birim Fiyat</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tutar</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ödeme</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Görevli</th>
-                             <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plaka</th>
-                             {selectedFileType === 'd1a' && (
-                               <>
-                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">FIS NO</th>
-                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KM</th>
-                                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KODU</th>
-                               </>
-                             )}
-                           </tr>
-                         </thead>
-                         <tbody className="divide-y divide-gray-200">
-                           {parsedData.movements.map((movement, index) => (
-                             <tr key={index} className="hover:bg-gray-50">
-                               <td className="px-2 py-3 text-sm text-gray-900 font-medium">{movement.id}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.fileName}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.fileType}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.date}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.time}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.pumpNo}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.nozzleNo}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.fuelType}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{formatVolume(movement.volume)}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{formatUnitPrice(movement.unitPrice)}</td>
-                               <td className="px-2 py-3 text-sm font-medium text-gray-900">{formatCurrency(movement.amount)}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.transactionType}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.attendantName || '-'}</td>
-                               <td className="px-2 py-3 text-sm text-gray-900">{movement.vehiclePlate || '-'}</td>
-                               {selectedFileType === 'd1a' && (
-                                 <>
-                                   <td className="px-2 py-3 text-sm text-gray-900">{movement.fisNo || '-'}</td>
-                                   <td className="px-2 py-3 text-sm text-gray-900">{movement.km || 0}</td>
-                                   <td className="px-2 py-3 text-sm text-gray-900">{movement.kodu || '-'}</td>
-                                 </>
-                               )}
-                             </tr>
-                           ))}
-                         </tbody>
-                       </table>
-                    </div>
-                  </div>
-                )}
+                {/* Hareket Verileri tablosu kaldırıldı - sadece dinamik tablo kullanılacak */}
 
                 {/* Pompa Verileri */}
                 {parsedData.pumps && parsedData.pumps.length > 0 && (
@@ -670,6 +966,47 @@ export default function AkaryakitPage() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dinamik Sütunlu Ham XML Tablosu */}
+                {selectedFileType === 'xml' && parsedData.rawRows && parsedData.rawRows.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">🧾 Ham XML Kolonları</h3>
+                    <div className="relative">
+                      <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                        <table className="w-full">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
+                            {Object.keys((parsedData.rawRows || [{}])[0]).map((key) => (
+                              <th
+                                key={key}
+                                className="px-1 py-1 text-center text-xs font-bold uppercase tracking-wider border-b border-red-800"
+                                style={{ width: `${getDynamicColumnWidth(key)}px`, minWidth: `${getDynamicColumnWidth(key)}px` }}
+                              >
+                                {dynamicHeaderMap[key] || key}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {(parsedData.rawRows || []).map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-gray-50 text-xs">
+                              {Object.keys((parsedData.rawRows || [{}])[0]).map((key) => (
+                                <td
+                                  key={key}
+                                  className={`px-1 py-1 whitespace-nowrap text-xs text-gray-900 text-center`}
+                                  style={{ width: `${getDynamicColumnWidth(key)}px`, minWidth: `${getDynamicColumnWidth(key)}px` }}
+                                >
+                                  <div className="truncate">{sanitizeText(formatDynamicValue(key, row[key]))}</div>
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      </div>
                     </div>
                   </div>
                 )}
