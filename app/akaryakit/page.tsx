@@ -219,148 +219,263 @@ export default function AkaryakitPage() {
       let globalParams: any = {};
       let rawRows: any[] | undefined = undefined;
 
-      // D1A dosya formatı için özel parse (sabit kolonlu)
-      if (fileType === 'd1a' && typeof data === 'string') {
-        console.log('🔍 D1A Parse (fixed-width) başlıyor...');
-        const lines = data.split('\r\n').filter(line => line.length > 0);
+                      // D1A ve D1C dosya formatları için özel parse (sabit kolonlu)
+        if ((fileType === 'd1a' || fileType === 'd1c') && typeof data === 'string') {
+          console.log(`🔍 ${fileType.toUpperCase()} Parse (fixed-width) başlıyor...`);
+          const lines = data.split('\r\n').filter(line => line.length > 0);
 
-        if (lines.length < 3) {
-          console.warn('D1A: Yetersiz satır sayısı');
-          movements = [];
-        } else {
-          const headerLine = lines[1];
+          if (lines.length < 3) {
+            console.warn(`${fileType.toUpperCase()}: Yetersiz satır sayısı`);
+            movements = [];
+          } else {
+            // D1A için sabit pozisyonlar
+            if (fileType === 'd1a') {
+              const dataLines = lines.slice(2); // İlk 2 satırı atla
+              movements = dataLines.map((line: string, idx: number) => {
+                // Sabit pozisyonlara göre veri çıkar
+                const tarih = line.substring(0, 10).trim();
+                const saat = line.substring(11, 19).trim();
+                const filoAdi = line.substring(19, 50).trim();
+                const kodu = line.substring(51, 57).trim();
+                const plaka1 = line.substring(58, 67).trim();
+                const yakit = line.substring(68, 78).trim();
+                const litreStr = line.substring(79, 85).trim();
+                const fytStr = line.substring(86, 90).trim();
+                const tutarStr = line.substring(91, 99).trim();
+                const tabanca = line.substring(100, 102).trim();
+                const pompa = line.substring(103, 105).trim();
+                const fisNo = line.substring(106, 113).trim();
+                const plaka2 = line.substring(114, 133).trim();
+                const ykFno = line.substring(134, 143).trim();
+                const kmStr = line.substring(144, 155).trim();
+                const amrGiris = line.substring(156, 160).trim();
 
-          // Başlık üzerinde kolon başlangıçlarını bul
-          const findAll = (str: string, label: string): number[] => {
-            const idxs: number[] = [];
-            let pos = 0;
-            while (true) {
-              const i = str.indexOf(label, pos);
-              if (i === -1) break;
-              idxs.push(i);
-              pos = i + label.length;
+                
+                const litreRaw = parseInt(litreStr.replace(/[^0-9-]/g, ''), 10) || 0;
+                const fytRaw = parseInt(fytStr.replace(/[^0-9-]/g, ''), 10) || 0;
+                const tutarRaw = parseInt(tutarStr.replace(/[^0-9-]/g, ''), 10) || 0;
+                const kmRaw = parseInt(kmStr.replace(/[^0-9-]/g, ''), 10) || 0;
+
+                const volume = litreRaw / 100;
+                const unitPriceKurus = fytRaw / 100; // Fiyat 100'e bölünüyor
+                const amountKurus = tutarRaw;
+
+                return {
+                  id: idx + 1,
+                  date: tarih,
+                  time: saat,
+                  pumpNo: pompa,
+                  nozzleNo: ykFno,
+                  fuelType: yakit,
+                  volume: volume,
+                  amount: amountKurus,
+                  unitPrice: unitPriceKurus,
+                  transactionType: 'Nakit',
+                  attendantName: filoAdi || 'Bilinmeyen',
+                  vehiclePlate: plaka2 || plaka1,
+                  cardNumber: '',
+                  fileName: fileName,
+                  fileType: fileType.toUpperCase(),
+                  fisNo: fisNo,
+                  km: kmRaw,
+                  kodu: kodu
+                } as MovementData;
+              }).filter(Boolean) as MovementData[];
+
+              // RawRows oluştur
+              rawRows = dataLines.map((line: string, idx: number) => {
+                const litreRaw = parseInt(line.substring(79, 85).trim().replace(/[^0-9-]/g, ''), 10) || 0;
+                const fytRaw = parseInt(line.substring(86, 90).trim().replace(/[^0-9-]/g, ''), 10) || 0;
+                const tutarRaw = parseInt(line.substring(91, 99).trim().replace(/[^0-9-]/g, ''), 10) || 0;
+                
+                const volume = litreRaw / 100;
+                const unitPrice = fytRaw / 100;
+                const amount = tutarRaw / 10; // 1718 kuruş = 17.18 TL
+                
+                return {
+                  TARIH: line.substring(0, 10).trim(),
+                  SAAT: line.substring(11, 19).trim(),
+                  'FILO ADI': line.substring(19, 50).trim(),
+                  KODU: line.substring(51, 57).trim(),
+                  PLAKA: line.substring(58, 67).trim(),
+                  YAKIT: line.substring(68, 78).trim(),
+                  LITRE: volume.toFixed(2) + ' L',
+                  FYT: unitPrice.toFixed(2) + ' ₺',
+                  TUTAR: amount.toFixed(2) + ' ₺',
+                  TABANCA: line.substring(100, 102).trim(),
+                  POMPA: line.substring(103, 105).trim(),
+                  'FIS NO': line.substring(106, 113).trim(),
+                  PLAKA2: line.substring(113, 133).trim(),
+                  'YK.FNO': line.substring(134, 143).trim(),
+                  KM: line.substring(144, 155).trim(),
+                  'AMR GIRIS': line.substring(156, 160).trim()
+                };
+              });
+
+            } else {
+              // D1C için mevcut parsing
+              const headerLine = lines[1];
+
+              // Başlık üzerinde kolon başlangıçlarını bul
+              const findAll = (str: string, label: string): number[] => {
+                const idxs: number[] = [];
+                let pos = 0;
+                while (true) {
+                  const i = str.indexOf(label, pos);
+                  if (i === -1) break;
+                  idxs.push(i);
+                  pos = i + label.length;
+                }
+                return idxs;
+              };
+
+              const positionsRaw: { key: string; label: string; pos: number }[] = [];
+              const pushPos = (key: string, label: string, occIndex = 0) => {
+                const arr = findAll(headerLine, label);
+                const pos = arr[occIndex] ?? -1;
+                positionsRaw.push({ key, label, pos });
+              };
+
+              pushPos('date', 'TARIH');
+              pushPos('time', 'SAAT');
+              pushPos('filo', 'FILO ADI');
+              pushPos('kodu', 'KODU');
+              pushPos('plaka1', 'PLAKA', 0);
+              pushPos('yakit', 'YAKIT');
+              pushPos('litre', 'LITRE');
+              pushPos('fyt', 'FYT');
+              pushPos('tutar', 'TUTAR');
+              pushPos('tbncpu', 'TBNCPU');
+              pushPos('fisno', 'FIS NO');
+              pushPos('ykfno', 'YK.FNO');
+              pushPos('km', 'KM');
+              pushPos('amr', 'AMR GIRIS');
+
+              const columns = positionsRaw
+                .filter(c => c.pos >= 0)
+                .sort((a, b) => a.pos - b.pos)
+                .map((c, i, arr) => ({
+                  key: c.key,
+                  start: c.pos,
+                  end: i < arr.length - 1 ? arr[i + 1].pos : headerLine.length + 50
+                }));
+
+              const pick = (line: string, key: string) => {
+                const col = columns.find(c => c.key === key);
+                if (!col) return '';
+                return line.slice(col.start, col.end).trim();
+              };
+
+              const dataLines = lines.slice(2);
+              movements = dataLines.map((line: string, idx: number) => {
+                const tarih = pick(line, 'date');
+                const saat = pick(line, 'time');
+                const filoAdi = pick(line, 'filo');
+                const kodu = pick(line, 'kodu');
+                const plaka1 = pick(line, 'plaka1');
+                const yakit = pick(line, 'yakit');
+                const litreStr = pick(line, 'litre');
+                const fytStr = pick(line, 'fyt');
+                const tutarStr = pick(line, 'tutar');
+                const tbncpu = pick(line, 'tbncpu');
+                const fisNo = pick(line, 'fisno');
+                const ykFno = pick(line, 'ykfno');
+                const kmStr = pick(line, 'km');
+
+                const litreRaw = parseInt(litreStr.replace(/[^0-9-]/g, ''), 10) || 0;
+                const fytRaw = parseInt(fytStr.replace(/[^0-9-]/g, ''), 10) || 0;
+                const tutarRaw = parseInt(tutarStr.replace(/[^0-9-]/g, ''), 10) || 0;
+                const kmRaw = parseInt(kmStr.replace(/[^0-9-]/g, ''), 10) || 0;
+
+                const volume = litreRaw / 100;
+                const unitPriceKurus = fytRaw / 100; // Fiyat 100'e bölünüyor
+                const amountKurus = tutarRaw;
+
+                return {
+                  id: idx + 1,
+                  date: tarih,
+                  time: saat,
+                  pumpNo: tbncpu,
+                  nozzleNo: ykFno,
+                  fuelType: yakit,
+                  volume: volume,
+                  amount: amountKurus,
+                  unitPrice: unitPriceKurus,
+                  transactionType: 'Nakit',
+                  attendantName: filoAdi || 'Bilinmeyen',
+                  vehiclePlate: plaka1,
+                  cardNumber: '',
+                  fileName: fileName,
+                  fileType: fileType.toUpperCase(),
+                  fisNo: fisNo,
+                  km: kmRaw,
+                  kodu: kodu
+                } as MovementData;
+              }).filter(Boolean) as MovementData[];
+
+              // D1C için rawRows oluştur
+              rawRows = dataLines.map((line: string, idx: number) => {
+                const parts = line.split(/\s+/).filter(part => part.trim() !== '');
+                
+                const litreRaw = parseInt((parts[parts.length - 9] || '').replace(/[^0-9-]/g, ''), 10) || 0;
+                const fytRaw = parseInt((parts[parts.length - 8] || '').replace(/[^0-9-]/g, ''), 10) || 0;
+                const tutarRaw = parseInt((parts[parts.length - 7] || '').replace(/[^0-9-]/g, ''), 10) || 0;
+                
+                const volume = litreRaw / 100;
+                const unitPrice = fytRaw / 100;
+                const amount = tutarRaw / 10; // 1718 kuruş = 17.18 TL
+                
+                return {
+                  TARIH: parts[0] || '',
+                  SAAT: parts[1] || '',
+                  'FILO ADI': parts.slice(2, -12).join(' ') || '',
+                  KODU: parts[parts.length - 12] || '',
+                  PLAKA: parts[parts.length - 11] || '',
+                  YAKIT: parts[parts.length - 10] || '',
+                  LITRE: volume.toFixed(2) + ' L',
+                  FYT: unitPrice.toFixed(2) + ' ₺',
+                  TUTAR: amount.toFixed(2) + ' ₺',
+                  TBNCPU: parts[parts.length - 6] || '',
+                  'FIS NO': parts[parts.length - 5] || '',
+                  'YK.FNO': parts[parts.length - 4] || '',
+                  KM: parts[parts.length - 3] || '',
+                  'AMR GIRIS': parts[parts.length - 2] || ''
+                };
+              });
             }
-            return idxs;
-          };
 
-          const positionsRaw: { key: string; label: string; pos: number }[] = [];
-          const pushPos = (key: string, label: string, occIndex = 0) => {
-            const arr = findAll(headerLine, label);
-            const pos = arr[occIndex] ?? -1;
-            positionsRaw.push({ key, label, pos });
-          };
+            console.log('🔍 Parsed movements:', movements);
+            console.log('🔍 Movements length:', movements.length);
 
-          pushPos('date', 'TARIH');
-          pushPos('time', 'SAAT');
-          pushPos('filo', 'FILO ADI');
-          pushPos('kodu', 'KODU');
-          pushPos('plaka1', 'PLAKA', 0);
-          pushPos('yakit', 'YAKIT');
-          pushPos('litre', 'LITRE');
-          pushPos('fyt', 'FYT');
-          pushPos('tutar', 'TUTAR');
-          pushPos('tbncpu', 'TBNCPU');
-          pushPos('fisno', 'FIS NO');
-          pushPos('plaka2', 'PLAKA', 1);
-          pushPos('ykfno', 'YK.FNO');
-          pushPos('km', 'KM');
-          pushPos('amr', 'AMR GIRIS');
+            // Satış özeti hesapla
+            const totalTransactions = movements.length;
+            const totalAmount = movements.reduce((sum, m) => sum + m.amount, 0);
+            const totalVolume = movements.reduce((sum, m) => sum + m.volume, 0);
 
-          const columns = positionsRaw
-            .filter(c => c.pos >= 0)
-            .sort((a, b) => a.pos - b.pos)
-            .map((c, i, arr) => ({
-              key: c.key,
-              start: c.pos,
-              end: i < arr.length - 1 ? arr[i + 1].pos : headerLine.length + 50 // bir miktar pay bırak
-            }));
+            // Yakıt tipi bazında grupla
+            const fuelTypes: any = {};
+            movements.forEach(m => {
+              if (!fuelTypes[m.fuelType]) {
+                fuelTypes[m.fuelType] = { volume: 0, amount: 0 };
+              }
+              fuelTypes[m.fuelType].volume += m.volume;
+              fuelTypes[m.fuelType].amount += m.amount;
+            });
 
-          const pick = (line: string, key: string) => {
-            const col = columns.find(c => c.key === key);
-            if (!col) return '';
-            return line.slice(col.start, col.end).trim();
-          };
+            sales = {
+              totalTransactions,
+              totalAmount,
+              totalVolume,
+              fuelTypes
+            };
 
-          const dataLines = lines.slice(2);
-          movements = dataLines.map((line: string, idx: number) => {
-            const tarih = pick(line, 'date');
-            const saat = pick(line, 'time');
-            const filoAdi = pick(line, 'filo');
-            const kodu = pick(line, 'kodu');
-            const plaka1 = pick(line, 'plaka1');
-            const yakit = pick(line, 'yakit');
-            const litreStr = pick(line, 'litre');
-            const fytStr = pick(line, 'fyt');
-            const tutarStr = pick(line, 'tutar');
-            const tbncpu = pick(line, 'tbncpu');
-            const fisNo = pick(line, 'fisno');
-            const plaka2 = pick(line, 'plaka2');
-            const ykFno = pick(line, 'ykfno');
-            const kmStr = pick(line, 'km');
-
-            const litreRaw = parseInt(litreStr.replace(/[^0-9-]/g, ''), 10) || 0; // 030000 => 30000? biz 300.00 için /100
-            const fytRaw = parseInt(fytStr.replace(/[^0-9-]/g, ''), 10) || 0;     // 5370 => 5.370 TL
-            const tutarRaw = parseInt(tutarStr.replace(/[^0-9-]/g, ''), 10) || 0; // kuruş
-            const kmRaw = parseInt(kmStr.replace(/[^0-9-]/g, ''), 10) || 0;
-
-            const volume = litreRaw / 100; // 030000 -> 300.00 L
-            const unitPriceKurus = Math.round(fytRaw / 10); // 5370 -> 537 kuruş (5.370 TL)
-            const amountKurus = tutarRaw; // 00001718 -> 1718 kuruş
-
-            return {
-              id: idx + 1,
-              date: tarih,
-              time: saat,
-              pumpNo: tbncpu,
-              nozzleNo: ykFno,
-              fuelType: yakit,
-              volume: volume,
-              amount: amountKurus,
-              unitPrice: unitPriceKurus,
-              transactionType: 'Nakit',
-              attendantName: filoAdi || 'Bilinmeyen',
-              vehiclePlate: plaka2 || plaka1,
-              cardNumber: '',
-              fileName: fileName,
-              fileType: fileType.toUpperCase(),
-              fisNo: fisNo,
-              km: kmRaw,
-              kodu: kodu
-            } as MovementData;
-          }).filter(Boolean) as MovementData[];
-        }
-
-         console.log('🔍 Parsed movements:', movements);
-         console.log('🔍 Movements length:', movements.length);
-
-         // Satış özeti hesapla
-         const totalTransactions = movements.length;
-        const totalAmount = movements.reduce((sum, m) => sum + m.amount, 0);
-        const totalVolume = movements.reduce((sum, m) => sum + m.volume, 0);
-
-        // Yakıt tipi bazında grupla
-        const fuelTypes: any = {};
-        movements.forEach(m => {
-          if (!fuelTypes[m.fuelType]) {
-            fuelTypes[m.fuelType] = { volume: 0, amount: 0 };
+            globalParams = {
+              version: `${fileType.toUpperCase()} Format`,
+              companyCode: fileType.toUpperCase(),
+              stationCode: fileType.toUpperCase(),
+              reportDate: new Date().toLocaleDateString('tr-TR')
+            };
           }
-          fuelTypes[m.fuelType].volume += m.volume;
-          fuelTypes[m.fuelType].amount += m.amount;
-        });
-
-        sales = {
-          totalTransactions,
-          totalAmount,
-          totalVolume,
-          fuelTypes
-        };
-
-        globalParams = {
-          version: "D1A Format",
-          companyCode: "D1A",
-          stationCode: "D1A",
-          reportDate: new Date().toLocaleDateString('tr-TR')
-        };
 
       } else if (fileType === 'xml' && typeof data === 'string') {
         // XML parse
@@ -591,7 +706,7 @@ export default function AkaryakitPage() {
     return new Intl.NumberFormat('tr-TR', {
       style: 'currency',
       currency: 'TRY'
-    }).format(amount / 100); // Kuruş cinsinden geliyor
+    }).format(amount); // Artık TL cinsinden geliyor
   };
 
   const formatVolume = (volume: number) => {
@@ -605,7 +720,7 @@ export default function AkaryakitPage() {
     return new Intl.NumberFormat('tr-TR', {
       style: 'currency',
       currency: 'TRY'
-    }).format(price / 100); // Kuruş cinsinden geliyor
+    }).format(price); // Artık TL cinsinden geliyor
   };
 
   // Türkçe karakter ve mojibake düzeltme yardımcıları
@@ -970,10 +1085,14 @@ export default function AkaryakitPage() {
                   </div>
                 )}
 
-                {/* Dinamik Sütunlu Ham XML Tablosu */}
-                {selectedFileType === 'xml' && parsedData.rawRows && parsedData.rawRows.length > 0 && (
+                {/* Dinamik Sütunlu Ham Tablo */}
+                {((selectedFileType === 'xml' || selectedFileType === 'd1c' || selectedFileType === 'd1a') && parsedData.rawRows && parsedData.rawRows.length > 0) && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">🧾 Ham XML Kolonları</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                      {selectedFileType === 'xml' ? '🧾 Ham XML Kolonları' : 
+                       selectedFileType === 'd1a' ? '📊 Ham D1A Verileri' : 
+                       '📊 Ham D1C Verileri'}
+                    </h3>
                     <div className="relative">
                       <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                         <table className="w-full">
