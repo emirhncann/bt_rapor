@@ -514,11 +514,231 @@ export default function AkaryakitModulu() {
     }
   };
 
+  // D1C format parse fonksiyonu
+  const parseD1CData = (d1cString: string) => {
+    try {
+      const lines = d1cString.trim().split('\n');
+      
+      // Header satırını atla
+      const dataLines = lines.filter(line => 
+        line.trim() && 
+        !line.includes('TARIH') && 
+        !line.includes('SAAT') && 
+        !line.includes('FILO ADI') &&
+        !line.includes('TL') &&
+        line.length > 100 // D1C formatı daha uzun satırlar içerir
+      );
+
+      // Global parametreler
+      const globalParams = {
+        version: "D1C Format Rapor",
+        companyCode: "7732",
+        stationCode: "000299", 
+        reportDate: new Date().toLocaleDateString('tr-TR', { 
+          day: 'numeric', 
+          month: 'long', 
+          year: 'numeric' 
+        })
+      };
+
+      // Yakıt türü mapping
+      const fuelTypeMapping: {[key: string]: string} = {
+        'POGAZ': 'LPG',
+        'M YN V/MAX': 'MOTORIN',
+        'KBN95 YN V': 'OPTIMUM KURSUNSUZ 95',
+        'MOTORIN': 'MOTORIN',
+        'BENZIN': 'BENZIN'
+      };
+
+      // Satış verilerini analiz et
+      const fuelTypes: {[key: string]: {volume: number, amount: number}} = {};
+      let totalAmount = 0;
+      let totalVolume = 0;
+      const transactions: any[] = [];
+
+      dataLines.forEach((line, index) => {
+        try {
+          // D1C formatına göre sabit pozisyonlardan veri çıkar
+          // 0-10 tarih, 11-19 saat, 20-50 filo adı, 51-57 kodu, 58-67 plaka, 68-77 yakıt, 78-84 litre, 85-89 fiyat, 90-98 tutar, 99-101 tabanca, 102-104 pompa, 105-111 fiş no
+          
+          if (line.length < 111) return; // Minimum uzunluk kontrolü
+
+          const dateStr = line.substring(0, 10).trim();
+          const timeStr = line.substring(11, 19).trim();
+          const fleetName = line.substring(20, 50).trim();
+          const code = line.substring(51, 57).trim();
+          const plate = line.substring(58, 67).trim();
+          const fuelTypeRaw = line.substring(68, 78).trim();
+          const volumeStr = line.substring(78, 84).trim();
+          const priceStr = line.substring(85, 89).trim();
+          const amountStr = line.substring(90, 98).trim();
+          const nozzleStr = line.substring(99, 101).trim();
+          const pumpStr = line.substring(102, 104).trim();
+          const receiptStr = line.substring(105, 111).trim();
+
+          // Sayısal değerleri parse et
+          const volume = parseInt(volumeStr) || 0;
+          const price = parseInt(priceStr) || 0;
+          const amount = parseInt(amountStr) || 0;
+          const nozzle = parseInt(nozzleStr) || 0;
+          const pump = parseInt(pumpStr) || 0;
+          const receipt = parseInt(receiptStr) || 0;
+
+          // Yakıt türünü belirle
+          let fuelType = '';
+          for (const [key, value] of Object.entries(fuelTypeMapping)) {
+            if (fuelTypeRaw.includes(key)) {
+              fuelType = value;
+              break;
+            }
+          }
+
+          if (!fuelType) {
+            fuelType = fuelTypeRaw; // Eğer mapping'de yoksa ham değeri kullan
+          }
+
+          if (fuelType && volume > 0 && amount > 0) {
+            // Fuel type'a göre grupla
+            if (!fuelTypes[fuelType]) {
+              fuelTypes[fuelType] = { volume: 0, amount: 0 };
+            }
+            
+            fuelTypes[fuelType].volume += volume;
+            fuelTypes[fuelType].amount += amount;
+            totalAmount += amount;
+            totalVolume += volume;
+
+            // İşlem kaydı
+            transactions.push({
+              id: index + 1,
+              date: dateStr,
+              time: timeStr,
+              fleetName,
+              code,
+              plate,
+              fuelType,
+              volume,
+              price,
+              amount,
+              nozzle,
+              pump,
+              receipt
+            });
+          }
+        } catch (lineError) {
+          console.warn('D1C satır parse hatası:', line, lineError);
+        }
+      });
+
+      const salesSummary = {
+        totalTransactions: transactions.length,
+        totalAmount,
+        totalVolume,
+        fuelTypes
+      };
+
+      // Tank verilerini simüle et (D1C'de tank bilgisi yok)
+      const tanks = Object.entries(fuelTypes).map(([fuelType, data], index) => ({
+        tankNo: index + 1,
+        tankName: fuelType,
+        fuelType: fuelType,
+        currentVolume: Math.floor(data.volume * 0.8), // %80 doluluk simülasyonu
+        previousVolume: Math.floor(data.volume * 0.9),
+        delta: Math.floor(data.volume * 0.1),
+        deliveryVolume: Math.floor(data.volume * 0.2)
+      }));
+
+      // Pompa verilerini analiz et
+      const pumpData: {[key: number]: number} = {};
+      transactions.forEach(txn => {
+        if (txn.pump > 0) {
+          if (!pumpData[txn.pump]) {
+            pumpData[txn.pump] = 0;
+          }
+          pumpData[txn.pump] += txn.amount;
+        }
+      });
+
+      const pumps = Object.entries(pumpData).map(([pumpNo, totalSales]) => ({
+        pumpName: `Pompa ${pumpNo}`,
+        nozzles: 2, // Varsayılan nozzle sayısı
+        totalSales
+      }));
+
+      // Pompacı verilerini simüle et
+      const attendants = [
+        {
+          id: 1,
+          name: "Pompacı A",
+          shift: "Sabah (06:00-14:00)",
+          totalTransactions: Math.ceil(transactions.length * 0.4),
+          totalAmount: Math.ceil(totalAmount * 0.4),
+          totalVolume: Math.ceil(totalVolume * 0.4),
+          averageTransaction: Math.ceil(totalAmount * 0.4 / Math.ceil(transactions.length * 0.4)),
+          efficiency: 92 + Math.floor(Math.random() * 8),
+          pumpsHandled: pumps.slice(0, 2).map(p => p.pumpName),
+          startTime: "06:00",
+          endTime: "14:00"
+        },
+        {
+          id: 2,
+          name: "Pompacı B", 
+          shift: "Öğle (14:00-22:00)",
+          totalTransactions: Math.ceil(transactions.length * 0.45),
+          totalAmount: Math.ceil(totalAmount * 0.45),
+          totalVolume: Math.ceil(totalVolume * 0.45),
+          averageTransaction: Math.ceil(totalAmount * 0.45 / Math.ceil(transactions.length * 0.45)),
+          efficiency: 90 + Math.floor(Math.random() * 10),
+          pumpsHandled: pumps.slice(2, 4).map(p => p.pumpName),
+          startTime: "14:00",
+          endTime: "22:00"
+        },
+        {
+          id: 3,
+          name: "Pompacı C",
+          shift: "Gece (22:00-06:00)", 
+          totalTransactions: Math.ceil(transactions.length * 0.15),
+          totalAmount: Math.ceil(totalAmount * 0.15),
+          totalVolume: Math.ceil(totalVolume * 0.15),
+          averageTransaction: Math.ceil(totalAmount * 0.15 / Math.ceil(transactions.length * 0.15)),
+          efficiency: 85 + Math.floor(Math.random() * 10),
+          pumpsHandled: pumps.slice(0, 2).map(p => p.pumpName),
+          startTime: "22:00",
+          endTime: "06:00"
+        }
+      ];
+
+      // State'leri güncelle
+      setGlobalInfo(globalParams);
+      setTankData(tanks);
+      setPumpData(pumps);
+      setSalesData(salesSummary as any);
+      setAttendantData(attendants);
+      setSelectedTab('tanks');
+      
+      alert('✅ D1C verisi başarıyla yüklendi ve analiz edildi!');
+
+    } catch (error) {
+      console.error('D1C Parse Error:', error);
+      setParseError(`D1C verisi işlenirken hata: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // XML parse fonksiyonu
   const parseXmlData = (xmlString: string) => {
     try {
       setIsLoading(true);
       setParseError('');
+
+      // D1C format kontrolü - daha uzun satırlar ve farklı kolon yapısı
+      if (xmlString.includes('TARIH') && xmlString.includes('SAAT') && xmlString.includes('FILO ADI') && 
+          xmlString.includes('KODU') && xmlString.includes('PLAKA') && xmlString.includes('YAKIT') && 
+          xmlString.includes('LITRE') && xmlString.includes('FYT') && xmlString.includes('TUTAR') && 
+          xmlString.includes('TBNCPU') && xmlString.includes('FIS NO')) {
+        return parseD1CData(xmlString);
+      }
 
       // D1A format kontrolü
       if (xmlString.includes('TARIH') && xmlString.includes('SAAT') && xmlString.includes('LITRE') && xmlString.includes('TUTAR')) {
@@ -827,6 +1047,32 @@ export default function AkaryakitModulu() {
     await readAkaryakitFile(testFilePath);
   };
 
+  // D1C test verisi yükleme fonksiyonu
+  const loadD1CTestData = () => {
+    const d1cTestData = `07:59:18 TL
+TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      LITRE  FYT  TUTAR    TBNCPU FIS NO
+15/08/2025 00:02:31                       ISTASYON  C0000 RECAİ GÜN POGAZ OTOG 000775 2579 00020000  1 09 459612
+15/08/2025 00:14:16                       ISTASYON  C0000 RECAİ GÜN POGAZ OTOG 003095 2579 00079820  1 08 459613
+15/08/2025 00:28:45                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 005665 5296 00300000  1 05 459614
+15/08/2025 00:45:32                    HASAN BİLGE  C007    14S0026 M YN V/MAX 005287 5296 00280000  3 04 459615
+15/08/2025 00:58:05              HÜSEYİN ÇAVUŞOĞLU  C136    14S0027 M YN V/MAX 012538 5296 00664012  1 05 459616
+15/08/2025 01:38:13                       ISTASYON  C0000 RECAİ GÜN KBN95 YN V 000381 5246 00020000  4 05 459617
+15/08/2025 01:53:19                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 001937 5164 00100000  1 05 459618
+15/08/2025 02:01:22                       ISTASYON  C0000 RECAİ GÜN KBN95 YN V 000490 5246 00025705  1 06 459619
+15/08/2025 02:21:23                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 004086 5217 00213167  3 06 459620
+15/08/2025 02:30:51                       ISTASYON  C0000 RECAİ GÜN KBN95 YN V 000381 5246 00020000  4 05 459621
+15/08/2025 02:59:24                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 000383 5217 00020000  1 05 459622
+15/08/2025 04:47:06                       ISTASYON  C0000 RECAİ GÜN KBN95 YN V 000381 5246 00020000  4 05 459623
+15/08/2025 05:19:26                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 004261 5164 00220038  4 04 459624
+15/08/2025 06:54:37 DEVLET MALZEME OFİSİ GENEL MÜD 149289  014AC217 M YN V/MAX 004677 5296 00247694  3 01 459625
+15/08/2025 07:38:03                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 004023 5296 00213058  3 04 459626
+15/08/2025 07:51:43                       ISTASYON  C0000 RECAİ GÜN KBN95 YN V 000249 5246 00013063  4 05 459627
+15/08/2025 07:52:53                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 002712 5164 00140048  3 04 459628`;
+    
+    setXmlInput(d1cTestData);
+    parseXmlData(d1cTestData);
+  };
+
   return (
     <DashboardLayout title="Akaryakıt Modülü - Test Raporu">
       <div className="space-y-6">
@@ -1009,12 +1255,31 @@ export default function AkaryakitModulu() {
 
                   <div className="flex items-center justify-between mt-4">
                     <div className="flex space-x-2">
-                    <button
-                      onClick={() => setXmlInput('')}
-                      className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-                    >
-                      Temizle
-                    </button>
+                      <button
+                        onClick={() => setXmlInput('')}
+                        className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                      >
+                        Temizle
+                      </button>
+                      <button
+                        onClick={loadD1CTestData}
+                        disabled={isLoading}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                      >
+                        {isLoading ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>İşleniyor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <span>D1C Test Verisi</span>
+                          </>
+                        )}
+                      </button>
                       <button
                         onClick={testFileRead}
                         disabled={isReadingFile}
@@ -1098,6 +1363,22 @@ export default function AkaryakitModulu() {
 08/04/2020 07:22:09 Avek Lojistik İçecek Araç Kira 101951  06FA4351    Motorin 030000 5320 00159600
 08/04/2020 07:29:41                       ISTASYON  C0000 RUHİ AKMA OPTİMUM KU 004190 5370 00022500`}
                        </pre>
+                     </div>
+                     
+                     <div>
+                       <h5 className="font-medium text-gray-800 mb-2">📋 D1C Formatı</h5>
+                       <p className="text-gray-700 text-sm mb-2">
+                         D1C formatındaki satış raporu aşağıdaki gibi olmalıdır:
+                       </p>
+                       <pre className="bg-white p-3 rounded-lg text-xs text-gray-600 border overflow-x-auto">
+{`TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      LITRE  FYT  TUTAR    TBNCPU FIS NO
+15/08/2025 00:02:31                       ISTASYON  C0000 RECAİ GÜN POGAZ OTOG 000775 2579 00020000  1 09 459612
+15/08/2025 00:14:16                       ISTASYON  C0000 RECAİ GÜN POGAZ OTOG 003095 2579 00079820  1 08 459613
+15/08/2025 00:28:45                       ISTASYON  C0000 RECAİ GÜN M YN V/MAX 005665 5296 00300000  1 05 459614`}
+                       </pre>
+                       <p className="text-gray-600 text-xs mt-2">
+                         <strong>Kolon Pozisyonları:</strong> 0-10 tarih, 11-19 saat, 20-50 filo adı, 51-57 kodu, 58-67 plaka, 68-77 yakıt, 78-84 litre, 85-89 fiyat, 90-98 tutar, 99-101 tabanca, 102-104 pompa, 105-111 fiş no
+                       </p>
                      </div>
                    </div>
                  </div>
@@ -1453,40 +1734,57 @@ export default function AkaryakitModulu() {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fiş No</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Yakıt Türü</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarih/Saat</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Filo Adı</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plaka</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Yakıt Türü</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Miktar</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fiyat</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tutar</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tabanca</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pompa</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fiş No</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {[
-                          { receiptNr: 71148, fuelType: 'OPTIMUM KURSUNSUZ 95', plate: '14ACN805', amount: 105, total: 5000, pump: 4 },
-                          { receiptNr: 71147, fuelType: 'OPTIMUM KURSUNSUZ 95', plate: '14AAT340', amount: 633, total: 30000, pump: 5 },
-                          { receiptNr: 71146, fuelType: 'LPG', plate: '14BY795', amount: 531, total: 14000, pump: 7 },
-                          { receiptNr: 71145, fuelType: 'LPG', plate: '14BZ136', amount: 758, total: 20000, pump: 7 },
-                          { receiptNr: 71144, fuelType: 'LPG', plate: '14DK669', amount: 910, total: 24004, pump: 8 }
+                          { date: '15/08/2025', time: '00:02:31', fleetName: 'ISTASYON', plate: 'RECAİ GÜN', fuelType: 'POGAZ OTOG', amount: 775, price: 2579, total: 20000, nozzle: 1, pump: 9, receipt: 459612 },
+                          { date: '15/08/2025', time: '00:14:16', fleetName: 'ISTASYON', plate: 'RECAİ GÜN', fuelType: 'POGAZ OTOG', amount: 3095, price: 2579, total: 79820, nozzle: 1, pump: 8, receipt: 459613 },
+                          { date: '15/08/2025', time: '00:28:45', fleetName: 'ISTASYON', plate: 'RECAİ GÜN', fuelType: 'M YN V/MAX', amount: 5665, price: 5296, total: 300000, nozzle: 1, pump: 5, receipt: 459614 },
+                          { date: '15/08/2025', time: '00:45:32', fleetName: 'HASAN BİLGE', plate: '14S0026', fuelType: 'M YN V/MAX', amount: 5287, price: 5296, total: 280000, nozzle: 3, pump: 4, receipt: 459615 },
+                          { date: '15/08/2025', time: '00:58:05', fleetName: 'HÜSEYİN ÇAVUŞOĞLU', plate: '14S0027', fuelType: 'M YN V/MAX', amount: 12538, price: 5296, total: 664012, nozzle: 1, pump: 5, receipt: 459616 }
                         ].map((transaction) => (
-                          <tr key={transaction.receiptNr} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {transaction.receiptNr}
+                          <tr key={transaction.receipt} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div>{transaction.date}</div>
+                              <div className="text-xs text-gray-500">{transaction.time}</div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {transaction.fuelType}
+                              {transaction.fleetName}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {transaction.plate}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {transaction.fuelType}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {formatVolume(transaction.amount)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {formatCurrency(transaction.price)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {formatCurrency(transaction.total)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {transaction.nozzle}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                               {transaction.pump}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {transaction.receipt}
                             </td>
                           </tr>
                         ))}
@@ -1657,6 +1955,7 @@ export default function AkaryakitModulu() {
                               >
                                 <option value="XML">XML</option>
                                 <option value="D1A">D1A</option>
+                                <option value="D1C">D1C</option>
                                 <option value="CSV">CSV</option>
                                 <option value="TXT">TXT</option>
                               </select>
