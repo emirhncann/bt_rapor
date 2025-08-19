@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { encryptPayloadSecure } from '../utils/api';
+import Lottie from 'lottie-react';
 
 interface FileReadResult {
   success: boolean;
@@ -66,6 +67,36 @@ export default function AkaryakitPage() {
     rawRows?: any[];
   } | null>(null);
 
+  // Şirket akaryakıt ayarları için state
+  const [companySettings, setCompanySettings] = useState<any[]>([]);
+  const [isLoadingSettings, setIsLoadingSettings] = useState<boolean>(false);
+  
+  // Yeni state'ler
+  const [selectedCompany, setSelectedCompany] = useState<any>(null);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [shiftNumber, setShiftNumber] = useState<number>(1);
+  
+  // Animasyon state'leri
+  const [failedAnimationData, setFailedAnimationData] = useState(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // parsedData değiştiğinde scroll yap
+  useEffect(() => {
+    if (parsedData && parsedData.movements && parsedData.movements.length > 0) {
+      // Veri yüklendiğinde satış özetine scroll yap
+      setTimeout(() => {
+        const element = document.getElementById('satis-ozeti');
+        if (element) {
+          element.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+          });
+        }
+      }, 300); // 300ms bekle
+    }
+  }, [parsedData]);
+
   // Desteklenen dosya tipleri
   const supportedFileTypes = [
     { value: 'xml', label: 'XML Dosyası (.xml)', extension: '.xml' },
@@ -76,10 +107,49 @@ export default function AkaryakitPage() {
     { value: 'f1d', label: 'F1D Dosyası (.f1d)', extension: '.f1d' }
   ];
 
-  // Sayfa yüklendiğinde dosya yolu sor
+  // Şirket akaryakıt ayarlarını yükle
+  const loadCompanySettings = async () => {
+    try {
+      setIsLoadingSettings(true);
+      console.log('🔍 Şirket akaryakıt ayarları yükleniyor...');
+
+      const response = await fetch(`https://api.btrapor.com/akaryakit/by-company/${companyRef}`);
+      
+      if (!response.ok) {
+        throw new Error(`API Hatası: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('📥 Şirket ayarları:', result);
+
+      if (result.status === 'success' && result.data) {
+        setCompanySettings(result.data);
+        console.log('✅ Şirket ayarları yüklendi:', result.data.length, 'ayar');
+      } else {
+        console.warn('⚠️ Şirket ayarları bulunamadı veya boş');
+        setCompanySettings([]);
+      }
+
+    } catch (error) {
+      console.error('❌ Şirket ayarları yükleme hatası:', error);
+      setCompanySettings([]);
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  // Sayfa yüklendiğinde şirket ayarlarını yükle
   useEffect(() => {
-    console.log('🔍 Sayfa yüklendi, showFileInput true yapılıyor');
-    setShowFileInput(true);
+    console.log('🔍 Sayfa yüklendi, şirket ayarları yükleniyor...');
+    loadCompanySettings();
+  }, [companyRef]);
+
+  // Animasyonları yükle
+  useEffect(() => {
+    fetch('/animations/failed.json')
+      .then(res => res.json())
+      .then(data => setFailedAnimationData(data))
+      .catch(err => console.log('Failed animation yüklenemedi:', err));
   }, []);
 
   const sanitizeText = (input: string): string => {
@@ -92,15 +162,20 @@ export default function AkaryakitPage() {
     return s;
   };
 
-  const readAkaryakitFile = async (filePath: string, fileType: string) => {
+  const readAkaryakitFile = async (filePath: string, fileType: string, retryCount: number = 0) => {
     if (!filePath.trim()) {
       setResult({ success: false, error: 'Dosya yolu boş olamaz' });
       return;
     }
 
+    // Sadece ilk denemede loading'i başlat
+    if (retryCount === 0) {
     setIsReading(true);
     setResult(null);
     setParsedData(null);
+    }
+
+    const maxRetries = 2; // Maksimum 3 deneme (0, 1, 2)
 
     try {
       // Module ve payload verilerini hazırla
@@ -110,7 +185,7 @@ export default function AkaryakitPage() {
         fileType: fileType 
       };
 
-      console.log('🔍 === AKARYAKIT DOSYA OKUMA ===');
+      console.log(`🔍 === AKARYAKIT DOSYA OKUMA (Deneme ${retryCount + 1}/${maxRetries + 1}) ===`);
       console.log('📍 Company Ref:', companyRef);
       console.log('📁 Dosya Yolu:', filePath);
       console.log('📄 Dosya Tipi:', fileType);
@@ -140,11 +215,25 @@ export default function AkaryakitPage() {
 
       if (!response.ok) {
         const errorText = await response.text();
+        
+        // Dosya bulunamadı hatası kontrolü
+        if (errorText.includes('Dosya bulunamadı') || errorText.includes('File not found')) {
+          throw new Error('Vardiya bulunamadı');
+        }
+        
         throw new Error(`API Hatası: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
       console.log('📥 Response Data:', result);
+
+      // JSON response'da hata kontrolü
+      if (result.status === 'error') {
+        if (result.message && (result.message.includes('Dosya bulunamadı') || result.message.includes('File not found'))) {
+          throw new Error('Vardiya bulunamadı');
+        }
+        throw new Error(result.message || 'Bilinmeyen hata');
+      }
 
       // Sonucu işle
       let processedResult: FileReadResult = { success: true };
@@ -184,15 +273,42 @@ export default function AkaryakitPage() {
       }
       
       console.log('✅ Dosya okuma başarılı:', processedResult);
+      
+      // Başarılı olduğunda loading'i kapat
+      setIsReading(false);
 
     } catch (error) {
-      console.error('❌ Dosya okuma hatası:', error);
+      console.error(`❌ Dosya okuma hatası (Deneme ${retryCount + 1}/${maxRetries + 1}):`, error);
+      
+      // Eğer hala deneme hakkı varsa, tekrar dene
+      if (retryCount < maxRetries) {
+        console.log(`🔄 ${retryCount + 1}. deneme başarısız, ${retryCount + 2}. deneme yapılıyor...`);
+        
+        // 2 saniye bekle ve tekrar dene
+        setTimeout(() => {
+          readAkaryakitFile(filePath, fileType, retryCount + 1);
+        }, 2000);
+        
+        return; // Bu denemeyi sonlandır, yeni deneme başlat
+      }
+      
+      // Tüm denemeler başarısız oldu
+      console.error('❌ Tüm denemeler başarısız oldu!');
+      const errorMsg = error instanceof Error ? error.message : 'Bilinmeyen hata';
+      
+      // Vardiya bulunamadı hatası kontrolü
+      if (errorMsg.includes('Vardiya bulunamadı')) {
+        setErrorMessage('Vardiya bulunamadı');
+        setShowErrorModal(true);
+      } else {
       setResult({
         success: false,
-        error: error instanceof Error ? error.message : 'Bilinmeyen hata'
-      });
-    } finally {
-      setIsReading(false);
+          error: `Dosya okuma başarısız (${maxRetries + 1} deneme): ${errorMsg}`
+        });
+      }
+      
+      // Tüm denemeler başarısız olduğunda loading'i kapat
+        setIsReading(false);
     }
   };
 
@@ -309,8 +425,119 @@ export default function AkaryakitPage() {
 
             rawRows = dynamicRows;
           } else {
-            // Eski XML formatı için mevcut parsing (basitleştirilmiş)
-            console.log('Eski XML formatı - parsing eklenecek');
+            // TURPAK XML formatı için parsing
+            console.log('TURPAK XML formatı parse ediliyor...');
+            
+            const txnsNodes = q(doc, 'Txn');
+            if (txnsNodes && txnsNodes.length > 0) {
+              for (let i = 0; i < txnsNodes.length; i++) {
+                const txn = txnsNodes[i] as Element;
+                
+                // TagDetails
+                const tagDetails = q(txn, 'TagDetails')[0] as Element;
+                const fleetCode = textNode(tagDetails, 'FleetCode');
+                const fleetName = textNode(tagDetails, 'FleetName');
+                const tagNr = textNode(tagDetails, 'TagNr');
+                const plate = textNode(tagDetails, 'Plate');
+                
+                // SaleDetails
+                const saleDetails = q(txn, 'SaleDetails')[0] as Element;
+                const dateTime = textNode(saleDetails, 'DateTime');
+                const receiptNr = textNode(saleDetails, 'ReceiptNr');
+                const fuelType = textNode(saleDetails, 'FuelType');
+                const unitPrice = textNode(saleDetails, 'UnitPrice');
+                const amount = textNode(saleDetails, 'Amount');
+                const total = textNode(saleDetails, 'Total');
+                const pumpNr = textNode(saleDetails, 'PumpNr');
+                const nozzleNr = textNode(saleDetails, 'NozzleNr');
+                const paymentType = textNode(saleDetails, 'PaymentType');
+                const ecrPlate = textNode(saleDetails, 'ECRPlate');
+                
+                // Tarih ve saat formatını çevir (20250327000211 -> 2025-03-27 00:02:11)
+                let formattedDate = '';
+                let formattedTime = '';
+                if (dateTime && dateTime.length >= 14) {
+                  const year = dateTime.substring(0, 4);
+                  const month = dateTime.substring(4, 6);
+                  const day = dateTime.substring(6, 8);
+                  const hour = dateTime.substring(8, 10);
+                  const minute = dateTime.substring(10, 12);
+                  const second = dateTime.substring(12, 14);
+                  
+                  formattedDate = `${year}-${month}-${day}`;
+                  formattedTime = `${hour}:${minute}:${second}`;
+                }
+                
+                // Yakıt türü mapping
+                const fuelTypeMapping: {[key: string]: string} = {
+                  '4': 'OPTIMUM KURSUNSUZ 95',
+                  '5': 'LPG',
+                  '6': 'MOTORIN',
+                  '8': 'OPTIMUM MOTORIN'
+                };
+                
+                const fuelTypeName = fuelTypeMapping[fuelType] || `Yakıt ${fuelType}`;
+                
+                // Sayısal değerleri parse et
+                const volume = parseFloat(amount) || 0;
+                const price = parseFloat(unitPrice) / 100 || 0; // Kuruş cinsinden geliyor
+                const totalAmount = parseFloat(total) / 100 || 0; // Kuruş cinsinden geliyor
+                
+                if (volume > 0 && totalAmount > 0) {
+                  movements.push({
+                    id: i + 1,
+                    date: sanitizeText(formattedDate),
+                    time: sanitizeText(formattedTime),
+                    pumpNo: sanitizeText(pumpNr),
+                    nozzleNo: sanitizeText(nozzleNr),
+                    fuelType: sanitizeText(fuelTypeName),
+                    volume: volume,
+                    amount: totalAmount,
+                    unitPrice: price,
+                    transactionType: paymentType === '0' ? 'Nakit' : 'Kart',
+                    attendantName: sanitizeText(fleetName) || 'Bilinmeyen',
+                    vehiclePlate: sanitizeText(ecrPlate || plate),
+                    cardNumber: sanitizeText(tagNr),
+                    fileName: fileName,
+                    fileType: fileType.toUpperCase(),
+                    fisNo: receiptNr,
+                    kodu: fleetCode
+                  } as MovementData);
+                  
+                  // Dinamik tablo için ham satır
+                  const row: Record<string, string> = {
+                    TARIH: formattedDate,
+                    SAAT: formattedTime,
+                    'FILO ADI': fleetName,
+                    KODU: fleetCode,
+                    'PLAKA/POMPACI': ecrPlate || plate,
+                    YAKIT: fuelTypeName,
+                    LITRE: volume.toFixed(2),
+                    FYT: price.toFixed(2),
+                    TUTAR: totalAmount.toFixed(2),
+                    TABANCA: nozzleNr,
+                    POMPA: pumpNr,
+                    'FIS NO': receiptNr,
+                    'ODEME TURU': paymentType === '0' ? 'Nakit' : 'Kart',
+                    'TAG NO': tagNr
+                  };
+                  dynamicRows.push(row);
+                }
+              }
+            }
+            
+            // Global params
+            const globalParamsNode = q(doc, 'GlobalParams')[0] as Element;
+            if (globalParamsNode) {
+              globalParams = {
+                version: textNode(globalParamsNode, 'Version'),
+                companyCode: textNode(globalParamsNode, 'CompanyCode'),
+                stationCode: textNode(globalParamsNode, 'StationCode'),
+                reportDate: new Date().toLocaleDateString('tr-TR')
+              };
+            }
+            
+            rawRows = dynamicRows;
           }
 
           // Satış özeti
@@ -433,7 +660,7 @@ export default function AkaryakitPage() {
                   SAAT: timeStr,
                   'FILO ADI': fleetName,
                   KODU: code,
-                  PLAKA: plate,
+                  'PLAKA/POMPACI': plate,
                   YAKIT: fuelTypeRaw,
                   LITRE: volume.toFixed(2),
                   FYT: unitPrice.toFixed(2),
@@ -660,8 +887,168 @@ export default function AkaryakitPage() {
     readAkaryakitFile(filePath, selectedFileType);
   };
 
+  // Şirket ayarlarından dosya okuma
+  const readFromCompanySettings = async (setting: any) => {
+    try {
+      console.log('🔍 Şirket ayarından dosya okunuyor:', setting);
+      
+      // Dosya tipini belirle
+      let fileType = 'xml'; // varsayılan
+      if (setting.file_type === 'asis' || setting.file_type === 'd1c') {
+        fileType = 'd1c';
+      } else if (setting.file_type === 'd1c') {
+        fileType = 'd1c';
+      } else if (setting.file_type === 'turpak' || setting.file_type === 'xml') {
+        fileType = 'xml';
+      }
+
+      // Dosya yolunu ayarla
+      const filePath = setting.path || setting.online_path;
+      
+      if (!filePath) {
+        alert('Dosya yolu bulunamadı!');
+        return;
+      }
+
+      // Dosyayı oku (retry özelliği ile)
+      await readAkaryakitFile(filePath, fileType);
+      
+      // Başarı mesajı
+      console.log('✅ Şirket ayarından dosya başarıyla okundu:', setting.branch_name);
+      
+    } catch (error) {
+      console.error('❌ Şirket ayarından dosya okuma hatası:', error);
+      alert(`Dosya okuma hatası: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
+      // Hata durumunda loading'i kapat
+      setIsReading(false);
+    }
+  };
+
+  // Seçili şirketten dosya okuma
+  const readFromSelectedCompany = async () => {
+    if (!selectedCompany) {
+      alert('Lütfen bir şirket seçin!');
+      return;
+    }
+
+    if (!selectedDate) {
+      alert('Lütfen bir tarih seçin!');
+      return;
+    }
+
+    try {
+      console.log('🔍 Seçili şirketten dosya okunuyor:', selectedCompany);
+      console.log('📅 Seçili tarih:', selectedDate);
+      console.log('🔄 Vardiya numarası:', shiftNumber);
+      
+      // Dosya tipini belirle
+      let fileType = 'xml'; // varsayılan
+      if (selectedCompany.file_type === 'asis' || selectedCompany.file_type === 'd1c') {
+        fileType = 'd1c';
+      } else if (selectedCompany.file_type === 'd1c') {
+        fileType = 'd1c';
+      } else if (selectedCompany.file_type === 'turpak' || selectedCompany.file_type === 'xml') {
+        fileType = 'xml';
+      } else if (selectedCompany.file_type === 'turpak') {
+        fileType = 'xml'; // TURPAK formatı XML olarak işlenir
+      }
+
+      // Dosya yolunu ayarla
+      let filePath = selectedCompany.path || selectedCompany.online_path;
+      
+      if (!filePath) {
+        alert('Dosya yolu bulunamadı!');
+        return;
+      }
+
+      // ASIS formatı için özel dosya yolu oluşturma
+      if (selectedCompany.file_type === 'asis') {
+        // Tarihi 20250804 formatına çevir
+        const dateParts = selectedDate.split('-');
+        const formattedDate = `${dateParts[0]}${dateParts[1]}${dateParts[2]}`;
+        
+        // Vardiya numarasına göre dosya uzantısını belirle
+        let fileExtension = 'd1a'; // varsayılan
+        switch (shiftNumber) {
+          case 1:
+            fileExtension = 'd1a';
+            break;
+          case 2:
+            fileExtension = 'd1b';
+            break;
+          case 3:
+            fileExtension = 'd1c';
+            break;
+          case 4:
+            fileExtension = 'd1d';
+            break;
+          default:
+            fileExtension = 'd1a';
+            break;
+        }
+        
+        // Dosya adını oluştur: 20250804.d1a
+        const fileName = `${formattedDate}.${fileExtension}`;
+        
+        // Dosya yolunu birleştir
+        filePath = filePath.endsWith('\\') || filePath.endsWith('/') 
+          ? `${filePath}${fileName}`
+          : `${filePath}\\${fileName}`;
+        
+        console.log('📁 ASIS formatı dosya yolu oluşturuldu:', filePath);
+        console.log('📅 Formatlanmış tarih:', formattedDate);
+        console.log('📄 Dosya uzantısı:', fileExtension);
+      }
+      
+      // TURPAK formatı için özel dosya yolu oluşturma
+      if (selectedCompany.file_type === 'turpak') {
+        // Tarihi 20250326 formatına çevir (YYYYMMDD)
+        const dateParts = selectedDate.split('-');
+        const formattedDate = `${dateParts[0]}${dateParts[1]}${dateParts[2]}`;
+        
+        // Vardiya numarasını 2 haneli formata çevir (01, 02, 03, 04)
+        const formattedShift = shiftNumber.toString().padStart(2, '0');
+        
+        // Dosya adını oluştur: 2025032601.XML
+        const fileName = `${formattedDate}${formattedShift}.XML`;
+        
+        // Dosya yolunu birleştir
+        filePath = filePath.endsWith('\\') || filePath.endsWith('/') 
+          ? `${filePath}${fileName}`
+          : `${filePath}\\${fileName}`;
+        
+        console.log('📁 TURPAK formatı dosya yolu oluşturuldu:', filePath);
+        console.log('📅 Formatlanmış tarih:', formattedDate);
+        console.log('🔄 Vardiya numarası:', formattedShift);
+      }
+
+      // Dosyayı oku (retry özelliği ile)
+      await readAkaryakitFile(filePath, fileType);
+      
+      // Başarı mesajı
+      console.log('✅ Seçili şirketten dosya başarıyla okundu:', selectedCompany.branch_name);
+      
+    } catch (error) {
+      console.error('❌ Seçili şirketten dosya okuma hatası:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Bilinmeyen hata';
+      
+      // Vardiya bulunamadı hatası kontrolü
+      if (errorMsg.includes('Vardiya bulunamadı')) {
+        setErrorMessage('Vardiya bulunamadı');
+        setShowErrorModal(true);
+      } else {
+        alert(`Dosya okuma hatası: ${errorMsg}`);
+      }
+      // Hata durumunda loading'i kapat
+      setIsReading(false);
+    }
+  };
+
   // D1C test verisi yükleme fonksiyonu
   const loadD1CTestData = () => {
+    try {
+      setIsReading(true);
+      
     const d1cTestData = `07:59:18 TL
 TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      LITRE  FYT  TUTAR    TBNCPU FIS NO
 15/08/2025 00:02:31                       ISTASYON  C0000 RECAİ GÜN POGAZ OTOG 000775 2579 00020000  1 09 459612
@@ -686,6 +1073,16 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
     setSelectedFileType('d1c');
     setFilePath('C:\\temp\\akaryakit\\test.d1c');
     parseAndDisplayData(d1cTestData, 'd1c', 'C:\\temp\\akaryakit\\test.d1c');
+      
+      // Başarı mesajı
+      setResult({ success: true, data: d1cTestData });
+      
+    } catch (error) {
+      console.error('❌ D1C test verisi yükleme hatası:', error);
+      setResult({ success: false, error: 'Test verisi yükleme hatası' });
+    } finally {
+      setIsReading(false);
+    }
   };
 
   const handleClearResult = () => {
@@ -695,6 +1092,8 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
     setShowFileInput(true);
     console.log('🔍 showFileInput true yapıldı');
   };
+
+
 
   // PDF export fonksiyonu - Yazdır/PDF formatında
   const exportToPDF = () => {
@@ -952,118 +1351,244 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
 
   return (
     <DashboardLayout title="Akaryakıt Raporu">
+      {/* Hata Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
+            <div className="flex flex-col items-center justify-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                {failedAnimationData ? (
+                  <div className="w-12 h-12">
+                    <Lottie animationData={failedAnimationData} loop={false} />
+                  </div>
+                ) : (
+                  <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Hata!</h2>
+              <p className="text-gray-600 text-center mb-6">{errorMessage}</p>
+              <button
+                onClick={() => setShowErrorModal(false)}
+                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Tamam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="p-6">
         <div className="w-full">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
-              ⛽ Akaryakıt Rapor Sayfası
-            </h1>
-            
-            {/* Debug Info */}
-            <div className="mb-4 p-2 bg-gray-100 rounded text-xs">
-              {`Debug: showFileInput=${showFileInput.toString()}, parsedData=${parsedData ? 'var' : 'yok'}, result=${result ? 'var' : 'yok'}`}
-            </div>
-
-            {/* Dosya Yolu Girişi */}
-            {showFileInput && (
-              <div className="mb-6 p-6 bg-blue-50 rounded-lg border-2 border-dashed border-blue-300">
-                <h2 className="text-lg font-semibold text-blue-900 mb-4">📁 Dosya Yolu ve Tipi Seçin</h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Company Ref
-                    </label>
-                    <input
-                      type="text"
-                      value={companyRef}
-                      onChange={(e) => setCompanyRef(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="1"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Dosya Tipi
-                    </label>
-                    <select
-                      value={selectedFileType}
-                      onChange={(e) => setSelectedFileType(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {supportedFileTypes.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Dosya Yolu
-                    </label>
-                    <input
-                      type="text"
-                      value={filePath}
-                      onChange={(e) => setFilePath(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`C:\\temp\\akaryakit\\data.${selectedFileType}`}
-                    />
-                  </div>
+          {/* Header Section */}
+          <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center mr-4">
+                  <svg className="w-8 h-8 text-red-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
                 </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={handleTestRead}
-                    disabled={isReading || !filePath.trim()}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isReading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Dosya Okunuyor...
-                      </>
-                    ) : (
-                      <>
-                        📖 Dosya Oku
-                      </>
-                    )}
-                  </button>
-                  
-                  <button
-                    onClick={loadD1CTestData}
-                    disabled={isReading}
-                    className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isReading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        İşleniyor...
-                      </>
-                    ) : (
-                      <>
-                        🧪 D1C Test Verisi
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Desteklenen Dosya Tipleri Bilgisi */}
-                <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-                  <h4 className="text-sm font-medium text-blue-800 mb-2">📋 Desteklenen Dosya Tipleri:</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-blue-700">
-                    {supportedFileTypes.map((type) => (
-                      <div key={type.value} className="flex items-center gap-1">
-                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                        {type.label}
-                      </div>
-                    ))}
-                  </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-white">⛽ Akaryakıt Vardiya Raporu</h1>
+                  <p className="text-red-100 mt-1">Vardiya bazlı akaryakıt satış verilerini görüntüleyin ve analiz edin</p>
                 </div>
               </div>
+              <div className="text-right text-white">
+                <div className="text-sm text-red-100">Son Güncelleme</div>
+                <div className="text-lg font-semibold">{new Date().toLocaleDateString('tr-TR')}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            
+           
+
+            {/* Şirket Ayarları */}
+            {companySettings.length > 0 && (
+              <div className="mb-6 p-6 bg-green-50 rounded-lg border-2 border-dashed border-green-300">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-green-900">🏢 Şube ve Vardiya Ayarları</h2>
+                
+                </div>
+                
+                {isLoadingSettings ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                    <span className="ml-3 text-green-700">Ayarlar yükleniyor...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* İstasyon Seçimi */}
+                    <div className="bg-white rounded-lg p-4 border border-green-200 shadow-sm">
+                      <h3 className="font-semibold text-gray-900 mb-3">📍 İstasyon Seçimi</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {companySettings.map((setting) => (
+                          <button
+                            key={setting.id}
+                            onClick={() => setSelectedCompany(setting)}
+                            className={`p-3 rounded-lg border-2 transition-all duration-200 text-left ${
+                              selectedCompany?.id === setting.id
+                                ? 'border-green-500 bg-green-50 shadow-md'
+                                : 'border-gray-200 bg-white hover:border-green-300 hover:bg-green-25'
+                            }`}
+                          >
+                            <div className="font-medium text-gray-900 mb-1">
+                              🏢 {setting.branch_name}
+                            </div>
+                                                          <div className="text-xs text-gray-600">
+                                <div className="mb-1">
+                                  <span className="font-medium">Otomasyon Tipi:</span>
+                                  <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded">
+                                  {setting.file_type?.toUpperCase()}
+                                </span>
+                              </div>
+                                </div>
+                            </button>
+                        ))}
+                          </div>
+                        </div>
+
+                    {/* Tarih ve Vardiya Seçimi */}
+                    {selectedCompany && (
+                      <div className="bg-gradient-to-br from-white to-green-50 rounded-xl p-6 border-2 border-green-200 shadow-lg">
+                        <div className="flex items-center mb-6">
+                          <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-lg flex items-center justify-center mr-3">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                      </div>
+                          <h3 className="text-xl font-bold text-gray-800">📅 Tarih ve Vardiya Seçimi</h3>
+                  </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                          {/* Tarih Seçimi */}
+                          <div className="bg-white rounded-lg p-4 border border-green-200 shadow-sm">
+                            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                              <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              Tarih Seçin
+                    </label>
+                            <div className="relative">
+                    <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                max={new Date().toISOString().split('T')[0]}
+                                className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 text-lg bg-white shadow-sm hover:border-green-300"
+                                style={{
+                                  backgroundImage: 'none',
+                                  WebkitAppearance: 'none',
+                                  MozAppearance: 'none',
+                                  appearance: 'none'
+                                }}
+                              />
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2 flex items-center">
+                              <svg className="w-4 h-4 text-orange-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                              Gelecek tarihler seçilemez
+                            </p>
+                  </div>
+                  
+                          {/* Vardiya Numarası */}
+                          <div className="bg-white rounded-lg p-4 border border-green-200 shadow-sm">
+                            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                              <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Vardiya Numarası
+                    </label>
+                            <div className="flex items-center justify-center space-x-3">
+                              <button
+                                onClick={() => setShiftNumber(Math.max(1, shiftNumber - 1))}
+                                className="w-12 h-12 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 shadow-lg flex items-center justify-center text-xl font-bold"
+                              >
+                                -
+                              </button>
+                              <div className="w-24 h-12 bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-200 rounded-lg flex items-center justify-center">
+                                <span className="text-2xl font-bold text-blue-800">{shiftNumber}</span>
+                              </div>
+                              <button
+                                onClick={() => setShiftNumber(Math.min(4, shiftNumber + 1))}
+                                className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 shadow-lg flex items-center justify-center text-xl font-bold"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-3 text-center">
+                              1-4 arası vardiya seçimi
+                            </p>
+                          </div>
+                  </div>
+                  
+                        {/* Uyarı Kutusu */}
+                        <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-yellow-400 rounded-lg p-4 mb-6">
+                          <div className="flex items-start">
+                            <div className="flex-shrink-0">
+                              <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                            </div>
+                            <div className="ml-3">
+                              <h4 className="text-sm font-semibold text-yellow-800">Dikkat!</h4>
+                              <p className="text-sm text-yellow-700 mt-1">
+                                Vardiya numarası olarak otomasyonu baz almanız gerekmektedir.
+                              </p>
+                            </div>
+                  </div>
+                </div>
+
+                        {/* Vardiya Getir Butonu */}
+                        <div className="text-center">
+                  <button
+                            onClick={readFromSelectedCompany}
+                            disabled={isReading || !selectedDate}
+                            className="px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-3 text-lg font-semibold shadow-lg transform hover:scale-105 transition-all duration-200 mx-auto"
+                  >
+                    {isReading ? (
+                      <>
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                                <span>Vardiya Getiriliyor...</span>
+                      </>
+                    ) : (
+                      <>
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                </svg>
+                                Vardiya Getir
+                      </>
+                    )}
+                  </button>
+                          {!selectedDate && (
+                            <p className="text-sm text-red-600 mt-3 flex items-center justify-center">
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                              Lütfen önce bir tarih seçin
+                            </p>
+                          )}
+                </div>
+                      </div>
+                    )}
+
+
+                      </div>
+                )}
+              </div>
             )}
+
+
 
             {/* Hata Mesajı */}
             {result && !result.success && (
@@ -1082,78 +1607,9 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
             {/* Parsed Data Tables */}
             {parsedData && (
               <div className="space-y-6">
-                {/* Global Parameters */}
-                {parsedData.globalParams && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">📊 Rapor Bilgileri</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <span className="text-sm text-gray-600">Versiyon:</span>
-                        <p className="font-medium">{parsedData.globalParams.version || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-gray-600">Şirket Kodu:</span>
-                        <p className="font-medium">{parsedData.globalParams.companyCode || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-gray-600">İstasyon Kodu:</span>
-                        <p className="font-medium">{parsedData.globalParams.stationCode || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-gray-600">Rapor Tarihi:</span>
-                        <p className="font-medium">{parsedData.globalParams.reportDate || 'N/A'}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Dinamik Sütunlu Ham Tablo */}
-                {parsedData.rawRows && parsedData.rawRows.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                      {selectedFileType === 'xml' ? '🧾 Ham XML Verileri' : 
-                       selectedFileType === 'd1a' ? '📊 Ham D1A Verileri' : 
-                       selectedFileType === 'd1c' ? '📊 Ham D1C Verileri' :
-                       '📊 Ham Veriler'}
-                    </h3>
-                    <div className="relative">
-                      <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                        <table className="w-full">
-                          <thead className="sticky top-0 z-10">
-                            <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
-                              {Object.keys((parsedData.rawRows || [{}])[0]).map((key) => (
-                                <th
-                                  key={key}
-                                  className="px-1 py-1 text-center text-xs font-bold uppercase tracking-wider border-b border-red-800"
-                                >
-                                  {key}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {(parsedData.rawRows || []).map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-gray-50 text-xs">
-                                {Object.keys((parsedData.rawRows || [{}])[0]).map((key) => (
-                                  <td
-                                    key={key}
-                                    className="px-1 py-1 whitespace-nowrap text-xs text-gray-900 text-center"
-                                  >
-                                    <div className="truncate">{sanitizeText(row[key] || '')}</div>
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Satış Özeti */}
                 {parsedData.sales && (
-                  <div>
+                  <div id="satis-ozeti">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">💰 Satış Özeti</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                       <div className="bg-blue-50 p-4 rounded-lg">
@@ -1216,71 +1672,64 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
                   </div>
                 )}
 
-                {/* Kontrol Butonları */}
-                <div className="flex flex-wrap gap-3 pt-4 border-t">
-                  <button
-                    onClick={handleClearResult}
-                    className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
-                  >
-                    🗑️ Sonucu Temizle
-                  </button>
-                  <button
-                    onClick={() => setShowFileInput(true)}
-                    className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                  >
-                    📁 Yeni Dosya
-                  </button>
+                {/* Dinamik Sütunlu Ham Tablo */}
+                {parsedData.rawRows && parsedData.rawRows.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                       
+                      </h3>
+                                              <div className="flex gap-2">
                   <button
                     onClick={exportToPDF}
                     disabled={!parsedData || !parsedData.movements || parsedData.movements.length === 0}
-                    className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg hover:from-red-700 hover:to-red-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium shadow-md transform hover:scale-105 transition-all duration-200"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    📄 PDF Yazdır
+                            📄 PDF
                   </button>
                 </div>
               </div>
-            )}
-
-            {/* Bilgi */}
-            <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <h3 className="text-md font-medium text-yellow-800 mb-2">ℹ️ Kullanım Bilgileri</h3>
-              <ul className="text-sm text-yellow-700 space-y-1">
-                <li>• Dosya tipini seçin ve dosya yolu girip "Dosya Oku" butonuna tıklayın</li>
-                <li>• Desteklenen formatlar: XML (POAS formatı dahil), TXT, D1A, D1B, D1C, F1D</li>
-                <li>• "D1C Test Verisi" butonu ile örnek D1C formatını test edebilirsiniz</li>
-                <li>• Yüklenen hareket verileri sıralı rapor halinde tabloda gösterilecek</li>
-                <li>• Her satış hareketi dosya bilgileriyle birlikte listelenir</li>
-                <li>• "Yeni Dosya" ile başka bir dosya yükleyebilirsiniz</li>
-              </ul>
+                    <div className="relative">
+                      <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                        <table className="w-full">
+                          <thead className="sticky top-0 z-10">
+                            <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
+                              {Object.keys((parsedData.rawRows || [{}])[0]).map((key) => (
+                                <th
+                                  key={key}
+                                  className="px-1 py-1 text-center text-xs font-bold uppercase tracking-wider border-b border-red-800"
+                                >
+                                  {key}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {(parsedData.rawRows || []).map((row, rIdx) => (
+                              <tr key={rIdx} className="hover:bg-gray-50 text-xs">
+                                {Object.keys((parsedData.rawRows || [{}])[0]).map((key) => (
+                                  <td
+                                    key={key}
+                                    className="px-1 py-1 whitespace-nowrap text-xs text-gray-900 text-center"
+                                  >
+                                    <div className="truncate">{sanitizeText(row[key] || '')}</div>
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
             </div>
-
-            {/* D1C Format Bilgisi */}
-            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-md font-medium text-blue-800 mb-2">📋 D1C Format Bilgisi</h3>
-              <div className="text-sm text-blue-700 space-y-2">
-                <p><strong>D1C Formatı:</strong> Sabit pozisyonlu akaryakıt satış raporu formatı</p>
-                <p><strong>Kolon Pozisyonları:</strong></p>
-                <ul className="ml-4 space-y-1 text-xs">
-                  <li>• 0-10: Tarih</li>
-                  <li>• 11-19: Saat</li>
-                  <li>• 20-50: Filo Adı</li>
-                  <li>• 51-57: Kodu</li>
-                  <li>• 58-67: Plaka</li>
-                  <li>• 68-78: Yakıt Türü</li>
-                  <li>• 78-85: Litre (3 basamak ondalık: 000775 → 7.75)</li>
-                  <li>• 85-90: Fiyat (2 basamak ondalık: 2579 → 25.79)</li>
-                  <li>• 90-99: Tutar (2 basamak ondalık: 00020000 → 200.00)</li>
-                  <li>• 99-102: Tabanca</li>
-                  <li>• 102-105: Pompa</li>
-                  <li>• 105-112: Fiş No</li>
-                </ul>
-                <p><strong>Desteklenen Yakıt Türleri:</strong> POGAZ, M YN V/MAX, KBN95 YN V</p>
-                <p><strong>Sayısal Format:</strong> Litre 3 basamak, Fiyat/Tutar 2 basamak ondalık</p>
               </div>
             </div>
+                )}
+              </div>
+            )}
+
+            
           </div>
         </div>
       </div>
