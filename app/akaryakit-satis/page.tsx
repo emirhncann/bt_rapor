@@ -15,9 +15,19 @@ export default function AkaryakitSatis() {
   const [failedAnimationData, setFailedAnimationData] = useState(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [companyRef, setCompanyRef] = useState<string>('1');
+  const [companyRef, setCompanyRef] = useState<string>('');
   const [isLoadingSettings, setIsLoadingSettings] = useState<boolean>(false);
   const router = useRouter();
+
+  // Para formatlaması için yardımcı fonksiyon
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
+  };
 
   // Animation data'yı yükleyelim
   useEffect(() => {
@@ -27,11 +37,53 @@ export default function AkaryakitSatis() {
       .catch(err => console.log('Failed animasyonu yüklenemedi:', err));
   }, []);
 
+  // API'den company ref alma fonksiyonu
+  const fetchCompanyRefFromAPI = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        console.log('❌ User ID bulunamadı, company ref alınamadı');
+        return false;
+      }
+
+      console.log('🔄 API\'den company ref alınıyor...');
+      const response = await fetch(`https://api.btrapor.com/user/${userId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'success' && data.user && data.user.company_ref) {
+          const apiCompanyRef = data.user.company_ref;
+          console.log('✅ API\'den company ref alındı:', apiCompanyRef);
+          
+          // localStorage'a kaydet
+          localStorage.setItem('companyRef', apiCompanyRef);
+          setCompanyRef(apiCompanyRef);
+          
+          // Diğer kullanıcı bilgilerini de güncelle
+          if (data.user.name) localStorage.setItem('userName', data.user.name);
+          if (data.user.role) localStorage.setItem('userRole', data.user.role);
+          if (data.user.company_name) localStorage.setItem('companyName', data.user.company_name);
+          
+          return true;
+        } else {
+          console.log('❌ API\'den company ref alınamadı');
+          return false;
+        }
+      } else {
+        console.log('❌ API\'den company ref alınamadı, HTTP hatası:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Company ref alma hatası:', error);
+      return false;
+    }
+  };
+
   // Şirket akaryakıt ayarlarını yükle
   const loadCompanySettings = async () => {
     try {
       setIsLoadingSettings(true);
-      console.log('🔍 Şirket akaryakıt ayarları yükleniyor...');
+      console.log('🔍 Akaryakıt Satış - Şirket ayarları yükleniyor... Company Ref:', companyRef);
 
       const response = await fetch(`https://api.btrapor.com/akaryakit/by-company/${companyRef}`);
       
@@ -58,9 +110,40 @@ export default function AkaryakitSatis() {
     }
   };
 
-  // Şirket ayarlarını yükle
+  // Sayfa yüklendiğinde localStorage'dan company ref'i al
   useEffect(() => {
-    loadCompanySettings();
+    const initializeCompanyRef = async () => {
+      const storedCompanyRef = localStorage.getItem('companyRef');
+      if (storedCompanyRef) {
+        console.log('📋 LocalStorage\'dan company ref alındı:', storedCompanyRef);
+        setCompanyRef(storedCompanyRef);
+      } else {
+        console.log('⚠️ LocalStorage\'da company ref bulunamadı, API\'den alınıyor...');
+        // Company ref yoksa API'den al ve sayfayı yenile
+        const success = await fetchCompanyRefFromAPI();
+        if (success) {
+          console.log('✅ Company ref API\'den alındı, sayfa yenileniyor...');
+          // Kısa bir gecikme sonrası sayfayı yenile ki yeni company ref ile çalışabilsin
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          console.log('❌ Company ref alınamadı, login sayfasına yönlendiriliyor...');
+          // Company ref alınamazsa login sayfasına yönlendir
+          window.location.href = '/login';
+        }
+      }
+    };
+
+    initializeCompanyRef();
+  }, []); // Sadece bir kez çalışsın
+
+  // Company ref değiştiğinde şirket ayarlarını yükle
+  useEffect(() => {
+    if (companyRef) {
+      console.log('🔍 Akaryakıt Satış - Company ref değişti:', companyRef);
+      loadCompanySettings();
+    }
   }, [companyRef]);
 
     // Seçili şirketten veri okuma
@@ -150,21 +233,24 @@ export default function AkaryakitSatis() {
       // Sonucu işle
       let processedResult: any = { success: true };
 
-      if (result.content) {
+      // Response'da parsedData varsa direkt kullan
+      if (result.parsedData && result.parsedData.elements) {
+        console.log('📊 Parse edilmiş veri bulundu:', result.parsedData);
+        parseAndDisplayData(result.parsedData, 'parsed');
+      } else if (result.content) {
         processedResult.data = result.content;
         processedResult.content = result.content;
+        parseAndDisplayData(processedResult.data, 'xml');
       } else if (result.data?.content) {
         processedResult.data = result.data.content;
         processedResult.content = result.data.content;
+        parseAndDisplayData(processedResult.data, 'xml');
       } else if (result.data?.xmlContent) {
         processedResult.data = result.data.xmlContent;
         processedResult.xmlContent = result.data.xmlContent;
+        parseAndDisplayData(processedResult.data, 'xml');
       } else {
         processedResult.data = result;
-      }
-
-      // XML verilerini parse et
-      if (processedResult.data) {
         parseAndDisplayData(processedResult.data, 'xml');
       }
       
@@ -206,9 +292,116 @@ export default function AkaryakitSatis() {
   };
 
   // XML verilerini parse et ve görüntüle
-  const parseAndDisplayData = (content: string, fileType: string) => {
+  const parseAndDisplayData = (content: any, fileType: string) => {
     try {
-      if (fileType === 'xml') {
+      if (fileType === 'parsed') {
+        // Parse edilmiş veri formatını işle
+        console.log('🔍 Parse edilmiş veri işleniyor:', content);
+        
+        // Station bilgilerini al
+        const stationElement = content.elements.find((el: any) => el.element === 'station');
+        const stationInfo = stationElement ? {
+          code: stationElement.attributes.code || '',
+          name: stationElement.attributes.name || '',
+          companyCode: stationElement.attributes.companycode || ''
+        } : {};
+
+        // Sale verilerini al
+        const sales = content.elements
+          .filter((el: any) => el.element === 'sale')
+          .map((sale: any) => ({
+            tarih: sale.attributes.tarih || '',
+            saat: sale.attributes.saat || '',
+            filo: sale.attributes.filo || '',
+            filoKodu: sale.attributes.filokodu || '',
+            plaka: sale.attributes.plaka || '',
+            urun: sale.attributes.urun || '',
+            litre: parseFloat(sale.attributes.litre || '0'),
+            tutar: parseFloat(sale.attributes.tutar || '0'),
+            birimFiyat: parseFloat(sale.attributes.birimfiyat || '0'),
+            tabanca: sale.attributes.tabanca || '',
+            pompa: sale.attributes.pompa || '',
+            rfID: sale.attributes.rfid || '',
+            km: sale.attributes.km || '',
+            plaka2: sale.attributes.plaka2 || '',
+            ykFisNo: sale.attributes.ykfisno || ''
+          }));
+
+        console.log('📊 Parse edilmiş satış verileri:', sales);
+        
+        // Satış özeti hesapla
+        const salesSummary = {
+          toplamSatis: sales.length,
+          toplamLitre: sales.reduce((sum: number, sale: any) => sum + sale.litre, 0),
+          toplamTutar: sales.reduce((sum: number, sale: any) => sum + sale.tutar, 0)
+        };
+
+        // Ürün bazlı özet
+        const productSummary = sales.reduce((acc: any, sale: any) => {
+          if (!acc[sale.urun]) {
+            acc[sale.urun] = { litre: 0, tutar: 0, adet: 0 };
+          }
+          acc[sale.urun].litre += sale.litre;
+          acc[sale.urun].tutar += sale.tutar;
+          acc[sale.urun].adet += 1;
+          return acc;
+        }, {} as any);
+
+        // Filo bazlı özet - en çok tutar olana göre sırala ve 6 adet ile sınırla
+        const fleetSummary = sales.reduce((acc: any, sale: any) => {
+          if (!acc[sale.filo]) {
+            acc[sale.filo] = { litre: 0, tutar: 0, adet: 0 };
+          }
+          acc[sale.filo].litre += sale.litre;
+          acc[sale.filo].tutar += sale.tutar;
+          acc[sale.filo].adet += 1;
+          return acc;
+        }, {} as any);
+
+        // Filo özetini en çok tutar olana göre sırala ve 6 adet ile sınırla
+        const sortedFleetSummary = Object.entries(fleetSummary)
+          .sort(([, a]: [string, any], [, b]: [string, any]) => b.tutar - a.tutar)
+          .slice(0, 6)
+          .reduce((acc: any, [key, value]: [string, any]) => {
+            acc[key] = value;
+            return acc;
+          }, {} as any);
+
+        setParsedData({
+          stationInfo,
+          sales,
+          salesSummary,
+          productSummary,
+          fleetSummary: sortedFleetSummary,
+          rawRows: sales.map((sale: any, index: number) => ({
+            'Sıra': index + 1,
+            'Tarih': sale.tarih,
+            'Saat': sale.saat,
+            'Filo': sale.filo,
+            'Filo Kodu': sale.filoKodu,
+            'Plaka': sale.plaka,
+            'Ürün': sale.urun,
+            'Litre': sale.litre.toFixed(2),
+            'Tutar': formatCurrency(sale.tutar),
+            'Birim Fiyat': formatCurrency(sale.birimFiyat),
+            'Tabanca': sale.tabanca,
+            'Pompa': sale.pompa,
+            'RFID': sale.rfID,
+            'KM': sale.km,
+            'Plaka 2': sale.plaka2,
+            'YK Fiş No': sale.ykFisNo
+          }))
+        });
+
+        // Satış özeti bölümüne scroll
+        setTimeout(() => {
+          const element = document.getElementById('satis-ozeti');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
+
+      } else if (fileType === 'xml') {
         // ASIS XML formatını parse et
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(content, 'text/xml');
@@ -244,8 +437,7 @@ export default function AkaryakitSatis() {
         const salesSummary = {
           toplamSatis: sales.length,
           toplamLitre: sales.reduce((sum, sale) => sum + sale.litre, 0),
-          toplamTutar: sales.reduce((sum, sale) => sum + sale.tutar, 0),
-          ortalamaBirimFiyat: sales.length > 0 ? sales.reduce((sum, sale) => sum + sale.birimFiyat, 0) / sales.length : 0
+          toplamTutar: sales.reduce((sum, sale) => sum + sale.tutar, 0)
         };
 
         // Ürün bazlı özet
@@ -259,7 +451,7 @@ export default function AkaryakitSatis() {
           return acc;
         }, {} as any);
 
-        // Filo bazlı özet
+        // Filo bazlı özet - en çok tutar olana göre sırala ve 6 adet ile sınırla
         const fleetSummary = sales.reduce((acc, sale) => {
           if (!acc[sale.filo]) {
             acc[sale.filo] = { litre: 0, tutar: 0, adet: 0 };
@@ -270,12 +462,21 @@ export default function AkaryakitSatis() {
           return acc;
         }, {} as any);
 
+        // Filo özetini en çok tutar olana göre sırala ve 6 adet ile sınırla
+        const sortedFleetSummary = Object.entries(fleetSummary)
+          .sort(([, a]: [string, any], [, b]: [string, any]) => b.tutar - a.tutar)
+          .slice(0, 6)
+          .reduce((acc: any, [key, value]: [string, any]) => {
+            acc[key] = value;
+            return acc;
+          }, {} as any);
+
         setParsedData({
           stationInfo,
           sales,
           salesSummary,
           productSummary,
-          fleetSummary,
+          fleetSummary: sortedFleetSummary,
           rawRows: sales.map((sale, index) => ({
             'Sıra': index + 1,
             'Tarih': sale.tarih,
@@ -285,8 +486,8 @@ export default function AkaryakitSatis() {
             'Plaka': sale.plaka,
             'Ürün': sale.urun,
             'Litre': sale.litre.toFixed(2),
-            'Tutar': sale.tutar.toFixed(2),
-            'Birim Fiyat': sale.birimFiyat.toFixed(2),
+            'Tutar': formatCurrency(sale.tutar),
+            'Birim Fiyat': formatCurrency(sale.birimFiyat),
             'Tabanca': sale.tabanca,
             'Pompa': sale.pompa,
             'RFID': sale.rfID,
@@ -338,7 +539,7 @@ export default function AkaryakitSatis() {
     doc.setFontSize(10);
     doc.text(`Toplam Satış: ${parsedData.salesSummary.toplamSatis}`, 14, 65);
     doc.text(`Toplam Litre: ${parsedData.salesSummary.toplamLitre.toFixed(2)}`, 14, 72);
-    doc.text(`Toplam Tutar: ${parsedData.salesSummary.toplamTutar.toFixed(2)} TL`, 14, 79);
+    doc.text(`Toplam Tutar: ${formatCurrency(parsedData.salesSummary.toplamTutar)}`, 14, 79);
     
     // Tablo
     const tableData = parsedData.rawRows.map((row: any) => [
@@ -617,7 +818,7 @@ export default function AkaryakitSatis() {
                       📊 Satış Özeti
                     </h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                       <div className="bg-white rounded-lg p-4 border border-green-200">
                         <div className="text-sm text-gray-600">Toplam Satış</div>
                         <div className="text-2xl font-bold text-green-600">{parsedData.salesSummary.toplamSatis}</div>
@@ -628,11 +829,7 @@ export default function AkaryakitSatis() {
                       </div>
                       <div className="bg-white rounded-lg p-4 border border-purple-200">
                         <div className="text-sm text-gray-600">Toplam Tutar</div>
-                        <div className="text-2xl font-bold text-purple-600">{parsedData.salesSummary.toplamTutar.toFixed(2)} TL</div>
-                      </div>
-                      <div className="bg-white rounded-lg p-4 border border-orange-200">
-                        <div className="text-sm text-gray-600">Ortalama Birim Fiyat</div>
-                        <div className="text-2xl font-bold text-orange-600">{parsedData.salesSummary.ortalamaBirimFiyat.toFixed(2)} TL</div>
+                        <div className="text-2xl font-bold text-purple-600">{formatCurrency(parsedData.salesSummary.toplamTutar)}</div>
                       </div>
                     </div>
 
@@ -654,7 +851,7 @@ export default function AkaryakitSatis() {
                               </div>
                               <div className="flex justify-between">
                                 <span>Tutar:</span>
-                                <span className="font-medium">{data.tutar.toFixed(2)} TL</span>
+                                <span className="font-medium">{formatCurrency(data.tutar)}</span>
                               </div>
                             </div>
                           </div>
@@ -680,7 +877,7 @@ export default function AkaryakitSatis() {
                               </div>
                               <div className="flex justify-between">
                                 <span>Tutar:</span>
-                                <span className="font-medium">{data.tutar.toFixed(2)} TL</span>
+                                <span className="font-medium">{formatCurrency(data.tutar)}</span>
                               </div>
                             </div>
                           </div>

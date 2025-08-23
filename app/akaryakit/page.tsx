@@ -56,7 +56,7 @@ export default function AkaryakitPage() {
   const [filePath, setFilePath] = useState<string>('');
   const [isReading, setIsReading] = useState<boolean>(false);
   const [result, setResult] = useState<FileReadResult | null>(null);
-  const [companyRef, setCompanyRef] = useState<string>('1');
+  const [companyRef, setCompanyRef] = useState<string>('');
   const [showFileInput, setShowFileInput] = useState<boolean>(true);
   const [selectedFileType, setSelectedFileType] = useState<string>('xml');
   const [parsedData, setParsedData] = useState<{
@@ -80,6 +80,16 @@ export default function AkaryakitPage() {
   const [failedAnimationData, setFailedAnimationData] = useState(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Para formatlaması için yardımcı fonksiyon
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
+  };
 
   // parsedData değiştiğinde scroll yap
   useEffect(() => {
@@ -111,7 +121,7 @@ export default function AkaryakitPage() {
   const loadCompanySettings = async () => {
     try {
       setIsLoadingSettings(true);
-      console.log('🔍 Şirket akaryakıt ayarları yükleniyor...');
+      console.log('🔍 Akaryakıt Vardiya - Şirket ayarları yükleniyor... Company Ref:', companyRef);
 
       const response = await fetch(`https://api.btrapor.com/akaryakit/by-company/${companyRef}`);
       
@@ -138,10 +148,79 @@ export default function AkaryakitPage() {
     }
   };
 
-  // Sayfa yüklendiğinde şirket ayarlarını yükle
+  // Sayfa yüklendiğinde localStorage'dan company ref'i al
   useEffect(() => {
-    console.log('🔍 Sayfa yüklendi, şirket ayarları yükleniyor...');
-    loadCompanySettings();
+    const initializeCompanyRef = async () => {
+      const storedCompanyRef = localStorage.getItem('companyRef');
+      if (storedCompanyRef) {
+        console.log('📋 LocalStorage\'dan company ref alındı:', storedCompanyRef);
+        setCompanyRef(storedCompanyRef);
+      } else {
+        console.log('⚠️ LocalStorage\'da company ref bulunamadı, API\'den alınıyor...');
+        // Company ref yoksa API'den al ve sayfayı yenile
+        const success = await fetchCompanyRefFromAPI();
+        if (success) {
+          console.log('✅ Company ref API\'den alındı, sayfa yenileniyor...');
+          // Kısa bir gecikme sonrası sayfayı yenile ki yeni company ref ile çalışabilsin
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          console.log('❌ Company ref alınamadı, login sayfasına yönlendiriliyor...');
+          // Company ref alınamazsa login sayfasına yönlendir
+          window.location.href = '/login';
+        }
+      }
+    };
+
+    initializeCompanyRef();
+  }, []);
+
+  // API'den company ref alma fonksiyonu
+  const fetchCompanyRefFromAPI = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        console.log('❌ User ID bulunamadı, company ref alınamadı');
+        return false;
+      }
+
+      console.log('🔄 API\'den company ref alınıyor...');
+      const response = await fetch(`https://api.btrapor.com/user/${userId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'success' && data.user && data.user.company_ref) {
+          console.log('✅ API\'den company ref alındı:', data.user.company_ref);
+          localStorage.setItem('companyRef', data.user.company_ref);
+          setCompanyRef(data.user.company_ref);
+          
+          // Diğer kullanıcı bilgilerini de güncelle
+          if (data.user.name) localStorage.setItem('userName', data.user.name);
+          if (data.user.role) localStorage.setItem('userRole', data.user.role);
+          if (data.user.company_name) localStorage.setItem('companyName', data.user.company_name);
+          
+          return true;
+        } else {
+          console.log('❌ API\'den company ref alınamadı');
+          return false;
+        }
+      } else {
+        console.log('❌ API\'den company ref alınamadı, HTTP hatası:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Company ref alma hatası:', error);
+      return false;
+    }
+  };
+
+  // Company ref değiştiğinde şirket ayarlarını yükle
+  useEffect(() => {
+    if (companyRef) {
+      console.log('🔍 Akaryakıt Vardiya - Company ref değişti:', companyRef);
+      loadCompanySettings();
+    }
   }, [companyRef]);
 
   // Animasyonları yükle
@@ -403,8 +482,8 @@ export default function AkaryakitPage() {
                   PLAKA: plaka,
                   YAKIT: yakit,
                   LITRE: litreStr,
-                  FYT: fytStr,
-                  TUTAR: tutarStr,
+                  FYT: formatCurrency(parseFloat(fytStr) || 0),
+                  TUTAR: formatCurrency(parseFloat(tutarStr) || 0),
                   TABANCA: tabanca,
                   POMPA: pompa,
                   FISNO: fisNo,
@@ -513,8 +592,8 @@ export default function AkaryakitPage() {
                     'PLAKA/POMPACI': ecrPlate || plate,
                     YAKIT: fuelTypeName,
                     LITRE: volume.toFixed(2),
-                    FYT: price.toFixed(2),
-                    TUTAR: totalAmount.toFixed(2),
+                    FYT: formatCurrency(price),
+                    TUTAR: formatCurrency(totalAmount),
                     TABANCA: nozzleNr,
                     POMPA: pumpNr,
                     'FIS NO': receiptNr,
@@ -663,8 +742,8 @@ export default function AkaryakitPage() {
                   'PLAKA/POMPACI': plate,
                   YAKIT: fuelTypeRaw,
                   LITRE: volume.toFixed(2),
-                  FYT: unitPrice.toFixed(2),
-                  TUTAR: amount.toFixed(2),
+                  FYT: formatCurrency(unitPrice),
+                  TUTAR: formatCurrency(amount),
                   TABANCA: nozzleStr,
                   POMPA: pumpStr,
                   'FIS NO': receiptStr
@@ -803,8 +882,8 @@ export default function AkaryakitPage() {
                   PLAKA: 'BILINMEYEN',
                   YAKIT: fuelType,
                   LITRE: volume.toFixed(2),
-                  FYT: price.toFixed(2),
-                  TUTAR: amount.toFixed(2),
+                  FYT: formatCurrency(price),
+                  TUTAR: formatCurrency(amount),
                   TABANCA: '1',
                   POMPA: '1',
                   'FIS NO': (index + 1).toString()
