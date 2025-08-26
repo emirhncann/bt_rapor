@@ -129,19 +129,38 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     return iconComponents[iconName] || iconComponents['folder'];
   };
 
-  // Kategori için ikon belirle (eski kategoriler için fallback)
+  // Kategori için ikon belirle 
   const getCategoryIcon = (categoryName: string, reports: ReportWithAccess[]) => {
-    // Kategori içindeki ilk raporun ikonunu kullan, yoksa kategori adına göre belirle
-    const firstReport = reports[0];
-    if (firstReport?.icon) return firstReport.icon;
+    // Kategori içindeki raporların ikonlarına bakarak en uygun ikonu belirle
+    const reportIcons = reports.map(report => report.icon).filter(Boolean);
     
-    // Fallback için eski sistemdeki kategori ikonları
+    // Eğer tüm raporlar aynı ikonu kullanıyorsa, o ikonu kullan
+    if (reportIcons.length > 0) {
+      const iconFrequency: {[key: string]: number} = {};
+      reportIcons.forEach(icon => {
+        iconFrequency[icon] = (iconFrequency[icon] || 0) + 1;
+      });
+      
+      // En çok kullanılan ikonu bul
+      const mostUsedIcon = Object.keys(iconFrequency).reduce((a, b) => 
+        iconFrequency[a] > iconFrequency[b] ? a : b
+      );
+      
+      if (mostUsedIcon && mostUsedIcon !== 'folder') {
+        return mostUsedIcon;
+      }
+    }
+    
+    // API'den ikon bilgisi yoksa kategori adına göre belirle
     switch (categoryName) {
       case 'Finansal Raporlar': return 'calculator';
       case 'Satış Raporları': return 'credit-card';
       case 'Stok Raporları': return 'package';
       case 'Müşteri Raporları': return 'users';
       case 'Analiz Raporları': return 'bar-chart';
+      case 'Ciro Raporları': return 'chart-line';
+      case 'Cari Raporları': return 'users';
+      case 'Envanter Raporları': return 'package';
       default: return 'folder';
     }
   };
@@ -260,82 +279,20 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             </div>
           )}
 
-          {/* Ayarlar ve Test */}
+          {/* Sistem Araçları - API'den gelmeyen sabit linkler */}
           <div className="border-t border-gray-200 pt-4 mt-4 space-y-2">
-            
-            {/* Fatura Kontrol */}
-            <a
-              href="/fatura-kontrol"
-              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg group"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              <span className="ml-3">🔍 Fatura Kontrol</span>
-            </a>
-            
             {/* Test API - Sadece development'ta göster */}
             {process.env.NODE_ENV === 'development' && (
-              <>
-                <a
-                  href="/test-api"
-                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg group"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  <span className="ml-3">API Test</span>
-                </a>
-
-              </>
+              <a
+                href="/test-api"
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg group"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span className="ml-3">API Test</span>
+              </a>
             )}
-            
-            {/* Envanter Raporu - Test için eklenmiş */}
-            <a
-              href="/envanter-raporu"
-              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-green-600 hover:bg-green-50 rounded-lg group"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-              <span className="ml-3">📦 Envanter Raporu</span>
-            </a>
-            
-            {/* Akaryakıt Modülü - Test Raporu */}
-            <a
-              href="/akaryakit-modulu"
-              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-lg group transition-colors duration-200"
-              title="Akaryakıt istasyonu tank durumu, pompa verileri ve satış analizi"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="ml-3">⛽ Akaryakıt Modülü</span>
-            </a>
-            
-            {/* Hareket Görmeyen Cariler */}
-            <a
-              href="/hareket-gormeyen-cariler"
-              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600 hover:bg-purple-50 rounded-lg group transition-colors duration-200"
-              title="Belirli bir süre hareket görmeyen cari hesapları listeler"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="ml-3">⏰ Hareket Görmeyen Cariler</span>
-            </a>
-            
-            {/* En Çok / En Az Satılan Malzemeler */}
-            <a
-              href="/en-cok-satilan-malzemeler"
-              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg group transition-colors duration-200"
-              title="Seçilen tarih aralığında en çok veya en az satılan ürünleri miktarsal veya tutarsal olarak analiz eder"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              <span className="ml-3">📊 En Çok / En Az Satılan Malzemeler</span>
-            </a>
             
             <a
               href="/ayarlar"

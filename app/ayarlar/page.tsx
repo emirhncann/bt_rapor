@@ -20,6 +20,14 @@ export default function Settings() {
   const [userToDelete, setUserToDelete] = useState<{id: number, name: string} | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   
+  // Parola koruması için state'ler
+  const [databasePassword, setDatabasePassword] = useState('');
+  const [systemPassword, setSystemPassword] = useState('');
+  const [isDatabaseAuthenticated, setIsDatabaseAuthenticated] = useState(false);
+  const [isSystemAuthenticated, setIsSystemAuthenticated] = useState(false);
+  const [showDatabasePasswordForm, setShowDatabasePasswordForm] = useState(false);
+  const [showSystemPasswordForm, setShowSystemPasswordForm] = useState(false);
+  
   // Akaryakıt modülü ayarları (dinamik liste)
   type FuelSetting = {
     id: string;
@@ -495,6 +503,47 @@ export default function Settings() {
     }));
   };
 
+  // Veritabanı ayarları parola doğrulama
+  const handleDatabasePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (databasePassword === 'Ozt129103') {
+      setIsDatabaseAuthenticated(true);
+      setShowDatabasePasswordForm(false);
+      setDatabasePassword('');
+    } else {
+      alert('Yanlış parola!');
+      setDatabasePassword('');
+    }
+  };
+
+  // Sistem ayarları parola doğrulama
+  const handleSystemPasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (systemPassword === 'Ozt129103') {
+      setIsSystemAuthenticated(true);
+      setShowSystemPasswordForm(false);
+      setSystemPassword('');
+    } else {
+      alert('Yanlış parola!');
+      setSystemPassword('');
+    }
+  };
+
+  // Tab değiştiğinde parolaları sıfırla
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    if (tabId !== 'database') {
+      setIsDatabaseAuthenticated(false);
+      setShowDatabasePasswordForm(false);
+      setDatabasePassword('');
+    }
+    if (tabId !== 'system') {
+      setIsSystemAuthenticated(false);
+      setShowSystemPasswordForm(false);
+      setSystemPassword('');
+    }
+  };
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -871,7 +920,7 @@ export default function Settings() {
           <div className="block md:hidden border-b border-gray-200">
             <select
               value={activeTab}
-              onChange={(e) => setActiveTab(e.target.value)}
+              onChange={(e) => handleTabChange(e.target.value)}
               className="w-full px-4 py-3 text-sm font-medium text-gray-700 bg-white border-0 focus:outline-none focus:ring-0"
             >
               {tabs.map((tab) => {
@@ -897,7 +946,7 @@ export default function Settings() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => handleTabChange(tab.id)}
                     className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                       activeTab === tab.id
                         ? 'border-red-500 text-red-600'
@@ -972,8 +1021,56 @@ export default function Settings() {
             {/* Veritabanı Tab */}
             {activeTab === 'database' && userRole === 'admin' && (
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Veritabanı & Sistem Ayarları</h3>
-                <p className="text-gray-600 text-sm mb-6">Sistem bağlantı ayarları ve firma bazlı veritabanı konfigürasyonları</p>
+                {!isDatabaseAuthenticated ? (
+                  <div className="max-w-md mx-auto">
+                    <div className="bg-white p-8 rounded-lg border-2 border-red-200">
+                      <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">🔒 Veritabanı Ayarları</h3>
+                        <p className="text-gray-600">Bu bölüme erişmek için parola gerekli</p>
+                      </div>
+                      
+                      <form onSubmit={handleDatabasePasswordSubmit} className="space-y-4">
+                        <div>
+                          <label htmlFor="databasePassword" className="block text-sm font-medium text-gray-700 mb-2">
+                            Parola
+                          </label>
+                          <input
+                            type="password"
+                            id="databasePassword"
+                            value={databasePassword}
+                            onChange={(e) => setDatabasePassword(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                            placeholder="Parolayı girin"
+                            required
+                          />
+                        </div>
+                        
+                        <button
+                          type="submit"
+                          className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition duration-200"
+                        >
+                          Giriş Yap
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-medium text-gray-900">Veritabanı & Sistem Ayarları</h3>
+                      <button
+                        onClick={() => setIsDatabaseAuthenticated(false)}
+                        className="text-sm text-red-600 hover:text-red-800 underline"
+                      >
+                        Çıkış Yap
+                      </button>
+                    </div>
+                    <p className="text-gray-600 text-sm mb-6">Sistem bağlantı ayarları ve firma bazlı veritabanı konfigürasyonları</p>
                 
                 <form onSubmit={handleDatabaseSave} className="space-y-6">
                   {/* Market Modülü Checkbox */}
@@ -1405,8 +1502,9 @@ export default function Settings() {
                       </button>
                     </div>
                   </div>
+                </div>
+                )}
               </div>
-              
             )}
 
             {/* Kullanıcı Yönetimi Tab */}
@@ -1731,8 +1829,56 @@ export default function Settings() {
             {/* Sistem Tab */}
             {activeTab === 'system' && userRole === 'admin' && (
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Sistem Bilgileri</h3>
-                <div className="space-y-6">
+                {!isSystemAuthenticated ? (
+                  <div className="max-w-md mx-auto">
+                    <div className="bg-white p-8 rounded-lg border-2 border-blue-200">
+                      <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">🔒 Sistem Ayarları</h3>
+                        <p className="text-gray-600">Bu bölüme erişmek için parola gerekli</p>
+                      </div>
+                      
+                      <form onSubmit={handleSystemPasswordSubmit} className="space-y-4">
+                        <div>
+                          <label htmlFor="systemPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                            Parola
+                          </label>
+                          <input
+                            type="password"
+                            id="systemPassword"
+                            value={systemPassword}
+                            onChange={(e) => setSystemPassword(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Parolayı girin"
+                            required
+                          />
+                        </div>
+                        
+                        <button
+                          type="submit"
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-200"
+                        >
+                          Giriş Yap
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-medium text-gray-900">Sistem Bilgileri</h3>
+                      <button
+                        onClick={() => setIsSystemAuthenticated(false)}
+                        className="text-sm text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Çıkış Yap
+                      </button>
+                    </div>
+                    <div className="space-y-6">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="font-medium text-gray-900 mb-2">Sistem Durumu</h4>
                     <p className="text-gray-600 text-sm mb-3">
@@ -1768,7 +1914,9 @@ export default function Settings() {
                       </div>
                     </div>
                   </div>
-                </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1797,7 +1945,7 @@ export default function Settings() {
             
             <div className="mb-6">
               <p className="text-gray-700">
-                <strong>{userToDelete.name}</strong> adlı kullanıcıyı silmek istediğinizden emin misiniz?
+                <strong>{userToDelete?.name}</strong> adlı kullanıcıyı silmek istediğinizden emin misiniz?
               </p>
             </div>
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import DashboardLayout from '../components/DashboardLayout';
 import { sendSecureProxyRequest } from '../utils/api';
+import { getCurrentUser } from '../utils/simple-permissions';
 import * as XLSX from 'xlsx';
 
 export default function ExcelCompare() {
@@ -603,6 +604,9 @@ export default function ExcelCompare() {
     }
 
     try {
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
       // Yazdırma için HTML oluştur (PDF'e optimize edilmiş)
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
@@ -840,7 +844,7 @@ export default function ExcelCompare() {
           ${missingInvoicesHTML}
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Eksik faturalar LOGO ERP sisteminde bulunamayan faturalardır. Tutarsız faturalar LOGO'da mevcut ancak tutar veya KDV değerleri farklı olan faturalardır. 
             Tüm tutarlar ilgili para birimi cinsinden gösterilmiştir.
           </div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { getCurrentUser } from '../../utils/simple-permissions';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -100,6 +101,10 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
 
   const exportToPDF = () => {
     try {
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+      
       // Toplam hesaplamalar
       const totals = filteredData.reduce((acc, item) => ({
         nakitSatis: acc.nakitSatis + safeParseFloat(item['NAKİT SATIŞ']),
@@ -297,7 +302,7 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
           </table>
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Tüm tutarlar Türk Lirası (₺) cinsindendir.
           </div>
           

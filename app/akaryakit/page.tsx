@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { encryptPayloadSecure } from '../utils/api';
+import { getCurrentUser } from '../utils/simple-permissions';
 import Lottie from 'lottie-react';
 
 interface FileReadResult {
@@ -1182,6 +1183,9 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
     }
 
     try {
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
       // Yazdırma için HTML oluştur (PDF'e optimize edilmiş)
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
@@ -1401,7 +1405,7 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
           ${movementsHTML}
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Akaryakıt satış verileri ${parsedData.movements[0]?.fileType || 'bilinmeyen'} formatından parse edilmiştir. 
             Tüm tutarlar Türk Lirası cinsinden, hacimler litre cinsinden gösterilmiştir.
           </div>

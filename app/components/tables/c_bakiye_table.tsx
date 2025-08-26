@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import Lottie from 'lottie-react';
 import { sendSecureProxyRequest } from '../../utils/api';
+import { getCurrentUser } from '../../utils/simple-permissions';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -444,6 +445,10 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
 
   const exportToPDF = () => {
     try {
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+      
       // Basit toplam hesaplaması (tüm formatları destekler)
       const totalCustomers = filteredData.length;
       const isMultiCurrency = filteredData.length > 0 && Object.keys(filteredData[0]).some(key => key.includes('_Borç') || key.includes('_Alacak') || key.includes('_Bakiye'));
@@ -694,7 +699,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           </table>
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Tüm tutarlar Türk Lirası (₺) cinsindendir. Bakiye gösterimi: (A) = Alacaklı, (B) = Borçlu.
           </div>
           
@@ -794,6 +799,10 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
   // Müşteri detayları PDF export fonksiyonu
   const exportClientDetailsToPDF = () => {
     try {
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+      
       if (!clientDetails || clientDetails.length === 0) {
         alert('Yazdırılacak müşteri hareketi bulunamadı.');
         return;
@@ -923,7 +932,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           </table>
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Müşteri: ${clientName} (${clientCode}). Toplam ${clientDetails.length} hareket listelenmektedir.
           </div>
           
@@ -955,6 +964,10 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
 
   const handlePrint = () => {
     try {
+      // Kullanıcı bilgisini al
+      const currentUser = getCurrentUser();
+      const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+      
       // Yazdırma için HTML oluştur
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
@@ -1068,7 +1081,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           </table>
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde BT Rapor sistemi tarafından otomatik olarak oluşturulmuştur. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${userName} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Tüm tutarlar Türk Lirası (₺) cinsindendir. Bakiye gösterimi: (A) = Alacaklı, (B) = Borçlu.
           </div>
         </body>

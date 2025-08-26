@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import Lottie from 'lottie-react';
+import { getCurrentUser } from '../../utils/simple-permissions';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -490,6 +491,10 @@ export default function EnvanterRaporuTable({
 
       // API isteğini arka planda yap
       try {
+        // Kullanıcı bilgisini al
+        const currentUser = getCurrentUser();
+        const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
+        
         const companyRef = localStorage.getItem('companyRef') || '';
         const connectionInfoStr = localStorage.getItem('connectionInfo') || '{}';
         const connectionInfo = JSON.parse(connectionInfoStr);
@@ -511,7 +516,7 @@ export default function EnvanterRaporuTable({
         fetch('/api/envanter-export', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ companyRef, firmaNo, donemNo, email, filters: apiFilters })
+          body: JSON.stringify({ companyRef, firmaNo, donemNo, email, userName, filters: apiFilters })
         }).then(async res => {
           if (res.ok) {
             console.log('✅ PDF raporu e-posta ile gönderildi.');
