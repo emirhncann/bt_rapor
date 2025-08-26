@@ -168,21 +168,41 @@ export default function AkaryakitSatis() {
       const month = dateParts[1];
       const year = dateParts[0]; // YYYY'den YY al
       
-      // Dosya yolu oluştur - RsDDMMYYYY-T1.xml formatında
-      const basePath = selectedCompany.online_path; // Sadece online_path kullan
-      const fileName = `Rs${day}${month}${year}-T1.xml`;
-      const filePath = `${basePath}${fileName}`;
-
-      console.log(`🔍 === AKARYAKIT SATIŞ DOSYA OKUMA (Deneme ${retryCount + 1}/${maxRetries + 1}) ===`);
-      console.log('📍 Company Ref:', companyRef);
-      console.log('📁 Dosya Yolu:', filePath);
-      console.log('📄 Dosya Tipi:', 'xml');
+      // Turpak için zip dosyası kontrolü
+      const isTurpak = selectedCompany.file_type?.toLowerCase() === 'turpak' || 
+                      selectedCompany.module_name?.toLowerCase().includes('turpak');
+      
+      let filePath: string;
+      let fileType: string;
+      
+      if (isTurpak) {
+        // Turpak için sadece zip dosyası formatı: YYYYMMDD01.zip
+        const zipFileName = `${year}${month}${day}01.zip`;
+        filePath = `${selectedCompany.online_path}${zipFileName}`;
+        fileType = 'turpak';
+        console.log(`🔍 === TURPAK ZIP DOSYA OKUMA (Deneme ${retryCount + 1}/${maxRetries + 1}) ===`);
+        console.log('📍 Company Ref:', companyRef);
+        console.log('📁 Zip Dosya Yolu:', filePath);
+        console.log('📄 Dosya Tipi:', 'turpak');
+        console.log('📋 Zip Dosya Adı:', zipFileName);
+        console.log('📋 Zip Dosya Tam Yolu:', filePath);
+        console.log('📋 Online Path:', selectedCompany.online_path);
+      } else {
+        // Normal XML formatı
+        const fileName = `Rs${day}${month}${year}-T1.xml`;
+        filePath = `${selectedCompany.online_path}${fileName}`;
+        fileType = 'xml';
+        console.log(`🔍 === AKARYAKIT SATIŞ DOSYA OKUMA (Deneme ${retryCount + 1}/${maxRetries + 1}) ===`);
+        console.log('📍 Company Ref:', companyRef);
+        console.log('📁 Dosya Yolu:', filePath);
+        console.log('📄 Dosya Tipi:', 'xml');
+      }
 
       // Module ve payload verilerini hazırla
       const moduleData = { id: 2, mode: 'offline' };
       const payloadData = { 
         filePath: filePath,
-        fileType: 'xml' 
+        fileType: fileType 
       };
 
       // Verileri şifrele
@@ -221,6 +241,10 @@ export default function AkaryakitSatis() {
 
       const result = await response.json();
       console.log('📥 Response Data:', result);
+      console.log('📋 Response Status:', result.status);
+      console.log('📋 Response Message:', result.message);
+      console.log('📋 Has Content:', !!result.content);
+      console.log('📋 Has Data:', !!result.data);
 
       // JSON response'da hata kontrolü
       if (result.status === 'error') {
@@ -240,18 +264,18 @@ export default function AkaryakitSatis() {
       } else if (result.content) {
         processedResult.data = result.content;
         processedResult.content = result.content;
-        parseAndDisplayData(processedResult.data, 'xml');
+        parseAndDisplayData(processedResult.data, isTurpak ? 'turpak' : 'xml');
       } else if (result.data?.content) {
         processedResult.data = result.data.content;
         processedResult.content = result.data.content;
-        parseAndDisplayData(processedResult.data, 'xml');
+        parseAndDisplayData(processedResult.data, isTurpak ? 'turpak' : 'xml');
       } else if (result.data?.xmlContent) {
         processedResult.data = result.data.xmlContent;
         processedResult.xmlContent = result.data.xmlContent;
-        parseAndDisplayData(processedResult.data, 'xml');
+        parseAndDisplayData(processedResult.data, isTurpak ? 'turpak' : 'xml');
       } else {
         processedResult.data = result;
-        parseAndDisplayData(processedResult.data, 'xml');
+        parseAndDisplayData(processedResult.data, isTurpak ? 'turpak' : 'xml');
       }
       
       console.log('✅ Dosya okuma başarılı:', processedResult);
@@ -261,6 +285,18 @@ export default function AkaryakitSatis() {
 
     } catch (error) {
       console.error(`❌ Dosya okuma hatası (Deneme ${retryCount + 1}/${maxRetries + 1}):`, error);
+      
+      // Turpak için özel hata mesajı
+      const isTurpak = selectedCompany.file_type?.toLowerCase() === 'turpak' || 
+                      selectedCompany.module_name?.toLowerCase().includes('turpak');
+      
+      if (isTurpak && error instanceof Error && 
+          (error.message.includes('Satış verisi bulunamadı') || error.message.includes('Dosya bulunamadı'))) {
+        
+        console.log('❌ Turpak Zip dosyası bulunamadı!');
+        console.log('📋 Aranan dosya formatı: YYYYMMDD01.zip');
+        console.log('📋 Örnek: 2025081001.zip');
+      }
       
       // Eğer hala deneme hakkı varsa, tekrar dene
       if (retryCount < maxRetries) {
@@ -505,6 +541,447 @@ export default function AkaryakitSatis() {
           }
         }, 300);
 
+      } else if (fileType === 'turpak') {
+        // Turpak zip dosyasından çıkarılan veriyi parse et
+        console.log('🚀 Turpak parse bloğuna girdi!');
+        console.log('🔍 Content tipi:', typeof content);
+        console.log('🔍 Content uzunluğu:', content?.length || 0);
+        console.log('🔍 Content önizleme:', typeof content === 'string' ? content.substring(0, 200) : content);
+        
+                    // Turpak formatı için özel parse işlemi
+        let sales: any[] = [];
+        let stationInfo: any = { code: '', name: 'Turpak İstasyonu', companyCode: '' }; // Define at higher scope
+        
+        // Eğer content bir string ise, XML olarak parse et
+        if (typeof content === 'string') {
+          try {
+            console.log('🔍 XML içeriği uzunluğu:', content.length);
+            console.log('🔍 XML içeriği başlangıcı:', content.substring(0, 200));
+            
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(content, 'text/xml');
+            
+            // XML parse hatası kontrolü
+            const parseError = xmlDoc.querySelector('parsererror');
+            if (parseError) {
+              console.error('❌ XML parse hatası:', parseError.textContent);
+              throw new Error('XML parse hatası');
+            }
+            
+                        // XML'deki tüm elementleri kontrol et
+            console.log('🔍 XML root element:', xmlDoc.documentElement?.tagName);
+            console.log('🔍 XML namespace:', xmlDoc.documentElement?.namespaceURI);
+            
+            // Namespace farkında olmaksızın elementleri bul
+            // XML'de namespace varsa local-name() kullanmak gerekir
+            const hasNamespace = xmlDoc.documentElement?.namespaceURI;
+            console.log('🔍 Namespace var mı:', !!hasNamespace);
+            
+            // Namespace ile element erişimi - getElementsByTagNameNS kullan
+            let globalParams = xmlDoc.getElementsByTagName('GlobalParams')[0];
+            if (!globalParams && hasNamespace) {
+              globalParams = xmlDoc.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'GlobalParams')[0];
+            }
+            if (!globalParams && hasNamespace) {
+              globalParams = xmlDoc.getElementsByTagNameNS('*', 'GlobalParams')[0];
+            }
+            
+            const unitPriceDecimal = globalParams ? parseInt(globalParams.getAttribute('UnitPriceDecimal') || '2') : 2;
+            const amountDecimal = globalParams ? parseInt(globalParams.getAttribute('AmountDecimal') || '2') : 2;
+            const totalDecimal = globalParams ? parseInt(globalParams.getAttribute('TotalDecimal') || '2') : 2;
+            
+            console.log('🔢 Decimal değerleri:', { unitPriceDecimal, amountDecimal, totalDecimal });
+            console.log('🔍 GlobalParams bulundu:', !!globalParams);
+            
+            // Station bilgilerini al
+            let stationElement = xmlDoc.getElementsByTagName('Station')[0];
+            if (!stationElement && hasNamespace) {
+              stationElement = xmlDoc.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'Station')[0];
+            }
+            if (!stationElement && hasNamespace) {
+              stationElement = xmlDoc.getElementsByTagNameNS('*', 'Station')[0];
+            }
+            
+            stationInfo = { // Assign to higher scope variable
+              code: globalParams ? (globalParams.getAttribute('StationCode') || '') : '',
+              name: stationElement ? (stationElement.getAttribute('Name') || 'Turpak İstasyonu') : 'Turpak İstasyonu',
+              companyCode: globalParams ? (globalParams.getAttribute('CompanyCode') || '') : ''
+            };
+            
+            console.log('🏢 Station bilgileri:', stationInfo);
+            
+            // Txns konteynerini bul ve içindeki Txn elementlerini al
+            let txnsContainer = xmlDoc.getElementsByTagName('Txns')[0];
+            if (!txnsContainer && hasNamespace) {
+              txnsContainer = xmlDoc.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'Txns')[0];
+            }
+            if (!txnsContainer && hasNamespace) {
+              txnsContainer = xmlDoc.getElementsByTagNameNS('*', 'Txns')[0];
+            }
+            console.log('🔍 Txns container bulundu:', !!txnsContainer);
+            
+            let txnElements = [];
+            if (txnsContainer) {
+              // Namespace ile Txn elementlerini bul
+              txnElements = Array.from(txnsContainer.getElementsByTagName('Txn'));
+              if (txnElements.length === 0 && hasNamespace) {
+                txnElements = Array.from(txnsContainer.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'Txn'));
+              }
+              if (txnElements.length === 0 && hasNamespace) {
+                txnElements = Array.from(txnsContainer.getElementsByTagNameNS('*', 'Txn'));
+              }
+            } else {
+              // Fallback: Doğrudan Txn elementlerini ara
+              txnElements = Array.from(xmlDoc.getElementsByTagName('Txn'));
+              if (txnElements.length === 0 && hasNamespace) {
+                txnElements = Array.from(xmlDoc.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'Txn'));
+              }
+              if (txnElements.length === 0 && hasNamespace) {
+                txnElements = Array.from(xmlDoc.getElementsByTagNameNS('*', 'Txn'));
+              }
+            }
+            
+            console.log('📊 Bulunan Txn elementleri:', txnElements.length);
+            
+            // Debug: Txn container ve elementlerini detaylı incele
+            console.log('🔍 Txns Container Debug:');
+            console.log('- Txns container bulundu:', !!txnsContainer);
+            if (txnsContainer) {
+              console.log('- Txns container innerHTML uzunluğu:', txnsContainer.innerHTML.length);
+              console.log('- Txns container children sayısı:', txnsContainer.children.length);
+              console.log('- Txns container children tag names:', Array.from(txnsContainer.children).map(child => child.tagName));
+            }
+            console.log('- Txn elements sayısı:', txnElements.length);
+            
+            // İlk Txn element'ini detaylı incele
+            if (txnElements.length > 0) {
+              const firstTxn = txnElements[0];
+              console.log('🔍 İlk Txn elementi:');
+              console.log('- Tag name:', firstTxn.tagName);
+              console.log('- Children sayısı:', firstTxn.children.length);
+              console.log('- Children tag names:', Array.from(firstTxn.children).map(child => child.tagName));
+              console.log('- innerHTML uzunluğu:', firstTxn.innerHTML.length);
+              console.log('- innerHTML örneği:', firstTxn.innerHTML.substring(0, 300));
+            }
+            
+            // Debug: Namespace URI'yi tam kontrol et
+            console.log('🔍 Document namespace URI:', xmlDoc.documentElement?.namespaceURI);
+            console.log('🔍 Trying different namespace approaches...');
+            
+            // Farklı yöntemlerle Txn arama denemeleri
+            const debug1 = xmlDoc.getElementsByTagName('Txn').length;
+            const debug2 = xmlDoc.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'Txn').length;
+            const debug3 = xmlDoc.getElementsByTagNameNS('*', 'Txn').length;
+            const debug4 = xmlDoc.getElementsByTagNameNS(null, 'Txn').length;
+            
+            console.log('🔍 getElementsByTagName("Txn"):', debug1);
+            console.log('🔍 getElementsByTagNameNS("http://tempuri.org/Sale.xsd", "Txn"):', debug2);
+            console.log('🔍 getElementsByTagNameNS("*", "Txn"):', debug3);
+            console.log('🔍 getElementsByTagNameNS(null, "Txn"):', debug4);
+            
+            // Eğer Txn bulunamazsa, tüm elementleri kontrol et
+            if (txnElements.length === 0) {
+              console.log('🔍 Tüm XML elementleri:', Array.from(xmlDoc.getElementsByTagName('*')).map(el => el.tagName));
+              console.log('🔍 Root element children:', Array.from(xmlDoc.documentElement.children).map(el => el.tagName));
+              
+              // Manuel olarak Txns konteynerini ara
+              const allElements = Array.from(xmlDoc.getElementsByTagName('*'));
+              const txnsElements = allElements.filter(el => el.tagName === 'Txns' || el.localName === 'Txns');
+              console.log('🔍 Manuel Txns arama:', txnsElements.length);
+              
+              if (txnsElements.length > 0) {
+                const manualTxnElements = Array.from(txnsElements[0].children).filter(child => 
+                  child.tagName === 'Txn' || child.localName === 'Txn'
+                );
+                console.log('🔍 Manuel Txn children:', manualTxnElements.length);
+                
+                if (manualTxnElements.length > 0) {
+                  txnElements = manualTxnElements as Element[];
+                  console.log('✅ Manuel yöntemle Txn elementleri bulundu:', txnElements.length);
+                }
+              }
+            }
+             
+             sales = txnElements.map((txn, index) => {
+               // Debug için ilk birkaç Txn'i detaylı incele
+               if (index < 3) {
+                 console.log(`🔍 Txn ${index} Debug:`);
+                 console.log('- Txn innerHTML:', txn.innerHTML.substring(0, 200));
+                 console.log('- Txn children:', Array.from(txn.children).map(child => child.tagName));
+               }
+
+               // TagDetails ve SaleDetails elementlerini al (namespace'e uygun)
+               let tagDetails = txn.getElementsByTagName('TagDetails')[0];
+               let saleDetails = txn.getElementsByTagName('SaleDetails')[0];
+               
+               // Namespace ile denemeler
+               if (!tagDetails && hasNamespace) {
+                 tagDetails = txn.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'TagDetails')[0];
+               }
+               if (!tagDetails && hasNamespace) {
+                 tagDetails = txn.getElementsByTagNameNS('*', 'TagDetails')[0];
+               }
+               if (!saleDetails && hasNamespace) {
+                 saleDetails = txn.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', 'SaleDetails')[0];
+               }
+               if (!saleDetails && hasNamespace) {
+                 saleDetails = txn.getElementsByTagNameNS('*', 'SaleDetails')[0];
+               }
+               
+               if (!saleDetails) {
+                 console.warn('⚠️ SaleDetails bulunamadı, Txn atlanıyor:', index);
+                 if (index < 3) {
+                   console.log('🔍 Bu Txn elementinde bulunan children:', Array.from(txn.children).map(child => child.tagName));
+                 }
+                 return null;
+               }
+               
+               // Debug için ilk birkaç SaleDetails'i incele
+               if (index < 3) {
+                 console.log(`🔍 SaleDetails ${index} attributeleri:`, Array.from(saleDetails.attributes).map(attr => `${attr.name}="${attr.value}"`));
+               }
+               
+               // Debug için ilk birkaç Txn'in içeriğini log et
+               if (index < 3) {
+                 console.log(`🔍 Txn ${index} elementleri:`, {
+                   tagDetails: !!tagDetails,
+                   saleDetails: !!saleDetails,
+                   tagDetailsInnerHTML: tagDetails ? tagDetails.innerHTML.substring(0, 200) : null,
+                   saleDetailsInnerHTML: saleDetails ? saleDetails.innerHTML.substring(0, 200) : null,
+                   tagDetailsAttributes: tagDetails ? {
+                     FleetCode: tagDetails.getAttribute('FleetCode'),
+                     FleetName: tagDetails.getAttribute('FleetName'),
+                     Plate: tagDetails.getAttribute('Plate')
+                   } : null,
+                   saleDetailsAttributes: saleDetails ? {
+                     DateTime: saleDetails.getAttribute('DateTime'),
+                     FuelType: saleDetails.getAttribute('FuelType'),
+                     UnitPrice: saleDetails.getAttribute('UnitPrice'),
+                     Amount: saleDetails.getAttribute('Amount'),
+                     Total: saleDetails.getAttribute('Total')
+                   } : null
+                 });
+               }
+               
+               // Attribute değerlerini güvenli bir şekilde al
+               const getSaleValue = (element: Element, attrName: string) => {
+                 // Önce exact match dene
+                 let value = element.getAttribute(attrName);
+                 if (value) return value;
+                 
+                 // Sonra child element dene
+                 const childElement = element.getElementsByTagName(attrName)[0] ||
+                                    element.getElementsByTagNameNS('http://tempuri.org/Sale.xsd', attrName)[0] ||
+                                    element.getElementsByTagNameNS('*', attrName)[0];
+                 return childElement ? childElement.textContent || '' : '';
+               };
+
+               // Decimal değerlerini kullanarak sayısal değerleri hesapla
+               const unitPriceRaw = parseInt(getSaleValue(saleDetails, 'UnitPrice') || '0');
+               const amountRaw = parseInt(getSaleValue(saleDetails, 'Amount') || '0');
+               const totalRaw = parseInt(getSaleValue(saleDetails, 'Total') || '0');
+               
+               const unitPrice = unitPriceRaw / Math.pow(10, unitPriceDecimal);
+               const amount = amountRaw / Math.pow(10, amountDecimal);
+               const total = totalRaw / Math.pow(10, totalDecimal);
+               
+               // DateTime'ı tarih ve saat olarak ayır
+               const dateTime = getSaleValue(saleDetails, 'DateTime');
+               let tarih = '';
+               let saat = '';
+               if (dateTime.length >= 14) {
+                 // Format: YYYYMMDDHHMMSS
+                 tarih = `${dateTime.substring(0, 4)}-${dateTime.substring(4, 6)}-${dateTime.substring(6, 8)}`;
+                 saat = `${dateTime.substring(8, 10)}:${dateTime.substring(10, 12)}:${dateTime.substring(12, 14)}`;
+               }
+               
+               // FuelType'ı ürün adına çevir
+               const fuelType = getSaleValue(saleDetails, 'FuelType');
+               let urun = '';
+               switch (fuelType) {
+                 case '4': urun = 'OPTIMUM KURSUNSUZ 95'; break;
+                 case '5': urun = 'LPG'; break;
+                 case '6': urun = 'MOTORIN'; break;
+                 case '8': urun = 'OPTIMUM MOTORIN'; break;
+                 default: urun = `Yakıt Tipi ${fuelType}`;
+               }
+               
+               // Debug için ilk satışın değerlerini göster
+               if (index === 0) {
+                 console.log('🔍 İlk satış raw değerleri:', {
+                   dateTime: dateTime,
+                   unitPriceRaw: unitPriceRaw,
+                   amountRaw: amountRaw,
+                   totalRaw: totalRaw,
+                   fuelType: fuelType,
+                   unitPrice: unitPrice,
+                   amount: amount,
+                   total: total
+                 });
+               }
+               
+               return {
+                 tarih: tarih,
+                 saat: saat,
+                 filo: tagDetails ? (getSaleValue(tagDetails, 'FleetName') || '').trim() : '',
+                 filoKodu: tagDetails ? getSaleValue(tagDetails, 'FleetCode') : '',
+                 plaka: tagDetails ? (getSaleValue(tagDetails, 'Plate') || '').trim() : '',
+                 urun: urun,
+                 litre: amount, // Amount genellikle litre değerini temsil eder
+                 tutar: total, // Total genellikle toplam tutarı temsil eder
+                 birimFiyat: unitPrice,
+                 tabanca: getSaleValue(saleDetails, 'NozzleNr'),
+                 pompa: getSaleValue(saleDetails, 'PumpNr'),
+                 rfID: tagDetails ? getSaleValue(tagDetails, 'TagNr') : '',
+                 km: tagDetails ? getSaleValue(tagDetails, 'Odometer') : '',
+                 plaka2: getSaleValue(saleDetails, 'ECRPlate'),
+                 ykFisNo: getSaleValue(saleDetails, 'ReceiptNr')
+               };
+             }).filter(sale => sale !== null); // null değerleri filtrele
+
+            console.log('📊 Turpak satış verileri parse edildi:', sales.length, 'kayıt');
+            console.log('📊 İlk 3 satış verisi örneği:', sales.slice(0, 3));
+            
+            // Debug için XML yapısını logla
+            console.log('🔍 XML Debug Bilgileri:');
+            console.log('- XML uzunluğu:', content.length);
+            console.log('- Namespace var mı:', !!hasNamespace);
+            console.log('- Root element:', xmlDoc.documentElement?.tagName);
+            
+            // İlk satış verisini detaylı göster
+            if (sales.length > 0) {
+              console.log('🔍 İlk satış verisi detay:', {
+                tarih: sales[0].tarih,
+                saat: sales[0].saat,
+                filo: sales[0].filo,
+                plaka: sales[0].plaka,
+                urun: sales[0].urun,
+                litre: sales[0].litre,
+                tutar: sales[0].tutar,
+                birimFiyat: sales[0].birimFiyat
+              });
+            }
+            
+          } catch (e) {
+            console.error('❌ Turpak XML parse hatası:', e);
+            // Fallback olarak eski formatı dene
+            try {
+              const parsedContent = JSON.parse(content);
+              if (parsedContent.sales || parsedContent.data) {
+                sales = parsedContent.sales || parsedContent.data || [];
+              }
+            } catch (jsonError) {
+              console.error('❌ JSON parse hatası da:', jsonError);
+              sales = [];
+            }
+          }
+        } else if (content.sales || content.data) {
+          // Content zaten bir obje ise
+          sales = content.sales || content.data || [];
+        }
+
+        console.log('📊 Turpak satış verileri:', sales);
+        console.log('📊 Sales array uzunluğu:', sales?.length || 0);
+        
+        // Eğer sales boşsa, detaylı debug bilgisi ver
+        if (!sales || sales.length === 0) {
+          console.error('❌ Sales verisi boş! Detaylı debug başlıyor...');
+          console.log('📄 Ham content tipi:', typeof content);
+          console.log('📄 Ham content uzunluğu:', content?.length || 0);
+          console.log('📄 Ham content başlangıcı:', typeof content === 'string' ? content.substring(0, 500) : content);
+          
+          // Turpak parse bloğuna geçip geçmediğini kontrol et
+          if (typeof content === 'string' && content.includes('<SaleData')) {
+            console.log('🔍 XML formatı tespit edildi ama parse edilemedi');
+          }
+        }
+
+        // Satış özeti hesapla
+        const salesSummary = {
+          toplamSatis: sales.length,
+          toplamLitre: sales.reduce((sum: number, sale: any) => sum + (sale.litre || 0), 0),
+          toplamTutar: sales.reduce((sum: number, sale: any) => sum + (sale.tutar || 0), 0)
+        };
+
+        // Ürün bazlı özet
+        const productSummary = sales.reduce((acc: any, sale: any) => {
+          const urun = sale.urun || 'Bilinmeyen Ürün';
+          if (!acc[urun]) {
+            acc[urun] = { litre: 0, tutar: 0, adet: 0 };
+          }
+          acc[urun].litre += sale.litre || 0;
+          acc[urun].tutar += sale.tutar || 0;
+          acc[urun].adet += 1;
+          return acc;
+        }, {} as any);
+
+        // Filo bazlı özet - en çok tutar olana göre sırala ve 6 adet ile sınırla
+        const fleetSummary = sales.reduce((acc: any, sale: any) => {
+          const filo = sale.filo || 'Bilinmeyen Filo';
+          if (!acc[filo]) {
+            acc[filo] = { litre: 0, tutar: 0, adet: 0 };
+          }
+          acc[filo].litre += sale.litre || 0;
+          acc[filo].tutar += sale.tutar || 0;
+          acc[filo].adet += 1;
+          return acc;
+        }, {} as any);
+
+        // Filo özetini en çok tutar olana göre sırala ve 6 adet ile sınırla
+        const sortedFleetSummary = Object.entries(fleetSummary)
+          .sort(([, a]: [string, any], [, b]: [string, any]) => b.tutar - a.tutar)
+          .slice(0, 6)
+          .reduce((acc: any, [key, value]: [string, any]) => {
+            acc[key] = value;
+            return acc;
+          }, {} as any);
+
+        // Turpak için station bilgileri parse bloğunda zaten tanımlandı
+        // Eğer stationInfo yoksa default değer kullan
+        const finalStationInfo = {
+          code: '000299', // XML'den alınan StationCode
+          name: 'Turpak İstasyonu',
+          companyCode: '7732' // XML'den alınan CompanyCode
+        };
+
+        console.log('🏢 Final Station bilgileri:', finalStationInfo);
+        console.log('🎯 setParsedData çağrılıyor, sales.length:', sales.length);
+
+        setParsedData({
+          stationInfo: finalStationInfo,
+          sales,
+          salesSummary,
+          productSummary,
+          fleetSummary: sortedFleetSummary,
+          rawRows: sales.map((sale: any, index: number) => ({
+            'Sıra': index + 1,
+            'Tarih': sale.tarih || '',
+            'Saat': sale.saat || '',
+            'Filo': sale.filo || '',
+            'Filo Kodu': sale.filoKodu || '',
+            'Plaka': sale.plaka || '',
+            'Ürün': sale.urun || '',
+            'Litre': (sale.litre || 0).toFixed(2),
+            'Tutar': formatCurrency(sale.tutar || 0),
+            'Birim Fiyat': formatCurrency(sale.birimFiyat || 0),
+            'Tabanca': sale.tabanca || '',
+            'Pompa': sale.pompa || '',
+            'RFID': sale.rfID || '',
+            'KM': sale.km || '',
+            'Plaka 2': sale.plaka2 || '',
+            'YK Fiş No': sale.ykFisNo || ''
+          }))
+        });
+
+        console.log('✅ setParsedData tamamlandı!');
+
+        // Satış özeti bölümüne scroll
+        setTimeout(() => {
+          const element = document.getElementById('satis-ozeti');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
       }
     } catch (error) {
       console.error('Veri parse hatası:', error);
@@ -672,8 +1149,17 @@ export default function AkaryakitSatis() {
                             <div className="text-xs text-gray-600">
                               <div className="mb-1">
                                 <span className="font-medium">Otomasyon Tipi:</span>
-                                <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded">
-                                  {setting.file_type?.toUpperCase() || 'XML'}
+                                <span className={`ml-1 px-2 py-0.5 rounded ${
+                                  (setting.file_type?.toLowerCase() === 'turpak' || 
+                                   setting.module_name?.toLowerCase().includes('turpak'))
+                                    ? 'bg-orange-100 text-orange-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {(setting.file_type?.toLowerCase() === 'turpak' || 
+                                    setting.module_name?.toLowerCase().includes('turpak'))
+                                    ? 'TURPAK (ZIP)'
+                                    : (setting.file_type?.toUpperCase() || 'XML')
+                                  }
                                 </span>
                               </div>
                             </div>
@@ -749,6 +1235,8 @@ export default function AkaryakitSatis() {
                           </div>
                         </div>
 
+
+
                         {/* Satış Verilerini Getir Butonu */}
                         <div className="text-center">
                                                      <button
@@ -759,14 +1247,24 @@ export default function AkaryakitSatis() {
                             {isReading ? (
                               <>
                                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                                <span>Satış Verileri Getiriliyor...</span>
+                                <span>
+                                  {(selectedCompany?.file_type?.toLowerCase() === 'turpak' || 
+                                    selectedCompany?.module_name?.toLowerCase().includes('turpak'))
+                                    ? 'Turpak Zip Dosyası İşleniyor...'
+                                    : 'Satış Verileri Getiriliyor...'
+                                  }
+                                </span>
                               </>
                             ) : (
                               <>
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                                 </svg>
-                                Satış Verilerini Getir
+                                {(selectedCompany?.file_type?.toLowerCase() === 'turpak' || 
+                                  selectedCompany?.module_name?.toLowerCase().includes('turpak'))
+                                  ? 'Turpak Zip Dosyasını Oku'
+                                  : 'Satış Verilerini Getir'
+                                }
                               </>
                             )}
                           </button>
@@ -886,6 +1384,8 @@ export default function AkaryakitSatis() {
                     </div>
                   </div>
                 </div>
+
+
 
                 {/* Ham Veriler */}
                 {parsedData.rawRows && parsedData.rawRows.length > 0 && (
