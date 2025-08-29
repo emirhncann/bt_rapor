@@ -19,6 +19,25 @@ function formatDateToYMD(date: string | Date): string {
   return `${d.getFullYear()}-${month}-${day}`;
 }
 
+// DD/MM/YYYY formatında tarih oluştur (görüntü için)
+function formatToDisplay(date: Date): string {
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(date.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+// DD/MM/YYYY formatını YYYY-MM-DD'ye çevir (SQL için)
+function convertDisplayToSQL(displayDate: string): string {
+  if (displayDate.includes('/')) {
+    const [dd, mm, yyyy] = displayDate.split('/');
+    if (dd && mm && yyyy && yyyy.length === 4) {
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
+  return displayDate;
+}
+
 // Şube seçenekleri dinamik olarak API'den gelecek
 
 export default function YemekKartiSatis() {
@@ -39,7 +58,9 @@ export default function YemekKartiSatis() {
   const [errorMessage, setErrorMessage] = useState('');
 
   // Rapor parametreleri
-  const [selectedDate, setSelectedDate] = useState(formatDateToYMD(new Date()));
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [datePreset, setDatePreset] = useState(''); // Hızlı tarih seçenekleri için
   const [selectedSubeler, setSelectedSubeler] = useState<number[]>([]); // Çoklu şube seçimi
   const [subeler, setSubeler] = useState<{value: number, label: string}[]>([]);
   const [loadingSubeler, setLoadingSubeler] = useState(false);
@@ -233,6 +254,58 @@ export default function YemekKartiSatis() {
     }, 5000);
   };
 
+  // Tarih preset'lerini ayarla
+  const setDatePresetRange = (preset: string) => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const date = today.getDate();
+
+    let start: Date;
+    let end: Date;
+
+    switch (preset) {
+      case 'today':
+        start = new Date(year, month, date, 0, 0, 0, 0);
+        end = new Date(year, month, date, 23, 59, 59, 999);
+        break;
+      case 'yesterday':
+        start = new Date(year, month, date - 1, 0, 0, 0, 0);
+        end = new Date(year, month, date - 1, 23, 59, 59, 999);
+        break;
+      case 'thisWeek':
+        const dayOfWeek = today.getDay();
+        const startOfWeek = date - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Pazartesi başlangıcı
+        start = new Date(year, month, startOfWeek, 0, 0, 0, 0);
+        end = new Date(year, month, startOfWeek + 6, 23, 59, 59, 999);
+        break;
+      case 'thisMonth':
+        start = new Date(year, month, 1, 0, 0, 0, 0);
+        end = new Date(year, month + 1, 0, 23, 59, 59, 999); // Ayın son günü
+        break;
+      case 'lastMonth':
+        start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+        end = new Date(year, month, 0, 23, 59, 59, 999); // Geçen ayın son günü
+        break;
+      default:
+        return;
+    }
+
+    const startDisplay = formatToDisplay(start);
+    const endDisplay = formatToDisplay(end);
+    
+    console.log(`${preset} seçildi:`, {
+      start: start.toDateString() + ' ' + start.toTimeString(),
+      end: end.toDateString() + ' ' + end.toTimeString(),
+      startDisplay,
+      endDisplay
+    });
+    
+    setStartDate(startDisplay);
+    setEndDate(endDisplay);
+    setDatePreset(preset);
+  };
+
   // Şubeleri yükle (diğer raporlar gibi direkt ENPOS'tan)
   const fetchSubeler = async () => {
     console.log('🚀 fetchSubeler çağrıldı');
@@ -367,32 +440,42 @@ export default function YemekKartiSatis() {
         return;
       }
 
-      console.log(`🔄 Tarih: ${selectedDate}, Şubeler: ${selectedSubeler.join(', ')} ile yemek kartı verileri çekiliyor...`);
+      console.log(`🔄 Tarih: ${startDate} - ${endDate}, Şubeler: ${selectedSubeler.join(', ')} ile yemek kartı verileri çekiliyor...`);
+      console.log(`📅 SQL Tarih Dönüşümü: ${convertDisplayToSQL(startDate)} - ${convertDisplayToSQL(endDate)}`);
 
       // ENPOS veritabanı için SQL sorgusu
       const sqlQuery = `
         SELECT DISTINCT
           B.BELGETARIH as Tarih,
           b.Sube_No as 'Şube No',
+          B.Belge_Alttipi as 'Belge Alt Tipi',
+          T.NAME as 'Fiş Tipi',
           RIGHT(D.NAME,LEN(D.NAME)-CHARINDEX('-',D.NAME)) as 'Şube',
-          K.Tus_No,
-          K.Info as 'Yemek Kartı',
+          O.Tus_No,
+          CASE O.Tus_No 
+            WHEN 0 THEN 'Nakit' 
+            ELSE K.Info 
+          END AS 'Yemek Kartı',
           CAST(SUM(O.TUTAR) AS decimal(18,2)) as Tutar
         FROM INTER_BOS..ODEME O
         JOIN INTER_BOS..BELGE B ON B.Belge_ID=O.Belge_ID
         LEFT JOIN INTER_BOS..[POS_KREDI] K ON O.Tus_No=K.Tus_No
-        LEFT JOIN GO3..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=9
+        JOIN GO3..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=9
+        LEFT JOIN INTER_BOS..[SERVER_TICKETFIRM] T ON B.Belge_AltTipi=T.FIRMNO
         WHERE B.Iptal=0 
-          AND O.Tus_No > 5 
-          AND BELGETARIH='${selectedDate} 00:00:00.000' 
+          AND b.Belge_Tipi='YMK'
+          AND CAST(B.BELGETARIH AS DATE) BETWEEN '${convertDisplayToSQL(startDate)}' AND '${convertDisplayToSQL(endDate)}'
           AND B.Sube_No IN (${selectedSubeler.join(',')})
         GROUP BY 
           B.BELGETARIH,
           b.Sube_No,
+          B.Belge_Alttipi,
+          T.NAME,
           D.NAME,
           K.Tus_No,
+          O.Tus_No,
           K.Info
-        ORDER BY B.BELGETARIH, b.Sube_No, K.Tus_No
+        ORDER BY B.BELGETARIH DESC
       `;
 
       console.log('🔍 Yemek Kartları SQL Sorgusu:', sqlQuery);
@@ -466,6 +549,208 @@ export default function YemekKartiSatis() {
     }
   };
 
+  // Uyumsuzluk kontrol fonksiyonu
+  const checkUyumsuzluk = (fisType: string, odemeYontemi: string): boolean => {
+    // Fiş tipi ile ödeme yöntemi uyumsuzluğu kontrolü
+    const uyumsuzluklar = [
+      // Nakit ödeme yöntemi olduğunda, fiş tipi de NAKIT olmalı
+      { fisType: 'SETCARD', odemeYontemi: 'Nakit' },
+      { fisType: 'SETCARD POS', odemeYontemi: 'Nakit' },
+      { fisType: 'MULTINET', odemeYontemi: 'Nakit' },
+      { fisType: 'MULTINET POS', odemeYontemi: 'Nakit' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'Nakit' },
+      { fisType: 'TOKENFLEX POS', odemeYontemi: 'Nakit' },
+      { fisType: 'SODEXO', odemeYontemi: 'Nakit' },
+      { fisType: 'SODEXO POS', odemeYontemi: 'Nakit' },
+      { fisType: 'TICKET', odemeYontemi: 'Nakit' },
+      { fisType: 'TICKET POS', odemeYontemi: 'Nakit' },
+      { fisType: 'METROPOL', odemeYontemi: 'Nakit' },
+      { fisType: 'METROPOL POS', odemeYontemi: 'Nakit' },
+      { fisType: 'IWALLET', odemeYontemi: 'Nakit' },
+      { fisType: 'IWALLET POS', odemeYontemi: 'Nakit' },
+      // Nakit fiş tipi olup kart ödemesi yapılanlar da uyumsuz
+      { fisType: 'NAKIT', odemeYontemi: 'MULTINET' },
+      { fisType: 'NAKIT', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'SETCARD' },
+      { fisType: 'NAKIT', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'NAKIT', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'SODEXO' },
+      { fisType: 'NAKIT', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'TICKET' },
+      { fisType: 'NAKIT', odemeYontemi: 'TICKET POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'METROPOL' },
+      { fisType: 'NAKIT', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'IWALLET' },
+      { fisType: 'NAKIT', odemeYontemi: 'IWALLET POS' },
+      // Farklı kart türleri arası uyumsuzluklar
+      { fisType: 'SODEXO', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'SODEXO', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'SETCARD' },
+      { fisType: 'SODEXO', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'MULTINET' },
+      { fisType: 'SODEXO', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'TICKET' },
+      { fisType: 'SODEXO', odemeYontemi: 'TICKET POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'METROPOL' },
+      { fisType: 'SODEXO', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'IWALLET' },
+      { fisType: 'SODEXO', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'SODEXO' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'SETCARD' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'MULTINET' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'TICKET' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'TICKET POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'METROPOL' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'IWALLET' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'SODEXO' },
+      { fisType: 'SETCARD', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'SETCARD', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'MULTINET' },
+      { fisType: 'SETCARD', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'TICKET' },
+      { fisType: 'SETCARD', odemeYontemi: 'TICKET POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'METROPOL' },
+      { fisType: 'SETCARD', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'IWALLET' },
+      { fisType: 'SETCARD', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'SODEXO' },
+      { fisType: 'MULTINET', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'MULTINET', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'SETCARD' },
+      { fisType: 'MULTINET', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'TICKET' },
+      { fisType: 'MULTINET', odemeYontemi: 'TICKET POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'METROPOL' },
+      { fisType: 'MULTINET', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'IWALLET' },
+      { fisType: 'MULTINET', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'TICKET', odemeYontemi: 'SODEXO' },
+      { fisType: 'TICKET', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'TICKET', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'TICKET', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'TICKET', odemeYontemi: 'SETCARD' },
+      { fisType: 'TICKET', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'TICKET', odemeYontemi: 'MULTINET' },
+      { fisType: 'TICKET', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'TICKET', odemeYontemi: 'METROPOL' },
+      { fisType: 'TICKET', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'TICKET', odemeYontemi: 'IWALLET' },
+      { fisType: 'TICKET', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'SODEXO' },
+      { fisType: 'METROPOL', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'METROPOL', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'SETCARD' },
+      { fisType: 'METROPOL', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'MULTINET' },
+      { fisType: 'METROPOL', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'TICKET' },
+      { fisType: 'METROPOL', odemeYontemi: 'TICKET POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'IWALLET' },
+      { fisType: 'METROPOL', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'SODEXO' },
+      { fisType: 'IWALLET', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'IWALLET', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'SETCARD' },
+      { fisType: 'IWALLET', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'MULTINET' },
+      { fisType: 'IWALLET', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'TICKET' },
+      { fisType: 'IWALLET', odemeYontemi: 'TICKET POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'METROPOL' },
+      { fisType: 'IWALLET', odemeYontemi: 'METROPOL POS' }
+    ];
+    
+    // Debug için log - sadece uyumsuzluk durumunda
+    // console.log('🔍 Uyumsuzluk kontrolü:', { fisType, odemeYontemi });
+    
+    // Önce uyumluluk kontrolü yap - aynı türde olanlar uyumlu
+    const fisTypeUpper = fisType.toUpperCase();
+    const odemeYontemiUpper = odemeYontemi.toUpperCase();
+    
+    // Sadece tam eşleşen kombinasyonlar uyumlu
+    const uyumluKombinasyonlar = [
+      // Nakit ödemesi için sadece NAKIT fiş tipi uyumlu
+      { fisType: 'NAKIT', odemeYontemi: 'Nakit' },
+      // Kart türleri için uyumlu kombinasyonlar
+      { fisType: 'TICKET', odemeYontemi: 'TICKET' },
+      { fisType: 'TICKET', odemeYontemi: 'TICKET POS' },
+      { fisType: 'TICKET POS', odemeYontemi: 'TICKET' },
+      { fisType: 'TICKET POS', odemeYontemi: 'TICKET POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'SODEXO' },
+      { fisType: 'SODEXO', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'SODEXO POS', odemeYontemi: 'SODEXO' },
+      { fisType: 'SODEXO POS', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'TOKENFLEX POS', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'TOKENFLEX POS', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'SETCARD', odemeYontemi: 'SETCARD' },
+      { fisType: 'SETCARD', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'SETCARD POS', odemeYontemi: 'SETCARD' },
+      { fisType: 'SETCARD POS', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'MULTINET' },
+      { fisType: 'MULTINET', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'MULTINET POS', odemeYontemi: 'MULTINET' },
+      { fisType: 'MULTINET POS', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'METROPOL' },
+      { fisType: 'METROPOL', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'METROPOL POS', odemeYontemi: 'METROPOL' },
+      { fisType: 'METROPOL POS', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'IWALLET' },
+      { fisType: 'IWALLET', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'IWALLET POS', odemeYontemi: 'IWALLET' },
+      { fisType: 'IWALLET POS', odemeYontemi: 'IWALLET POS' }
+    ];
+    
+    // Önce uyumlu kombinasyonları kontrol et - sadece tam eşleşme
+    const isUyumlu = uyumluKombinasyonlar.some(u => {
+      const fisMatch = fisTypeUpper === u.fisType.toUpperCase();
+      const odemeMatch = odemeYontemiUpper === u.odemeYontemi.toUpperCase();
+      
+      // if (fisMatch && odemeMatch) {
+      //   console.log('✅ Uyumlu kombinasyon bulundu:', { fisType, odemeYontemi, rule: u });
+      // }
+      
+      return fisMatch && odemeMatch;
+    });
+    
+          if (isUyumlu) {
+        // console.log('✅ Uyumlu kombinasyon:', { fisType, odemeYontemi });
+        return false; // Uyumlu ise uyumsuz değil
+      }
+    
+    // Uyumsuzluk kontrolü
+    const isUyumsuz = uyumsuzluklar.some(u => {
+      // Fiş tipi tam eşleşmesi kontrolü
+      const fisTypeMatch = fisTypeUpper === u.fisType || 
+                          fisTypeUpper.includes(u.fisType) && 
+                          !fisTypeUpper.includes('POS') && 
+                          !fisTypeUpper.includes('KART');
+      
+      // Ödeme yöntemi tam eşleşmesi kontrolü - Nakit için daha esnek kontrol
+      const odemeMatch = odemeYontemiUpper === u.odemeYontemi || 
+                        (u.odemeYontemi === 'Nakit' && odemeYontemiUpper.includes('NAKIT'));
+      
+      if (fisTypeMatch && odemeMatch) {
+        console.log('🚨 Uyumsuzluk bulundu:', { fisType, odemeYontemi, rule: u });
+      }
+      
+      return fisTypeMatch && odemeMatch;
+    });
+    
+    return isUyumsuz;
+  };
+
   // İstatistik hesaplama fonksiyonları
   const calculateStats = () => {
     if (!Array.isArray(data) || data.length === 0) {
@@ -473,17 +758,68 @@ export default function YemekKartiSatis() {
         totalAmount: 0,
         totalTransactions: 0,
         cardTypes: [],
-        branches: []
+        branches: [],
+        fisTypes: []
       };
     }
 
     let totalAmount = 0;
     const cardTypeStats: { [key: string]: { count: number, amount: number } } = {};
     const branchStats: { [key: string]: { count: number, amount: number } } = {};
+    const fisTypeStats: { [key: string]: { 
+      count: number, 
+      amount: number, 
+      uyumsuzCount: number, 
+      uyumsuzAmount: number,
+      uyumsuzDetay: string[]
+    } } = {};
     
     data.forEach(item => {
       const amount = parseFloat(item.Tutar) || 0;
       totalAmount += amount;
+      
+      // Fiş tipi istatistikleri
+      const fisType = item['Fiş Tipi'] || 'Bilinmeyen';
+      const odemeYontemi = item['Yemek Kartı'] || 'Bilinmeyen';
+      
+      if (!fisTypeStats[fisType]) {
+        fisTypeStats[fisType] = { 
+          count: 0, 
+          amount: 0, 
+          uyumsuzCount: 0, 
+          uyumsuzAmount: 0,
+          uyumsuzDetay: []
+        };
+      }
+      fisTypeStats[fisType].count += 1;
+      fisTypeStats[fisType].amount += amount;
+      
+      // Uyumsuzluk kontrolü
+      const isUyumsuz = checkUyumsuzluk(fisType, odemeYontemi);
+      if (isUyumsuz) {
+        fisTypeStats[fisType].uyumsuzCount += 1;
+        fisTypeStats[fisType].uyumsuzAmount += amount;
+        fisTypeStats[fisType].uyumsuzDetay.push(`${odemeYontemi} ödeme`);
+        console.log('🚨 Uyumsuzluk tespit edildi:', { 
+          fisType, 
+          odemeYontemi, 
+          amount,
+          currentUyumsuzCount: fisTypeStats[fisType].uyumsuzCount,
+          currentUyumsuzAmount: fisTypeStats[fisType].uyumsuzAmount,
+          uyumsuzDetay: fisTypeStats[fisType].uyumsuzDetay
+        });
+      }
+      
+      // Debug için sadece uyumsuz kayıtları logla
+      if (isUyumsuz) {
+        console.log('🔍 Uyumsuz kayıt:', { 
+          fisType, 
+          odemeYontemi, 
+          amount,
+          fisTypeUpper: fisType.toUpperCase(),
+          odemeYontemiUpper: odemeYontemi.toUpperCase()
+        });
+      }
       
       // Yemek kartı türü istatistikleri
       const cardType = item['Yemek Kartı'] || 'Bilinmeyen';
@@ -502,6 +838,24 @@ export default function YemekKartiSatis() {
       branchStats[branch].amount += amount;
     });
 
+    // Fiş tiplerini tutara göre sırala
+    const sortedFisTypes = Object.entries(fisTypeStats)
+      .map(([name, stats]) => ({ 
+        name, 
+        ...stats,
+        uyumsuzOrani: stats.count > 0 ? ((stats.uyumsuzCount / stats.count) * 100).toFixed(1) : '0'
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // Debug: Toplam uyumsuzluk sayılarını logla
+    console.log('📊 Toplam Uyumsuzluk Özeti:');
+    sortedFisTypes.forEach(fisType => {
+      if (fisType.uyumsuzCount > 0) {
+        console.log(`  ${fisType.name}: ${fisType.uyumsuzCount} işlem / ${fisType.uyumsuzAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺`);
+        console.log(`    Detay: ${fisType.uyumsuzDetay.join(', ')}`);
+      }
+    });
+
     // En çok kullanılan kartları sırala
     const sortedCardTypes = Object.entries(cardTypeStats)
       .map(([name, stats]) => ({ name, ...stats }))
@@ -516,7 +870,8 @@ export default function YemekKartiSatis() {
       totalAmount,
       totalTransactions: data.length,
       cardTypes: sortedCardTypes,
-      branches: sortedBranches
+      branches: sortedBranches,
+      fisTypes: sortedFisTypes
     };
   };
 
@@ -525,7 +880,7 @@ export default function YemekKartiSatis() {
   // Raporu getir butonu handler
   const handleFetchReport = async () => {
     // Validation
-    if (!selectedDate) {
+    if (!startDate) {
       showErrorMessage('Lütfen tarih seçiniz');
       return;
     }
@@ -572,7 +927,7 @@ export default function YemekKartiSatis() {
               <div>
                 <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Yemek Kartları Satış Raporu</h2>
                 <p className="text-red-100 text-sm">
-                  Toplam Kayıt: {data.length} | Seçili Tarih: {selectedDate} | 
+                  Toplam Kayıt: {data.length} | Seçili Tarih: {startDate} | 
                   Şubeler: {selectedSubeler.length === 0 ? 'Seçiniz' : 
                     selectedSubeler.length === subeler.length ? 'Tümü' :
                     `${selectedSubeler.length} şube seçili`}
@@ -628,38 +983,93 @@ export default function YemekKartiSatis() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     📅 Rapor Tarihi
                   </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 z-10">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
+                  {/* Tarih Aralığı */}
+                  <div className="flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1">
+                      <DatePicker
+                        label="Başlangıç Tarihi"
+                        placeholder="DD/MM/YYYY (örn: 21/01/2025)"
+                        value={startDate}
+                        onChange={(date) => {
+                          setStartDate(date);
+                          setDatePreset('');
+                        }}
+                      />
                     </div>
-                    <div className="pl-16">
-                      <div className="relative">
-                        <DatePicker 
-                          value={selectedDate}
-                          onChange={(date) => setSelectedDate(formatDateToYMD(date))}
-                        />
-                        <style jsx>{`
-                          :global(.date-picker-input) {
-                            width: 100%;
-                            padding: 12px 16px;
-                            background: linear-gradient(to right, #ffffff, #f9fafb);
-                            border: 2px solid #e5e7eb;
-                            border-radius: 12px;
-                            transition: all 0.2s;
-                          }
-                          :global(.date-picker-input:hover) {
-                            border-color: #93c5fd;
-                          }
-                          :global(.date-picker-input:focus) {
-                            border-color: #3b82f6;
-                            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
-                          }
-                        `}</style>
-                      </div>
+                    <div className="flex-1">
+                      <DatePicker
+                        label="Bitiş Tarihi"
+                        placeholder="DD/MM/YYYY (örn: 21/01/2025)"
+                        value={endDate}
+                        onChange={(date) => {
+                          setEndDate(date);
+                          setDatePreset('');
+                        }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Hızlı Tarih Seçenekleri */}
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-sm font-medium text-gray-700">⚡ Hızlı Seçim</label>
+                      {startDate && endDate && (
+                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                          📅 {startDate} - {endDate}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setDatePresetRange('today')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          datePreset === 'today'
+                            ? 'bg-blue-600 text-white shadow-lg scale-105'
+                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
+                        }`}
+                      >
+                        📅 Bugün
+                      </button>
+                      <button
+                        onClick={() => setDatePresetRange('yesterday')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          datePreset === 'yesterday'
+                            ? 'bg-blue-600 text-white shadow-lg scale-105'
+                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
+                        }`}
+                      >
+                        📅 Dün
+                      </button>
+                      <button
+                        onClick={() => setDatePresetRange('thisWeek')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          datePreset === 'thisWeek'
+                            ? 'bg-blue-600 text-white shadow-lg scale-105'
+                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
+                        }`}
+                      >
+                        📅 Bu Hafta
+                      </button>
+                      <button
+                        onClick={() => setDatePresetRange('thisMonth')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          datePreset === 'thisMonth'
+                            ? 'bg-blue-600 text-white shadow-lg scale-105'
+                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
+                        }`}
+                      >
+                        📅 Bu Ay
+                      </button>
+                      <button
+                        onClick={() => setDatePresetRange('lastMonth')}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          datePreset === 'lastMonth'
+                            ? 'bg-blue-600 text-white shadow-lg scale-105'
+                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
+                        }`}
+                      >
+                        📅 Geçen Ay
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -937,8 +1347,8 @@ export default function YemekKartiSatis() {
                     </div>
                   </div>
                   <div className="bg-purple-50 rounded-lg p-4">
-                    <div className="text-sm font-medium text-purple-600">Kart Türü Sayısı</div>
-                    <div className="text-2xl font-bold text-purple-900">{stats.cardTypes.length}</div>
+                    <div className="text-sm font-medium text-purple-600">Fiş Tipi Sayısı</div>
+                    <div className="text-2xl font-bold text-purple-900">{stats.fisTypes?.length || 0}</div>
                   </div>
                   <div className="bg-orange-50 rounded-lg p-4">
                     <div className="text-sm font-medium text-orange-600">Aktif Şube</div>
@@ -946,14 +1356,107 @@ export default function YemekKartiSatis() {
                   </div>
                 </div>
 
-                {/* Yemek Kartı Türleri - Büyük Kartlar */}
-                {stats.cardTypes.length > 0 && (
+                {/* Fiş Tipi İstatistikleri - Üstte */}
+                {stats.fisTypes && stats.fisTypes.length > 0 && (
+                  <div className="mb-8">
+                    <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
+                        <span className="text-white text-lg">🎫</span>
+                      </div>
+                      Fiş Tipi Analizi
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+                      {stats.fisTypes.map((fisType, index) => {
+                        // Fiş tiplerine farklı renkler atayalım
+                        const colors = [
+                          'from-indigo-500 to-indigo-600',
+                          'from-cyan-500 to-cyan-600', 
+                          'from-emerald-500 to-emerald-600',
+                          'from-amber-500 to-amber-600',
+                          'from-rose-500 to-rose-600',
+                          'from-violet-500 to-violet-600',
+                          'from-sky-500 to-sky-600',
+                          'from-lime-500 to-lime-600'
+                        ];
+                        const colorClass = colors[index % colors.length];
+                        
+                        // Uyumsuzluk oranına göre uyarı rengi
+                        const uyumsuzOrani = parseFloat(fisType.uyumsuzOrani);
+                        const warningColor = uyumsuzOrani > 20 ? 'text-red-600' : uyumsuzOrani > 10 ? 'text-orange-600' : 'text-green-600';
+                        const warningIcon = uyumsuzOrani > 20 ? '⚠️' : uyumsuzOrani > 10 ? '⚡' : '✅';
+                        
+                        return (
+                          <div key={fisType.name} className="relative overflow-hidden bg-white rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                            <div className={`h-2 bg-gradient-to-r ${colorClass}`}></div>
+                            <div className="p-6">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className={`w-12 h-12 bg-gradient-to-br ${colorClass} rounded-xl flex items-center justify-center shadow-lg`}>
+                                  <span className="text-white font-bold text-lg">#{index + 1}</span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                    Fiş Tipi
+                                  </div>
+                                  <div className="text-xs text-gray-400">
+                                    {fisType.count} işlem
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="mb-4">
+                                <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-2">
+                                  {fisType.name}
+                                </h3>
+                                <div className="text-2xl font-bold text-gray-900">
+                                  {fisType.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </div>
+                              </div>
+                              
+
+                              
+                              {/* Uyumsuzluk detayı */}
+                              <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                                <div className="text-xs text-gray-600 mb-1">Uyumsuzluk Detayı:</div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {fisType.uyumsuzCount} işlem / {fisType.uyumsuzAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                </div>
+                                {fisType.uyumsuzDetay.length > 0 && (
+                                  <div className="text-xs text-red-600 mt-1">
+                                    {fisType.uyumsuzDetay.slice(0, 2).join(', ')}
+                                    {fisType.uyumsuzDetay.length > 2 && '...'}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Progress bar - toplam tutara göre */}
+                              <div className="mt-4">
+                                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                  <span>Toplam payı</span>
+                                  <span>{((fisType.amount / stats.totalAmount) * 100).toFixed(1)}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div 
+                                    className={`h-2 bg-gradient-to-r ${colorClass} rounded-full transition-all duration-500`}
+                                    style={{ width: `${(fisType.amount / stats.totalAmount) * 100}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Yemek Kartı Türleri - Altta */}
+                {stats.cardTypes && stats.cardTypes.length > 0 && (
                   <div>
                     <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-3">
                       <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
                         <span className="text-white text-lg">🍽️</span>
                       </div>
-                      Yemek Kartı Türleri
+                      Yemek Kartı Türleri (Ödeme Yöntemleri)
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
                       {stats.cardTypes.map((cardType, index) => {
@@ -1029,7 +1532,7 @@ export default function YemekKartiSatis() {
                 )}
 
                 {/* Şube Performansı Detay */}
-                {stats.branches.length > 0 && (
+                {stats.branches && stats.branches.length > 0 && (
                   <div>
                     <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-3">
                       <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
@@ -1069,6 +1572,8 @@ export default function YemekKartiSatis() {
             <div className="bg-white rounded-lg shadow">
               <YemekKartiSatisTable 
                 data={data}
+                stats={stats}
+                currentUser={getCurrentUser()}
               />
             </div>
           </>
