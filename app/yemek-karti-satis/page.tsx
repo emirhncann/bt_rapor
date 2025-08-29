@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import YemekKartiSatisTable from '../components/tables/YemekKartiSatisTable';
+import HataliKayitlarTable from '../components/tables/HataliKayitlarTable';
 import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
@@ -65,6 +66,23 @@ export default function YemekKartiSatis() {
   const [subeler, setSubeler] = useState<{value: number, label: string}[]>([]);
   const [loadingSubeler, setLoadingSubeler] = useState(false);
   const [showSubeDropdown, setShowSubeDropdown] = useState(false);
+
+  // Akordiyon state'leri
+  const [accordionState, setAccordionState] = useState({
+    fisTipiAnalizi: true,    // Fiş Tipi Analizi varsayılan olarak açık
+    yemekKartiTurleri: false,
+    subePerformansi: false,
+    tablo: false,
+    hataliKayitlar: false
+  });
+
+  // Akordiyon toggle fonksiyonu
+  const toggleAccordion = (section: keyof typeof accordionState) => {
+    setAccordionState(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   // Authentication kontrolü
   useEffect(() => {
@@ -556,6 +574,8 @@ export default function YemekKartiSatis() {
       // Nakit ödeme yöntemi olduğunda, fiş tipi de NAKIT olmalı
       { fisType: 'SETCARD', odemeYontemi: 'Nakit' },
       { fisType: 'SETCARD POS', odemeYontemi: 'Nakit' },
+      { fisType: 'SETCART', odemeYontemi: 'Nakit' },
+      { fisType: 'SETCART POS', odemeYontemi: 'Nakit' },
       { fisType: 'MULTINET', odemeYontemi: 'Nakit' },
       { fisType: 'MULTINET POS', odemeYontemi: 'Nakit' },
       { fisType: 'TOKENFLEX', odemeYontemi: 'Nakit' },
@@ -573,6 +593,8 @@ export default function YemekKartiSatis() {
       { fisType: 'NAKIT', odemeYontemi: 'MULTINET POS' },
       { fisType: 'NAKIT', odemeYontemi: 'SETCARD' },
       { fisType: 'NAKIT', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'NAKIT', odemeYontemi: 'SETCART' },
+      { fisType: 'NAKIT', odemeYontemi: 'SETCART POS' },
       { fisType: 'NAKIT', odemeYontemi: 'TOKENFLEX' },
       { fisType: 'NAKIT', odemeYontemi: 'TOKENFLEX POS' },
       { fisType: 'NAKIT', odemeYontemi: 'SODEXO' },
@@ -588,6 +610,8 @@ export default function YemekKartiSatis() {
       { fisType: 'SODEXO', odemeYontemi: 'TOKENFLEX POS' },
       { fisType: 'SODEXO', odemeYontemi: 'SETCARD' },
       { fisType: 'SODEXO', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'SODEXO', odemeYontemi: 'SETCART' },
+      { fisType: 'SODEXO', odemeYontemi: 'SETCART POS' },
       { fisType: 'SODEXO', odemeYontemi: 'MULTINET' },
       { fisType: 'SODEXO', odemeYontemi: 'MULTINET POS' },
       { fisType: 'SODEXO', odemeYontemi: 'TICKET' },
@@ -600,6 +624,8 @@ export default function YemekKartiSatis() {
       { fisType: 'TOKENFLEX', odemeYontemi: 'SODEXO POS' },
       { fisType: 'TOKENFLEX', odemeYontemi: 'SETCARD' },
       { fisType: 'TOKENFLEX', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'SETCART' },
+      { fisType: 'TOKENFLEX', odemeYontemi: 'SETCART POS' },
       { fisType: 'TOKENFLEX', odemeYontemi: 'MULTINET' },
       { fisType: 'TOKENFLEX', odemeYontemi: 'MULTINET POS' },
       { fisType: 'TOKENFLEX', odemeYontemi: 'TICKET' },
@@ -626,6 +652,8 @@ export default function YemekKartiSatis() {
       { fisType: 'MULTINET', odemeYontemi: 'TOKENFLEX POS' },
       { fisType: 'MULTINET', odemeYontemi: 'SETCARD' },
       { fisType: 'MULTINET', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'MULTINET', odemeYontemi: 'SETCART' },
+      { fisType: 'MULTINET', odemeYontemi: 'SETCART POS' },
       { fisType: 'MULTINET', odemeYontemi: 'TICKET' },
       { fisType: 'MULTINET', odemeYontemi: 'TICKET POS' },
       { fisType: 'MULTINET', odemeYontemi: 'METROPOL' },
@@ -638,6 +666,8 @@ export default function YemekKartiSatis() {
       { fisType: 'TICKET', odemeYontemi: 'TOKENFLEX POS' },
       { fisType: 'TICKET', odemeYontemi: 'SETCARD' },
       { fisType: 'TICKET', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'TICKET', odemeYontemi: 'SETCART' },
+      { fisType: 'TICKET', odemeYontemi: 'SETCART POS' },
       { fisType: 'TICKET', odemeYontemi: 'MULTINET' },
       { fisType: 'TICKET', odemeYontemi: 'MULTINET POS' },
       { fisType: 'TICKET', odemeYontemi: 'METROPOL' },
@@ -650,6 +680,8 @@ export default function YemekKartiSatis() {
       { fisType: 'METROPOL', odemeYontemi: 'TOKENFLEX POS' },
       { fisType: 'METROPOL', odemeYontemi: 'SETCARD' },
       { fisType: 'METROPOL', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'METROPOL', odemeYontemi: 'SETCART' },
+      { fisType: 'METROPOL', odemeYontemi: 'SETCART POS' },
       { fisType: 'METROPOL', odemeYontemi: 'MULTINET' },
       { fisType: 'METROPOL', odemeYontemi: 'MULTINET POS' },
       { fisType: 'METROPOL', odemeYontemi: 'TICKET' },
@@ -662,12 +694,39 @@ export default function YemekKartiSatis() {
       { fisType: 'IWALLET', odemeYontemi: 'TOKENFLEX POS' },
       { fisType: 'IWALLET', odemeYontemi: 'SETCARD' },
       { fisType: 'IWALLET', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'IWALLET', odemeYontemi: 'SETCART' },
+      { fisType: 'IWALLET', odemeYontemi: 'SETCART POS' },
       { fisType: 'IWALLET', odemeYontemi: 'MULTINET' },
       { fisType: 'IWALLET', odemeYontemi: 'MULTINET POS' },
       { fisType: 'IWALLET', odemeYontemi: 'TICKET' },
       { fisType: 'IWALLET', odemeYontemi: 'TICKET POS' },
       { fisType: 'IWALLET', odemeYontemi: 'METROPOL' },
-      { fisType: 'IWALLET', odemeYontemi: 'METROPOL POS' }
+      { fisType: 'IWALLET', odemeYontemi: 'METROPOL POS' },
+      // SETCART'ın diğer kart türleri ile uyumsuzlukları
+      { fisType: 'SETCART', odemeYontemi: 'SODEXO' },
+      { fisType: 'SETCART', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'SETCART', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'SETCART', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'SETCART', odemeYontemi: 'MULTINET' },
+      { fisType: 'SETCART', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'SETCART', odemeYontemi: 'TICKET' },
+      { fisType: 'SETCART', odemeYontemi: 'TICKET POS' },
+      { fisType: 'SETCART', odemeYontemi: 'METROPOL' },
+      { fisType: 'SETCART', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'SETCART', odemeYontemi: 'IWALLET' },
+      { fisType: 'SETCART', odemeYontemi: 'IWALLET POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'SODEXO' },
+      { fisType: 'SETCART POS', odemeYontemi: 'SODEXO POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'TOKENFLEX' },
+      { fisType: 'SETCART POS', odemeYontemi: 'TOKENFLEX POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'MULTINET' },
+      { fisType: 'SETCART POS', odemeYontemi: 'MULTINET POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'TICKET' },
+      { fisType: 'SETCART POS', odemeYontemi: 'TICKET POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'METROPOL' },
+      { fisType: 'SETCART POS', odemeYontemi: 'METROPOL POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'IWALLET' },
+      { fisType: 'SETCART POS', odemeYontemi: 'IWALLET POS' }
     ];
     
     // Debug için log - sadece uyumsuzluk durumunda
@@ -698,6 +757,10 @@ export default function YemekKartiSatis() {
       { fisType: 'SETCARD', odemeYontemi: 'SETCARD POS' },
       { fisType: 'SETCARD POS', odemeYontemi: 'SETCARD' },
       { fisType: 'SETCARD POS', odemeYontemi: 'SETCARD POS' },
+      { fisType: 'SETCART', odemeYontemi: 'SETCART' },
+      { fisType: 'SETCART', odemeYontemi: 'SETCART POS' },
+      { fisType: 'SETCART POS', odemeYontemi: 'SETCART' },
+      { fisType: 'SETCART POS', odemeYontemi: 'SETCART POS' },
       { fisType: 'MULTINET', odemeYontemi: 'MULTINET' },
       { fisType: 'MULTINET', odemeYontemi: 'MULTINET POS' },
       { fisType: 'MULTINET POS', odemeYontemi: 'MULTINET' },
@@ -750,6 +813,11 @@ export default function YemekKartiSatis() {
     
     return isUyumsuz;
   };
+
+  // Hatalı kayıtları filtrele
+  const hataliKayitlar = data.filter(kayit => {
+    return checkUyumsuzluk(kayit['Fiş Tipi'], kayit['Yemek Kartı']);
+  });
 
   // İstatistik hesaplama fonksiyonları
   const calculateStats = () => {
@@ -1356,15 +1424,34 @@ export default function YemekKartiSatis() {
                   </div>
                 </div>
 
-                {/* Fiş Tipi İstatistikleri - Üstte */}
+                {/* Fiş Tipi İstatistikleri - Akordiyon */}
                 {stats.fisTypes && stats.fisTypes.length > 0 && (
-                  <div className="mb-8">
-                    <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
-                        <span className="text-white text-lg">🎫</span>
+                  <div className="mb-6">
+                    <button
+                      onClick={() => toggleAccordion('fisTipiAnalizi')}
+                      className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-indigo-100 border border-indigo-200 rounded-xl hover:from-indigo-100 hover:to-indigo-200 transition-all duration-200 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
+                          <span className="text-white text-lg">🎫</span>
+                        </div>
+                        <h4 className="text-lg font-bold text-gray-900">Fiş Tipi Analizi</h4>
+                        <span className="text-sm text-indigo-600 bg-indigo-100 px-2 py-1 rounded-md">
+                          {stats.fisTypes.length} fiş tipi
+                        </span>
                       </div>
-                      Fiş Tipi Analizi
-                    </h4>
+                      <svg 
+                        className={`w-6 h-6 text-indigo-600 transition-transform duration-200 ${accordionState.fisTipiAnalizi ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    
+                    {accordionState.fisTipiAnalizi && (
+                      <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
                       {stats.fisTypes.map((fisType, index) => {
                         // Fiş tiplerine farklı renkler atayalım
@@ -1446,18 +1533,39 @@ export default function YemekKartiSatis() {
                         );
                       })}
                     </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Yemek Kartı Türleri - Altta */}
+                {/* Yemek Kartı Türleri - Akordiyon */}
                 {stats.cardTypes && stats.cardTypes.length > 0 && (
-                  <div>
-                    <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-                        <span className="text-white text-lg">🍽️</span>
+                  <div className="mb-6">
+                    <button
+                      onClick={() => toggleAccordion('yemekKartiTurleri')}
+                      className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 rounded-xl hover:from-purple-100 hover:to-purple-200 transition-all duration-200 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
+                          <span className="text-white text-lg">🍽️</span>
+                        </div>
+                        <h4 className="text-lg font-bold text-gray-900">Yemek Kartı Türleri (Ödeme Yöntemleri)</h4>
+                        <span className="text-sm text-purple-600 bg-purple-100 px-2 py-1 rounded-md">
+                          {stats.cardTypes.length} kart türü
+                        </span>
                       </div>
-                      Yemek Kartı Türleri (Ödeme Yöntemleri)
-                    </h4>
+                      <svg 
+                        className={`w-6 h-6 text-purple-600 transition-transform duration-200 ${accordionState.yemekKartiTurleri ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    
+                    {accordionState.yemekKartiTurleri && (
+                      <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
                       {stats.cardTypes.map((cardType, index) => {
                         // Kartlara farklı renkler atayalım
@@ -1528,18 +1636,39 @@ export default function YemekKartiSatis() {
                         );
                       })}
                     </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Şube Performansı Detay */}
+                {/* Şube Performansı Detay - Akordiyon */}
                 {stats.branches && stats.branches.length > 0 && (
-                  <div>
-                    <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
-                        <span className="text-white text-lg">🏢</span>
+                  <div className="mb-6">
+                    <button
+                      onClick={() => toggleAccordion('subePerformansi')}
+                      className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-xl hover:from-green-100 hover:to-green-200 transition-all duration-200 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
+                          <span className="text-white text-lg">🏢</span>
+                        </div>
+                        <h4 className="text-lg font-bold text-gray-900">Şube Performansı</h4>
+                        <span className="text-sm text-green-600 bg-green-100 px-2 py-1 rounded-md">
+                          {stats.branches.length} şube
+                        </span>
                       </div>
-                      Şube Performansı
-                    </h4>
+                      <svg 
+                        className={`w-6 h-6 text-green-600 transition-transform duration-200 ${accordionState.subePerformansi ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    
+                    {accordionState.subePerformansi && (
+                      <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {stats.branches.map((branch, index) => (
                         <div key={branch.name} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md transition-all duration-200">
@@ -1563,19 +1692,87 @@ export default function YemekKartiSatis() {
                         </div>
                       ))}
                     </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Ana Tablo */}
-            <div className="bg-white rounded-lg shadow">
-              <YemekKartiSatisTable 
-                data={data}
-                stats={stats}
-                currentUser={getCurrentUser()}
-              />
+            {/* Ana Tablo - Akordiyon */}
+            <div className="mb-6">
+              <button
+                onClick={() => toggleAccordion('tablo')}
+                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl hover:from-blue-100 hover:to-blue-200 transition-all duration-200 group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                    <span className="text-white text-lg">📊</span>
+                  </div>
+                  <h4 className="text-lg font-bold text-gray-900">Detaylı Tablo</h4>
+                  <span className="text-sm text-blue-600 bg-blue-100 px-2 py-1 rounded-md">
+                    {data.length} kayıt
+                  </span>
+                </div>
+                <svg 
+                  className={`w-6 h-6 text-blue-600 transition-transform duration-200 ${accordionState.tablo ? 'rotate-180' : ''}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {accordionState.tablo && (
+                <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="bg-white rounded-lg shadow">
+                    <YemekKartiSatisTable 
+                      data={data}
+                      stats={stats}
+                      currentUser={getCurrentUser()}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Hatalı Kayıtlar Tablosu - Akordiyon */}
+            {hataliKayitlar.length > 0 && (
+              <div className="mb-6">
+                <button
+                  onClick={() => toggleAccordion('hataliKayitlar')}
+                  className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-red-50 to-red-100 border border-red-200 rounded-xl hover:from-red-100 hover:to-red-200 transition-all duration-200 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-md">
+                      <span className="text-white text-lg">⚠️</span>
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900">Hatalı Kayıtlar</h4>
+                    <span className="text-sm text-red-600 bg-red-100 px-2 py-1 rounded-md">
+                      {hataliKayitlar.length} hatalı kayıt
+                    </span>
+                  </div>
+                  <svg 
+                    className={`w-6 h-6 text-red-600 transition-transform duration-200 ${accordionState.hataliKayitlar ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {accordionState.hataliKayitlar && (
+                  <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <HataliKayitlarTable 
+                      data={hataliKayitlar}
+                      currentUser={getCurrentUser()}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
