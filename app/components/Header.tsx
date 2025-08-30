@@ -119,7 +119,7 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
           >
             <div className="w-7 h-7 lg:w-8 lg:h-8 bg-gradient-to-r from-red-800 to-red-900 rounded-full flex items-center justify-center">
               <span className="text-white font-medium text-sm">
-                {name ? name.charAt(0).toUpperCase() : (userEmail ? userEmail.charAt(0).toUpperCase() : 'U')}
+                {name ? (name || 'U').charAt(0).toUpperCase() : (userEmail ? (userEmail || 'U').charAt(0).toUpperCase() : 'U')}
               </span>
             </div>
             <div className="hidden lg:block text-left">

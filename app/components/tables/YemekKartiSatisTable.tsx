@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { trackReportExport } from '../../utils/yandex-metrica';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -36,7 +37,10 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
   const columns = [
     { key: 'Tarih', label: 'Tarih', sortable: true },
     { key: 'Şube No', label: 'Şube No', sortable: true },
-    { key: 'Belge Alt Tipi', label: 'Belge Alt Tipi', sortable: true },
+    { key: 'Sicil_No', label: 'Sicil No', sortable: true },
+    { key: 'Z_No', label: 'Z No', sortable: true },
+    { key: 'belge_no', label: 'Belge No', sortable: true },
+    { key: 'Belge_Alttipi', label: 'Belge Alt Tipi', sortable: true },
     { key: 'Fiş Tipi', label: 'Fiş Tipi', sortable: true },
     { key: 'Şube', label: 'Şube', sortable: true },
     { key: 'Tus_No', label: 'Tuş No', sortable: true },
@@ -53,8 +57,11 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
       (item['Şube']?.toString().toLowerCase().includes(searchLower)) ||
       (item['Yemek Kartı']?.toString().toLowerCase().includes(searchLower)) ||
       (item['Şube No']?.toString().toLowerCase().includes(searchLower)) ||
+      (item['Sicil_No']?.toString().toLowerCase().includes(searchLower)) ||
+      (item['Z_No']?.toString().toLowerCase().includes(searchLower)) ||
+      (item['belge_no']?.toString().toLowerCase().includes(searchLower)) ||
       (item['Tus_No']?.toString().toLowerCase().includes(searchLower)) ||
-      (item['Belge Alt Tipi']?.toString().toLowerCase().includes(searchLower)) ||
+      (item['Belge_Alttipi']?.toString().toLowerCase().includes(searchLower)) ||
       (item['Fiş Tipi']?.toString().toLowerCase().includes(searchLower))
     );
   });
@@ -121,8 +128,9 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
   const exportToExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(sortedData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Yemek Kartı Satışları');
-    XLSX.writeFile(workbook, `yemek_karti_satislari_${new Date().toISOString().split('T')[0]}.xlsx`);
+          XLSX.utils.book_append_sheet(workbook, worksheet, 'Yemek Kartı Satışları');
+      XLSX.writeFile(workbook, `yemek_karti_satislari_${new Date().toISOString().split('T')[0]}.xlsx`);
+      trackReportExport('yemek_karti_satis', 'excel');
   };
 
   // Yazdırma fonksiyonu
@@ -302,8 +310,9 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
       `;
 
       printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
+              printWindow.document.close();
+        printWindow.focus();
+        trackReportExport('yemek_karti_satis', 'print');
     } catch (error) {
       console.error('Yazdırma hatası:', error);
       alert('Yazdırma işlemi sırasında hata oluştu.');
@@ -402,14 +411,17 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
         fillColor: [248, 249, 250] 
       },
                 columnStyles: {
-            0: { cellWidth: 22 }, // Tarih
-            1: { cellWidth: 15 }, // Şube No
-            2: { cellWidth: 20 }, // Belge Alt Tipi
-            3: { cellWidth: 25 }, // Fiş Tipi
-            4: { cellWidth: 25 }, // Şube
-            5: { cellWidth: 15 }, // Tuş No
-            6: { cellWidth: 30 }, // Yemek Kartı
-            7: { cellWidth: 20, halign: 'right' } // Tutar - sağa hizalı
+            0: { cellWidth: 20 }, // Tarih
+            1: { cellWidth: 12 }, // Şube No
+            2: { cellWidth: 15 }, // Sicil No
+            3: { cellWidth: 12 }, // Z No
+            4: { cellWidth: 15 }, // Belge No
+            5: { cellWidth: 15 }, // Belge Alt Tipi
+            6: { cellWidth: 20 }, // Fiş Tipi
+            7: { cellWidth: 20 }, // Şube
+            8: { cellWidth: 12 }, // Tuş No
+            9: { cellWidth: 25 }, // Yemek Kartı
+            10: { cellWidth: 18, halign: 'right' } // Tutar - sağa hizalı
           },
       margin: { top: 5, right: 14, bottom: 14, left: 14 }
     });
@@ -441,7 +453,7 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
               </div>
               <input
                 type="text"
-                placeholder="Şube, yemek kartı adı veya tuş no ile ara..."
+                placeholder="Şube, sicil no, Z no, belge no, yemek kartı adı veya tuş no ile ara..."
                 className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -525,7 +537,16 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
                     {item['Şube No']}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item['Belge Alt Tipi'] || '-'}
+                    {item.Sicil_No || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {item.Z_No || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {item.belge_no || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {item.Belge_Alttipi || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {item['Fiş Tipi'] || '-'}

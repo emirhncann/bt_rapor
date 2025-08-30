@@ -8,6 +8,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser, hasReportAccess, getAuthorizedReports } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import { trackReportView, trackDateFilter, trackReportGeneration } from '../utils/yandex-metrica';
 
 export default function EnposCiro() {
   const [data, setData] = useState<any[]>([]);
@@ -38,6 +39,8 @@ export default function EnposCiro() {
       const isLoggedIn = localStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
+        // Sayfa görüntüleme tracking
+        trackReportView('enpos_ciro');
       } else {
         router.push('/login');
       }
@@ -298,6 +301,9 @@ export default function EnposCiro() {
     setStartDate(startDisplay);
     setEndDate(endDisplay);
     setDatePreset(preset);
+    
+    // Tarih filtresi tracking
+    trackDateFilter(preset, startDisplay, endDisplay);
   };
 
   // Güvenli sayı parse fonksiyonu
@@ -635,6 +641,11 @@ GROUP BY B.Sube_No,D.NAME
 
       console.log(`✅ MOBIL DEBUG: ${finalData.length} kayıt başarıyla yüklendi (Ciro)`);
       setData(finalData);
+      
+      // Rapor oluşturma tracking
+      const totalAmount = finalData.reduce((sum: number, item: any) => 
+        sum + (safeParseFloat(item['TOPLAM']) || 0), 0);
+      trackReportGeneration('enpos_ciro', finalData.length, totalAmount);
       
     } catch (error) {
       console.error('Veri çekme hatası:', error);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import YemekKartiSatisTable from '../components/tables/YemekKartiSatisTable';
@@ -9,6 +9,15 @@ import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import { 
+  trackReportView, 
+  trackFilterUsage, 
+  trackDateFilter, 
+  trackBranchSelection, 
+  trackReportGeneration, 
+  trackErrorAnalysis,
+  trackAccordionToggle
+} from '../utils/yandex-metrica';
 
 // Yardımcı fonksiyon: Date'i 'YYYY-MM-DD' formatına çevir
 function formatDateToYMD(date: string | Date): string {
@@ -66,22 +75,27 @@ export default function YemekKartiSatis() {
   const [subeler, setSubeler] = useState<{value: number, label: string}[]>([]);
   const [loadingSubeler, setLoadingSubeler] = useState(false);
   const [showSubeDropdown, setShowSubeDropdown] = useState(false);
+  const [expandedZRaporu, setExpandedZRaporu] = useState<string | null>(null);
 
   // Akordiyon state'leri
   const [accordionState, setAccordionState] = useState({
     fisTipiAnalizi: true,    // Fiş Tipi Analizi varsayılan olarak açık
     yemekKartiTurleri: false,
     subePerformansi: false,
+    zRaporu: false,
     tablo: false,
     hataliKayitlar: false
   });
 
   // Akordiyon toggle fonksiyonu
   const toggleAccordion = (section: keyof typeof accordionState) => {
+    const newState = !accordionState[section];
     setAccordionState(prev => ({
       ...prev,
-      [section]: !prev[section]
+      [section]: newState
     }));
+    // Akordiyon açma/kapama tracking
+    trackAccordionToggle(section, newState);
   };
 
   // Authentication kontrolü
@@ -90,6 +104,8 @@ export default function YemekKartiSatis() {
       const isLoggedIn = localStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
+        // Sayfa görüntülendiğinde tracking
+        trackReportView('yemek_karti_satis');
       } else {
         router.push('/login');
       }
@@ -322,6 +338,9 @@ export default function YemekKartiSatis() {
     setStartDate(startDisplay);
     setEndDate(endDisplay);
     setDatePreset(preset);
+    
+    // Tarih filtresi tracking
+    trackDateFilter(preset, startDisplay, endDisplay);
   };
 
   // Şubeleri yükle (diğer raporlar gibi direkt ENPOS'tan)
@@ -338,8 +357,21 @@ export default function YemekKartiSatis() {
         return;
       }
 
+      // Connection bilgilerini al
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      if (!cachedConnectionInfo) {
+        console.warn('⚠️ Connection bilgileri bulunamadı');
+        showErrorMessage('Bağlantı bilgileri bulunamadı');
+        return;
+      }
+
+      const connectionInfo = JSON.parse(cachedConnectionInfo);
+      const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
+      const firmaNo = connectionInfo.firmaNo || 9;
+
       console.log('🏢 Şubeler ENPOS ciro tablosundan yükleniyor...');
       console.log('📊 ENPOS DB Key kullanılıyor: enpos_db_key');
+      console.log('🏭 Logo Kurulum DB:', logoKurulumDbName, 'Firma No:', firmaNo);
 
       // ENPOS ciro tablosundan şubeleri çek - daha basit sorgu
       const subeQuery = `
@@ -350,8 +382,8 @@ export default function YemekKartiSatis() {
           SELECT DISTINCT 
             D.NR as value,
             RIGHT(D.NAME,LEN(D.NAME)-CHARINDEX('-',D.NAME)) as label
-          FROM GO3..L_CAPIDIV D 
-          WHERE D.FIRMNR=9 
+          FROM ${logoKurulumDbName}..L_CAPIDIV D 
+          WHERE D.FIRMNR=${firmaNo} 
             AND D.NR IS NOT NULL
             AND D.NAME IS NOT NULL
             AND D.NAME LIKE '%-%'
@@ -458,15 +490,31 @@ export default function YemekKartiSatis() {
         return;
       }
 
+      // Connection bilgilerini al
+      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      if (!cachedConnectionInfo) {
+        showErrorMessage('Bağlantı bilgileri bulunamadı');
+        return;
+      }
+
+      const connectionInfo = JSON.parse(cachedConnectionInfo);
+      const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
+      const firmaNo = connectionInfo.firmaNo || 9;
+      const enposDatabaseName = connectionInfo.enpos_database_name || 'INTER_BOS';
+
       console.log(`🔄 Tarih: ${startDate} - ${endDate}, Şubeler: ${selectedSubeler.join(', ')} ile yemek kartı verileri çekiliyor...`);
       console.log(`📅 SQL Tarih Dönüşümü: ${convertDisplayToSQL(startDate)} - ${convertDisplayToSQL(endDate)}`);
+      console.log('🏭 Logo Kurulum DB:', logoKurulumDbName, 'Firma No:', firmaNo, 'ENPOS DB:', enposDatabaseName);
 
       // ENPOS veritabanı için SQL sorgusu
       const sqlQuery = `
         SELECT DISTINCT
           B.BELGETARIH as Tarih,
           b.Sube_No as 'Şube No',
-          B.Belge_Alttipi as 'Belge Alt Tipi',
+          B.Sicil_No,
+          B.Z_No,
+          b.belge_no,
+          B.Belge_Alttipi,
           T.NAME as 'Fiş Tipi',
           RIGHT(D.NAME,LEN(D.NAME)-CHARINDEX('-',D.NAME)) as 'Şube',
           O.Tus_No,
@@ -475,11 +523,11 @@ export default function YemekKartiSatis() {
             ELSE K.Info 
           END AS 'Yemek Kartı',
           CAST(SUM(O.TUTAR) AS decimal(18,2)) as Tutar
-        FROM INTER_BOS..ODEME O
-        JOIN INTER_BOS..BELGE B ON B.Belge_ID=O.Belge_ID
-        LEFT JOIN INTER_BOS..[POS_KREDI] K ON O.Tus_No=K.Tus_No
-        JOIN GO3..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=9
-        LEFT JOIN INTER_BOS..[SERVER_TICKETFIRM] T ON B.Belge_AltTipi=T.FIRMNO
+        FROM ${enposDatabaseName}..ODEME O
+        JOIN ${enposDatabaseName}..BELGE B ON B.Belge_ID=O.Belge_ID
+        LEFT JOIN ${enposDatabaseName}..[POS_KREDI] K ON O.Tus_No=K.Tus_No
+        JOIN ${logoKurulumDbName}..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=${firmaNo}
+        LEFT JOIN ${enposDatabaseName}..[SERVER_TICKETFIRM] T ON B.Belge_AltTipi=T.FIRMNO
         WHERE B.Iptal=0 
           AND b.Belge_Tipi='YMK'
           AND CAST(B.BELGETARIH AS DATE) BETWEEN '${convertDisplayToSQL(startDate)}' AND '${convertDisplayToSQL(endDate)}'
@@ -487,6 +535,9 @@ export default function YemekKartiSatis() {
         GROUP BY 
           B.BELGETARIH,
           b.Sube_No,
+          B.Sicil_No,
+          B.Z_No,
+          b.belge_no,
           B.Belge_Alttipi,
           T.NAME,
           D.NAME,
@@ -531,6 +582,10 @@ export default function YemekKartiSatis() {
 
       setData(data);
       console.log('✅ Yemek kartı satış verileri başarıyla yüklendi:', data.length, 'kayıt');
+      
+      // Rapor oluşturma tracking
+      const totalAmount = data.reduce((sum: number, item: any) => sum + (parseFloat(item.Tutar) || 0), 0);
+      trackReportGeneration('yemek_karti_satis', data.length, totalAmount);
 
     } catch (error: any) {
       console.error('❌ Yemek kartı satış verileri çekilirken hata:', error);
@@ -550,11 +605,17 @@ export default function YemekKartiSatis() {
   // Şube seçim toggle fonksiyonu
   const toggleSube = (subeValue: number) => {
     setSelectedSubeler(prev => {
-      if (prev.includes(subeValue)) {
-        return prev.filter(s => s !== subeValue);
-      } else {
-        return [...prev, subeValue];
-      }
+      const newSelection = prev.includes(subeValue) 
+        ? prev.filter(s => s !== subeValue)
+        : [...prev, subeValue];
+      
+      // Şube seçimi tracking
+      const selectedBranchNames = newSelection.map(id => 
+        subeler.find(s => s.value === id)?.label || `Şube ${id}`
+      );
+      trackBranchSelection(newSelection.length, selectedBranchNames);
+      
+      return newSelection;
     });
   };
 
@@ -733,8 +794,8 @@ export default function YemekKartiSatis() {
     // console.log('🔍 Uyumsuzluk kontrolü:', { fisType, odemeYontemi });
     
     // Önce uyumluluk kontrolü yap - aynı türde olanlar uyumlu
-    const fisTypeUpper = fisType.toUpperCase();
-    const odemeYontemiUpper = odemeYontemi.toUpperCase();
+    const fisTypeUpper = (fisType || null)?.toString()?.toUpperCase() || '';
+    const odemeYontemiUpper = (odemeYontemi || null)?.toString()?.toUpperCase() || '';
     
     // Sadece tam eşleşen kombinasyonlar uyumlu
     const uyumluKombinasyonlar = [
@@ -777,8 +838,8 @@ export default function YemekKartiSatis() {
     
     // Önce uyumlu kombinasyonları kontrol et - sadece tam eşleşme
     const isUyumlu = uyumluKombinasyonlar.some(u => {
-      const fisMatch = fisTypeUpper === u.fisType.toUpperCase();
-      const odemeMatch = odemeYontemiUpper === u.odemeYontemi.toUpperCase();
+      const fisMatch = fisTypeUpper === ((u.fisType || null)?.toString()?.toUpperCase() || '');
+      const odemeMatch = odemeYontemiUpper === ((u.odemeYontemi || null)?.toString()?.toUpperCase() || '');
       
       // if (fisMatch && odemeMatch) {
       //   console.log('✅ Uyumlu kombinasyon bulundu:', { fisType, odemeYontemi, rule: u });
@@ -796,13 +857,13 @@ export default function YemekKartiSatis() {
     const isUyumsuz = uyumsuzluklar.some(u => {
       // Fiş tipi tam eşleşmesi kontrolü
       const fisTypeMatch = fisTypeUpper === u.fisType || 
-                          fisTypeUpper.includes(u.fisType) && 
+                          (fisTypeUpper && u.fisType && fisTypeUpper.includes(u.fisType)) && 
                           !fisTypeUpper.includes('POS') && 
                           !fisTypeUpper.includes('KART');
       
       // Ödeme yöntemi tam eşleşmesi kontrolü - Nakit için daha esnek kontrol
       const odemeMatch = odemeYontemiUpper === u.odemeYontemi || 
-                        (u.odemeYontemi === 'Nakit' && odemeYontemiUpper.includes('NAKIT'));
+                        (u.odemeYontemi === 'Nakit' && odemeYontemiUpper && odemeYontemiUpper.includes('NAKIT'));
       
       if (fisTypeMatch && odemeMatch) {
         console.log('🚨 Uyumsuzluk bulundu:', { fisType, odemeYontemi, rule: u });
@@ -818,6 +879,14 @@ export default function YemekKartiSatis() {
   const hataliKayitlar = data.filter(kayit => {
     return checkUyumsuzluk(kayit['Fiş Tipi'], kayit['Yemek Kartı']);
   });
+
+  // Hata analizi tracking (sadece hata varsa)
+  useEffect(() => {
+    if (hataliKayitlar.length > 0) {
+      const totalErrorAmount = hataliKayitlar.reduce((sum, item) => sum + (parseFloat(item.Tutar) || 0), 0);
+      trackErrorAnalysis(hataliKayitlar.length, totalErrorAmount);
+    }
+  }, [hataliKayitlar.length]);
 
   // İstatistik hesaplama fonksiyonları
   const calculateStats = () => {
@@ -884,8 +953,8 @@ export default function YemekKartiSatis() {
           fisType, 
           odemeYontemi, 
           amount,
-          fisTypeUpper: fisType.toUpperCase(),
-          odemeYontemiUpper: odemeYontemi.toUpperCase()
+          fisTypeUpper: (fisType || null)?.toString()?.toUpperCase() || '',
+          odemeYontemiUpper: (odemeYontemi || null)?.toString()?.toUpperCase() || ''
         });
       }
       
@@ -934,12 +1003,93 @@ export default function YemekKartiSatis() {
       .map(([name, stats]) => ({ name, ...stats }))
       .sort((a, b) => b.amount - a.amount);
 
+    // Z Raporu istatistikleri - Sicil No ve Z No'ya göre grupla
+    const zRaporuStats: { [key: string]: { 
+      sicilNo: string, 
+      zNo: string, 
+      count: number, 
+      amount: number,
+      subeler: Set<string>,
+      fisTipleri: Set<string>,
+      yemekKartlari: Set<string>,
+      firstDate: string,
+      lastDate: string,
+      fisTipiDetay: { [key: string]: { count: number, amount: number } },
+      yemekKartiDetay: { [key: string]: { count: number, amount: number } }
+    } } = {};
+    
+    data.forEach(item => {
+      const sicilNo = item.Sicil_No || 'Bilinmeyen';
+      const zNo = item.Z_No || 'Bilinmeyen';
+      const key = `${sicilNo}_${zNo}`;
+      const amount = parseFloat(item.Tutar) || 0;
+      const tarih = item.Tarih || '';
+      const fisType = item['Fiş Tipi'] || 'Bilinmeyen';
+      const yemekKarti = item['Yemek Kartı'] || 'Bilinmeyen';
+      
+      if (!zRaporuStats[key]) {
+        zRaporuStats[key] = { 
+          sicilNo, 
+          zNo, 
+          count: 0, 
+          amount: 0,
+          subeler: new Set(),
+          fisTipleri: new Set(),
+          yemekKartlari: new Set(),
+          firstDate: tarih,
+          lastDate: tarih,
+          fisTipiDetay: {},
+          yemekKartiDetay: {}
+        };
+      }
+      
+      zRaporuStats[key].count += 1;
+      zRaporuStats[key].amount += amount;
+      zRaporuStats[key].subeler.add(item['Şube'] || 'Bilinmeyen');
+      zRaporuStats[key].fisTipleri.add(fisType);
+      zRaporuStats[key].yemekKartlari.add(yemekKarti);
+      
+      // Fiş tipi detayları
+      if (!zRaporuStats[key].fisTipiDetay[fisType]) {
+        zRaporuStats[key].fisTipiDetay[fisType] = { count: 0, amount: 0 };
+      }
+      zRaporuStats[key].fisTipiDetay[fisType].count += 1;
+      zRaporuStats[key].fisTipiDetay[fisType].amount += amount;
+      
+      // Yemek kartı detayları
+      if (!zRaporuStats[key].yemekKartiDetay[yemekKarti]) {
+        zRaporuStats[key].yemekKartiDetay[yemekKarti] = { count: 0, amount: 0 };
+      }
+      zRaporuStats[key].yemekKartiDetay[yemekKarti].count += 1;
+      zRaporuStats[key].yemekKartiDetay[yemekKarti].amount += amount;
+      
+      // Tarih karşılaştırması için
+      if (tarih && (!zRaporuStats[key].firstDate || tarih < zRaporuStats[key].firstDate)) {
+        zRaporuStats[key].firstDate = tarih;
+      }
+      if (tarih && (!zRaporuStats[key].lastDate || tarih > zRaporuStats[key].lastDate)) {
+        zRaporuStats[key].lastDate = tarih;
+      }
+    });
+
+    // Z raporlarını tutara göre sırala
+    const sortedZRaporlari = Object.entries(zRaporuStats)
+      .map(([key, stats]) => ({ 
+        key,
+        ...stats,
+        subeListesi: Array.from(stats.subeler).join(', '),
+        fisTipiListesi: Array.from(stats.fisTipleri).join(', '),
+        yemekKartiListesi: Array.from(stats.yemekKartlari).join(', ')
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
     return {
       totalAmount,
       totalTransactions: data.length,
       cardTypes: sortedCardTypes,
       branches: sortedBranches,
-      fisTypes: sortedFisTypes
+      fisTypes: sortedFisTypes,
+      zRaporlari: sortedZRaporlari
     };
   };
 
@@ -1013,7 +1163,6 @@ export default function YemekKartiSatis() {
                   disabled={loading}
                   className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  <span>🍽️</span>
                   Raporu Getir
                 </button>
               </div>
@@ -1694,6 +1843,182 @@ export default function YemekKartiSatis() {
                     </div>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Z Raporu Analizi - Akordiyon */}
+            {stats.zRaporlari && stats.zRaporlari.length > 0 && (
+              <div className="mb-6">
+                <button
+                  onClick={() => toggleAccordion('zRaporu')}
+                  className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl hover:from-yellow-100 hover:to-yellow-200 transition-all duration-200 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center shadow-md">
+                      <span className="text-white text-lg">📋</span>
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900">Z Raporu Analizi</h4>
+                    <span className="text-sm text-yellow-600 bg-yellow-100 px-2 py-1 rounded-md">
+                      {stats.zRaporlari.length} Z raporu
+                    </span>
+                  </div>
+                  <svg 
+                    className={`w-6 h-6 text-yellow-600 transition-transform duration-200 ${accordionState.zRaporu ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {accordionState.zRaporu && (
+                  <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-yellow-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                Detay
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                Sicil No
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                Z No
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                İşlem Sayısı
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                Toplam Tutar
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                Şubeler
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-yellow-700 uppercase tracking-wider">
+                                Tarih Aralığı
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {stats.zRaporlari.map((zRapor, index) => (
+                              <React.Fragment key={zRapor.key}>
+                                <tr className={index % 2 === 0 ? 'bg-white' : 'bg-yellow-25'}>
+                                  <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
+                                    <button
+                                      onClick={() => setExpandedZRaporu(expandedZRaporu === zRapor.key ? null : zRapor.key)}
+                                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full hover:bg-yellow-200 transition-colors"
+                                    >
+                                      {expandedZRaporu === zRapor.key ? '🔽 Gizle' : '🔍 Detay'}
+                                    </button>
+                                  </td>
+                                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {zRapor.sicilNo}
+                                  </td>
+                                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {zRapor.zNo}
+                                  </td>
+                                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      {zRapor.count} işlem
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                                    {zRapor.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                  </td>
+                                  <td className="px-4 py-4 text-sm text-gray-900 max-w-xs">
+                                    <div className="truncate" title={zRapor.subeListesi}>
+                                      {zRapor.subeListesi.length > 50 ? zRapor.subeListesi.substring(0, 50) + '...' : zRapor.subeListesi}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    <div className="text-xs">
+                                      <div>{zRapor.firstDate ? new Date(zRapor.firstDate).toLocaleDateString('tr-TR') : '-'}</div>
+                                      {zRapor.firstDate !== zRapor.lastDate && (
+                                        <div className="text-gray-500">→ {zRapor.lastDate ? new Date(zRapor.lastDate).toLocaleDateString('tr-TR') : '-'}</div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                                
+                                {/* Detay Satırı */}
+                                {expandedZRaporu === zRapor.key && (
+                                  <tr>
+                                    <td colSpan={7} className="px-4 py-4 bg-gradient-to-r from-yellow-25 to-yellow-50">
+                                      <div className="space-y-6">
+                                        {/* Fiş Tipi Detayları */}
+                                        <div>
+                                          <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                            <span className="text-blue-600">🎫</span>
+                                            Fiş Tipi Analizi
+                                          </h4>
+                                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {Object.entries(zRapor.fisTipiDetay).map(([fisType, detay]) => (
+                                              <div key={fisType} className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+                                                <div className="font-medium text-sm text-gray-900 mb-1">{fisType}</div>
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                  <div>İşlem: {detay.count}</div>
+                                                  <div className="font-semibold text-blue-600">
+                                                    {detay.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                                  </div>
+                                                  <div className="text-xs text-gray-500">
+                                                    %{((detay.amount / zRapor.amount) * 100).toFixed(1)}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Yemek Kartı Detayları */}
+                                        <div>
+                                          <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                            <span className="text-green-600">🍽️</span>
+                                            Yemek Kartı Analizi
+                                          </h4>
+                                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {Object.entries(zRapor.yemekKartiDetay).map(([kartType, detay]) => (
+                                              <div key={kartType} className="bg-white rounded-lg p-3 shadow-sm border border-green-100">
+                                                <div className="font-medium text-sm text-gray-900 mb-1">{kartType}</div>
+                                                <div className="text-xs text-gray-600 space-y-1">
+                                                  <div>İşlem: {detay.count}</div>
+                                                  <div className="font-semibold text-green-600">
+                                                    {detay.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                                  </div>
+                                                  <div className="text-xs text-gray-500">
+                                                    %{((detay.amount / zRapor.amount) * 100).toFixed(1)}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      {/* Z Raporu Özet İstatistikleri */}
+                      <div className="bg-yellow-50 px-4 py-3 border-t border-yellow-200">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-yellow-700 font-medium">
+                            Toplam {stats.zRaporlari.length} farklı Z raporu
+                          </span>
+                          <span className="text-yellow-600">
+                            Toplam Tutar: {stats.zRaporlari.reduce((sum, z) => sum + z.amount, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

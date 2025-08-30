@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import { encryptPayloadSecure } from '../utils/api';
 import { getCurrentUser } from '../utils/simple-permissions';
 import Lottie from 'lottie-react';
+import { trackReportView } from '../utils/yandex-metrica';
 
 interface FileReadResult {
   success: boolean;

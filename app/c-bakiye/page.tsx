@@ -10,6 +10,7 @@ import { getCurrencyByNo, getCurrencyByCode } from '../../types/currency';
 import { fetchUserReports, getCurrentUser, getAuthorizedReports } from '../utils/simple-permissions';
 import type { ReportWithAccess } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import { trackReportView, trackReportGeneration, trackCurrencySelection } from '../utils/yandex-metrica';
 
 export default function CBakiye() {
   const [data, setData] = useState<any[]>([]);
@@ -49,6 +50,8 @@ export default function CBakiye() {
       const isLoggedIn = localStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
+        // Sayfa görüntüleme tracking
+        trackReportView('c_bakiye');
       } else {
         router.push('/login');
       }
@@ -992,6 +995,10 @@ export default function CBakiye() {
       console.log(`✅ MOBIL DEBUG: ${finalData.length} kayıt başarıyla yüklendi`);
       setData(finalData);
       
+      // Rapor oluşturma tracking
+      const totalAmount = multiCurrencyStats.currencies.reduce((sum, curr) => sum + Math.abs(curr.bakiye), 0);
+      trackReportGeneration('c_bakiye', finalData.length, totalAmount);
+      
       // Ana rapor verisi geldikten sonra arka planda hareket detaylarını çek
       if (finalData.length > 0) {
         // Ana loading'i false yap, arka plan yükleme başlasın
@@ -1166,7 +1173,11 @@ export default function CBakiye() {
         {showCurrencySelector && (
           <CurrencySelector
             selectedCurrencies={selectedCurrencies}
-            onCurrencyChange={setSelectedCurrencies}
+            onCurrencyChange={(currencies) => {
+              setSelectedCurrencies(currencies);
+              // Döviz seçimi tracking
+              trackCurrencySelection(currencies);
+            }}
             className="mb-4"
           />
         )}

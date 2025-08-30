@@ -321,7 +321,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           <div className="flex items-center">
             <div className="flex-shrink-0 h-8 w-8 bg-red-100 rounded-full flex items-center justify-center">
               <span className="text-red-600 font-medium text-sm">
-                {userName.charAt(0).toUpperCase()}
+                {(userName || 'U').charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="ml-3 overflow-hidden">

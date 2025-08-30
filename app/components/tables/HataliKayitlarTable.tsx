@@ -4,6 +4,7 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { trackReportExport } from '../../utils/yandex-metrica';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -190,6 +191,7 @@ export default function HataliKayitlarTable({ data, currentUser }: HataliKayitla
     worksheet['!cols'] = columnWidths;
     
     XLSX.writeFile(workbook, 'hatali-kayitlar-raporu.xlsx');
+    trackReportExport('hatali_kayitlar', 'excel');
   };
 
   // Yazdır
@@ -261,6 +263,7 @@ export default function HataliKayitlarTable({ data, currentUser }: HataliKayitla
     printWindow.document.write(printContent);
     printWindow.document.close();
     printWindow.print();
+    trackReportExport('hatali_kayitlar', 'print');
   };
 
   if (data.length === 0) {

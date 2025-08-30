@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '../components/DashboardLayout';
 import Lottie from 'lottie-react';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
+import { trackReportView } from '../utils/yandex-metrica';
 
 export default function Settings() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -125,6 +126,7 @@ export default function Settings() {
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
         setUserRole(role || '');
+        trackReportView('ayarlar');
         // Admin ise alt kullanıcıları yükle
         if (role === 'admin') {
           fetchSubUsers();

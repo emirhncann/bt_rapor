@@ -7,6 +7,7 @@ import DashboardLayout from './components/DashboardLayout';
 import { fetchUserReports, getCurrentUser, getAuthorizedReports, groupReportsByCategory } from './utils/simple-permissions';
 import type { ReportWithAccess } from './utils/simple-permissions';
 import { sendSecureProxyRequest } from './utils/api';
+import { trackReportView, trackUserLogin } from './utils/yandex-metrica';
 
 export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -285,6 +286,15 @@ export default function Dashboard() {
         loadConnectionInfoToStorage();
         loadUserReports(); // Kullanıcı raporlarını yükle
         loadPinnedReports(); // Sabitlenmiş raporları yükle
+        
+        // Dashboard görüntüleme tracking
+        trackReportView('dashboard');
+        
+        // Kullanıcı giriş tracking
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          trackUserLogin(currentUser.id, currentUser.role || undefined);
+        }
       } else {
         router.push('/login');
       }

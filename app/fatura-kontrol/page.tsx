@@ -6,6 +6,7 @@ import Lottie from 'lottie-react';
 import DashboardLayout from '../components/DashboardLayout';
 import { sendSecureProxyRequest } from '../utils/api';
 import { getCurrentUser } from '../utils/simple-permissions';
+import { trackReportView, trackFileUpload } from '../utils/yandex-metrica';
 import * as XLSX from 'xlsx';
 
 export default function ExcelCompare() {
@@ -17,6 +18,8 @@ export default function ExcelCompare() {
   const [successAnimationData, setSuccessAnimationData] = useState(null);
   const [failedAnimationData, setFailedAnimationData] = useState(null);
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
+  const [mismatchedInvoicesOpen, setMismatchedInvoicesOpen] = useState(false);
+  const [missingInvoicesOpen, setMissingInvoicesOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -1233,12 +1236,31 @@ export default function ExcelCompare() {
                 {/* Tutarı Uyumsuz Faturalar Tablosu */}
                 {(result.mismatchedInvoicesDetails || []).length > 0 && (
                   <div className="border border-gray-200 rounded-lg">
-                    <div className="bg-orange-50 px-4 py-3 border-b border-orange-200 flex justify-between items-center">
-                      <h3 className="text-sm font-medium text-orange-900">Tutarı Uyumsuz Faturalar</h3>
+                    <div 
+                      className="bg-orange-50 px-4 py-3 border-b border-orange-200 flex justify-between items-center cursor-pointer hover:bg-orange-100 transition-colors"
+                      onClick={() => setMismatchedInvoicesOpen(!mismatchedInvoicesOpen)}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <svg 
+                          className={`w-5 h-5 text-orange-700 transition-transform ${mismatchedInvoicesOpen ? 'rotate-90' : ''}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <h3 className="text-sm font-medium text-orange-900">Tutarı Uyumsuz Faturalar</h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                          {(result.mismatchedInvoicesDetails || []).length}
+                        </span>
+                      </div>
                       <div className="flex space-x-2">
                         {/* Excel Export Butonu */}
                         <button
-                          onClick={() => exportMismatchedToExcel()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportMismatchedToExcel();
+                          }}
                           className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
                         >
                           <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1248,7 +1270,8 @@ export default function ExcelCompare() {
                         </button>
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
+                    {mismatchedInvoicesOpen && (
+                      <div className="overflow-x-auto">
                       <table className="w-full divide-y divide-gray-200">
                         <thead className="bg-orange-50">
                           <tr>
@@ -1357,18 +1380,38 @@ export default function ExcelCompare() {
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
                 )}
 
                 {/* Eksik Faturalar Tablosu */}
                 {(result.missingInvoicesDetails || []).length > 0 && (
                   <div className="border border-gray-200 rounded-lg">
-                    <div className="bg-red-50 px-4 py-3 border-b border-red-200 flex justify-between items-center">
-                      <h3 className="text-sm font-medium text-red-900">Eksik Faturalar Detayları</h3>
+                    <div 
+                      className="bg-red-50 px-4 py-3 border-b border-red-200 flex justify-between items-center cursor-pointer hover:bg-red-100 transition-colors"
+                      onClick={() => setMissingInvoicesOpen(!missingInvoicesOpen)}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <svg 
+                          className={`w-5 h-5 text-red-700 transition-transform ${missingInvoicesOpen ? 'rotate-90' : ''}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <h3 className="text-sm font-medium text-red-900">Eksik Faturalar Detayları</h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          {(result.missingInvoicesDetails || []).length}
+                        </span>
+                      </div>
                       <div className="flex space-x-2">
                         {/* Excel Export Butonu */}
                         <button
-                          onClick={exportToExcel}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportToExcel();
+                          }}
                           className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
                         >
                           <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1379,7 +1422,8 @@ export default function ExcelCompare() {
 
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
+                    {missingInvoicesOpen && (
+                      <div className="overflow-x-auto">
                       <table className="w-full divide-y divide-gray-200">
                         <thead className="bg-red-50">
                           <tr>
@@ -1494,6 +1538,7 @@ export default function ExcelCompare() {
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
                 )}
 

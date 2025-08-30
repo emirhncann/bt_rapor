@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
+import { trackUserLogin, trackLoginAttempt } from '../utils/yandex-metrica';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -35,6 +36,9 @@ export default function Login() {
     }
 
     try {
+      // Login girişimi tracking
+      trackLoginAttempt(email);
+      
       // Doğrudan backend'e login isteği gönder (static export için)
       const response = await fetch('https://api.btrapor.com/login', {
         method: 'POST',
@@ -60,6 +64,9 @@ export default function Login() {
         localStorage.setItem('userRole', data.user.role);
         localStorage.setItem('companyRef', data.user.company_ref || '');
         localStorage.setItem('companyName', data.user.company_name || '');
+        
+        // Başarılı login tracking
+        trackUserLogin(data.user.id.toString(), data.user.role);
         
         router.push('/');
       } else {
@@ -121,7 +128,7 @@ export default function Login() {
         <div className="absolute bottom-8 text-center">
           <p className="text-red-200 text-sm">© 2025 btRapor. Tüm hakları saklıdır.</p>
           <div className="mt-2 px-3 py-1 bg-white bg-opacity-20 rounded-full inline-block">
-            <p className="text-white text-sm font-medium">v2407</p>
+            <p className="text-white text-sm font-medium">v3008</p>
           </div>
         </div>
       </div>
@@ -301,7 +308,7 @@ export default function Login() {
                 <svg className="w-3 h-3 text-gray-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a1.994 1.994 0 01-1.414.586H7a4 4 0 01-4-4V7a4 4 0 014-4z" />
                 </svg>
-                <span className="text-sm font-medium text-gray-700">v2407</span>
+                <span className="text-sm font-medium text-gray-700">3008</span>
               </div>
             </div>
           </div>
