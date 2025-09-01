@@ -13,7 +13,18 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<'top' | 'bottom'>('bottom');
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // YYYY-MM-DD formatını DD/MM/YYYY formatına çevir
+  const formatToDisplay = (dateStr: string): string => {
+    if (!dateStr || !dateStr.includes('-')) return '';
+    const [yyyy, mm, dd] = dateStr.split('-');
+    if (dd && mm && yyyy && yyyy.length === 4) {
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    return dateStr;
+  };
 
   // DD/MM/YYYY formatını Date'e çevir
   const parseDisplayDate = (dateStr: string): Date | null => {
@@ -35,7 +46,7 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
 
   // Value değiştiğinde selectedDate'i güncelle
   useEffect(() => {
-    const parsed = parseDisplayDate(value);
+    const parsed = parseDisplayDate(formatToDisplay(value));
     setSelectedDate(parsed);
     if (parsed) {
       setCurrentMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
@@ -53,6 +64,27 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Takvim açılırken pozisyonu hesapla
+  const handleToggleCalendar = () => {
+    if (!isOpen) {
+      // Takvim açılırken pozisyonu hesapla
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const viewportHeight = window.innerHeight;
+        const spaceBelow = viewportHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const calendarHeight = 400; // Takvim yüksekliği (yaklaşık)
+        
+        if (spaceBelow >= calendarHeight || spaceBelow > spaceAbove) {
+          setDropdownPosition('bottom');
+        } else {
+          setDropdownPosition('top');
+        }
+      }
+    }
+    setIsOpen(!isOpen);
+  };
 
   const today = new Date();
   const year = currentMonth.getFullYear();
@@ -193,19 +225,19 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
       
       {/* Input Field */}
       <div className="relative">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onClick={() => setIsOpen(!isOpen)}
-          placeholder={placeholder}
-          className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent cursor-pointer"
-        />
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-600 transition-colors"
-        >
+                 <input
+           type="text"
+           value={formatToDisplay(value)}
+           onChange={(e) => onChange(e.target.value)}
+           onClick={handleToggleCalendar}
+           placeholder={placeholder}
+           className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent cursor-pointer"
+         />
+         <button
+           type="button"
+           onClick={handleToggleCalendar}
+           className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-600 transition-colors"
+         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
@@ -214,7 +246,7 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
 
       {/* Calendar Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-4 min-w-[320px]">
+        <div className={`absolute ${dropdownPosition === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-4 min-w-[320px]`}>
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <button
