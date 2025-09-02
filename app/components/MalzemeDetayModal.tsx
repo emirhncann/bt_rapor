@@ -12,6 +12,8 @@ interface MalzemeDetay {
   'Stok Miktarı': number;
   'Aktif Satış Fiyatı': number;
   'Fiyat Kaynağı': string;
+  'Devir Miktarı': number;
+  'Ambar Transfer Giriş Miktarı': number;
   'Son Alış Tarihi': string;
   'Son Alış Birim Fiyatı': number;
   'Son Alış Miktarı': number;
@@ -32,6 +34,7 @@ interface MalzemeDetayModalProps {
   malzemeKodu: string;
   malzemeAdi: string;
   itemRef: string;
+  clientRef: string;
   startDate: string;
   endDate: string;
 }
@@ -42,6 +45,7 @@ export default function MalzemeDetayModal({
   malzemeKodu,
   malzemeAdi,
   itemRef,
+  clientRef,
   startDate,
   endDate
 }: MalzemeDetayModalProps) {
@@ -70,44 +74,76 @@ export default function MalzemeDetayModal({
     }
   }, [isOpen, itemRef, spCreated]);
 
-         const createStoredProcedure = async () => {
-     setLoading(true);
-     setError(null);
+                   const createStoredProcedure = async () => {
+      setLoading(true);
+      setError(null);
 
-     try {
-       const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
+      try {
+        const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
 
-               // İlk sorgu: DROP PROCEDURE
-        const dropSpQuery = `
-          IF OBJECT_ID('dbo.sp_MalzemeDetayByItem','P') IS NOT NULL
-            DROP PROCEDURE dbo.sp_MalzemeDetayByItem;
-        `;
+                 // Önce IdList user-defined table type'ını oluştur (eğer yoksa)
+         try {
+           const createIdListQuery = `
+             IF NOT EXISTS (SELECT * FROM sys.types WHERE name = 'IdList' AND is_user_defined = 1)
+             BEGIN
+               CREATE TYPE dbo.IdList AS TABLE
+               (
+                 ID INT NOT NULL PRIMARY KEY
+               );
+             END
+           `;
 
-        console.log('🔧 İlk Sorgu - DROP PROCEDURE:');
-        console.log('='.repeat(80));
-        console.log(dropSpQuery);
-        console.log('='.repeat(80));
+           console.log('🔧 IdList Type oluşturuluyor (eğer yoksa):');
+           console.log('='.repeat(80));
+           console.log(createIdListQuery);
+           console.log('='.repeat(80));
 
-        const dropResponse = await sendSecureProxyRequest(
-          companyRef,
-          'first_db_key',
-          { query: dropSpQuery },
-          'https://api.btrapor.com/proxy',
-          300000
-        );
+           const createIdListResponse = await sendSecureProxyRequest(
+             companyRef,
+             'first_db_key',
+             { query: createIdListQuery },
+             'https://api.btrapor.com/proxy',
+             300000
+           );
 
-        if (!dropResponse.ok) {
-          const errorText = await dropResponse.text();
-          console.error('❌ DROP PROCEDURE hatası:', {
-            status: dropResponse.status,
-            statusText: dropResponse.statusText,
-            error: errorText
-          });
-          throw new Error('Stored procedure silinemedi');
+           if (createIdListResponse.ok) {
+             console.log('✅ IdList Type başarılı');
+           } else {
+             console.log('⚠️ IdList Type hatası (devam ediliyor):', createIdListResponse.status);
+           }
+         } catch (idListError) {
+           console.log('⚠️ IdList Type hatası (devam ediliyor):', idListError);
+         }
+
+         // DROP PROCEDURE hatası olursa devam et (zaten mevcut olmayabilir)
+         try {
+           const dropSpQuery = `
+             IF OBJECT_ID('dbo.sp_MalzemeDetayByItem','P') IS NOT NULL
+               DROP PROCEDURE dbo.sp_MalzemeDetayByItem;
+           `;
+
+          console.log('🔧 DROP PROCEDURE deneniyor (mevcut değilse hata normal):');
+          console.log('='.repeat(80));
+          console.log(dropSpQuery);
+          console.log('='.repeat(80));
+
+          const dropResponse = await sendSecureProxyRequest(
+            companyRef,
+            'first_db_key',
+            { query: dropSpQuery },
+            'https://api.btrapor.com/proxy',
+            300000
+          );
+
+          if (dropResponse.ok) {
+            const dropResult = await dropResponse.json();
+            console.log('✅ DROP PROCEDURE başarılı:', dropResult);
+          } else {
+            console.log('⚠️ DROP PROCEDURE hatası (normal, zaten mevcut değil):', dropResponse.status);
+          }
+        } catch (dropError) {
+          console.log('⚠️ DROP PROCEDURE hatası (devam ediliyor):', dropError);
         }
-
-        const dropResult = await dropResponse.json();
-        console.log('✅ DROP PROCEDURE başarılı:', dropResult);
 
         // İkinci sorgu: CREATE PROCEDURE
         const createSpQuery = `
@@ -120,7 +156,8 @@ export default function MalzemeDetayModal({
             @WarehouseList     dbo.IdList READONLY,  -- NR listesi (boş=tümü)
             @HasMarketModule   BIT,                  -- 1: LK>LG>0, 0: LG>0
             @GoDb              SYSNAME = NULL,       -- GO tabloları DB (örn. GO3); NULL/'' = current DB
-            @GoSchema          SYSNAME = N'dbo'      -- GO tabloları şema
+            @GoSchema          SYSNAME = N'dbo',     -- GO tabloları şema
+            @ClientRef         INT
           AS
           BEGIN
             SET NOCOUNT ON;
@@ -164,36 +201,17 @@ export default function MalzemeDetayModal({
             ------------------------------------------------------------
             -- 2) Ambar kolon tespiti + COALESCE ifadeleri
             ------------------------------------------------------------
-            DECLARE @WhCol_STLINE SYSNAME, @WhCol_STINVTOT SYSNAME;
-            DECLARE @WhExpr_STLINE NVARCHAR(100), @WhExpr_STINVTOT NVARCHAR(120);
+            DECLARE @WhCol_STLINE SYSNAME, @WhCol_STINVTOT SYSNAME,@WhCol_STLINE_Dest SYSNAME;
+            DECLARE @WhExpr_STLINE NVARCHAR(100), @WhExpr_STINVTOT NVARCHAR(120), @WhExpr_STLINE_Dest NVARCHAR(100);
 
-            -- STLINE: SOURCEINDEX / SOURCEINDEX2
-            IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STLINE_FQN) AND name = 'SOURCEINDEX')
-              SET @WhCol_STLINE = N'SOURCEINDEX';
-            ELSE IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STLINE_FQN) AND name = 'SOURCEINDEX2')
-              SET @WhCol_STLINE = N'SOURCEINDEX2';
-            ELSE
-              SET @WhCol_STLINE = N'SOURCEINDEX';
-
-            IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STLINE_FQN) AND name = 'SOURCEINDEX')
-               AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STLINE_FQN) AND name = 'SOURCEINDEX2')
-              SET @WhExpr_STLINE = N'COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2)';
-            ELSE
-              SET @WhExpr_STLINE = N'S.' + QUOTENAME(@WhCol_STLINE);
-
-            -- STINVTOT (LV/LG): INVENNO / SOURCEINDEX
-            IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STINVTOT_FQN) AND name = 'INVENNO')
-              SET @WhCol_STINVTOT = N'INVENNO';
-            ELSE IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STINVTOT_FQN) AND name = 'SOURCEINDEX')
-              SET @WhCol_STINVTOT = N'SOURCEINDEX';
-            ELSE
-              SET @WhCol_STINVTOT = N'INVENNO';
-
-            IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STINVTOT_FQN) AND name = 'INVENNO')
-               AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@T_STINVTOT_FQN) AND name = 'SOURCEINDEX')
-              SET @WhExpr_STINVTOT = N'COALESCE(T.INVENNO, T.SOURCEINDEX)';
-            ELSE
-              SET @WhExpr_STINVTOT = N'T.' + QUOTENAME(@WhCol_STINVTOT);
+            SET @WhCol_STLINE = N'SOURCEINDEX';
+            SET @WhExpr_STLINE = N'S.' + QUOTENAME(@WhCol_STLINE);
+                
+            SET @WhCol_STLINE_Dest = N'DESTINDEX';
+            SET @WhExpr_STLINE_Dest = N'S.' + QUOTENAME(@WhCol_STLINE_Dest);
+            
+            SET @WhCol_STINVTOT = N'INVENNO';
+            SET @WhExpr_STINVTOT = N'T.' + QUOTENAME(@WhCol_STINVTOT);
 
             ------------------------------------------------------------
             -- 3) Fiyat kaynak blokları (LG/LK)
@@ -302,8 +320,10 @@ export default function MalzemeDetayModal({
             WD.WhNr                              AS [Ambar No],
             WD.WhName                            AS [Ambar Adı],
             ISNULL(O.OnHandQty,0)                AS [Stok Miktarı],
-          ' + @aktifFiyatExpr + N',
-          ' + @kaynakExpr + N',
+            ' + @aktifFiyatExpr + N',
+            ' + @kaynakExpr + N',
+            Devir.DevirTotal					 AS [Devir Miktarı],
+            Transfer.TransferTotal				 AS [Ambar Transfer Giriş Miktarı],
             LBL.DATE_                            AS [Son Alış Tarihi],
             LBL.PRICE                            AS [Son Alış Birim Fiyatı],
             LBL.AMOUNT                           AS [Son Alış Miktarı],
@@ -327,7 +347,7 @@ export default function MalzemeDetayModal({
           OUTER APPLY (
             SELECT TOP (1) S.DATE_, S.PRICE, S.AMOUNT, S.LINENET
             FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.STOCKREF=@ItemRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1 AND ' + @WhExpr_STLINE + N' = WD.WhNr
+            WHERE S.STOCKREF=@ItemRef AND S.CLIENTREF=@ClientRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1 AND ' + @WhExpr_STLINE + N' = WD.WhNr
             ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
           ) AS LBL
 
@@ -341,7 +361,7 @@ export default function MalzemeDetayModal({
           OUTER APPLY (
             SELECT TOP (1) S.DATE_, S.PRICE
             FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.STOCKREF=@ItemRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1 AND ' + @WhExpr_STLINE + N' = WD.WhNr
+            WHERE S.STOCKREF=@ItemRef AND S.CLIENTREF=@ClientRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1 AND ' + @WhExpr_STLINE + N' = WD.WhNr
               AND S.DATE_>=@DateFrom AND S.DATE_<@DateToPlus1
             ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
           ) AS RBL
@@ -350,13 +370,38 @@ export default function MalzemeDetayModal({
             SELECT SUM(S.AMOUNT) AS BuyTotal
             FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
             WHERE S.LINETYPE = 0
+              AND S.CLIENTREF=@ClientRef
               AND S.IOCODE   = 1
-          AND S.TRCODE   = 1
+              AND S.TRCODE   = 1
               AND S.STOCKREF = @ItemRef
               AND ' + @WhExpr_STLINE + N' = WD.WhNr           -- COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2) veya S.SOURCEINDEX
               AND S.DATE_   >= @DateFrom
               AND S.DATE_   <  @DateToPlus1
           ) AS RBT
+
+          OUTER APPLY (
+            SELECT SUM(S.AMOUNT) AS DevirTotal
+            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+            WHERE S.LINETYPE = 0
+              AND S.IOCODE   = 1
+              AND S.TRCODE   = 14
+              AND S.STOCKREF = @ItemRef
+              AND ' + @WhExpr_STLINE + N' = WD.WhNr           -- COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2) veya S.SOURCEINDEX
+              AND S.DATE_   >= @DateFrom
+              AND S.DATE_   <  @DateToPlus1
+          ) AS Devir
+
+          OUTER APPLY (
+            SELECT SUM(S.AMOUNT) AS TransferTotal
+            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+            WHERE S.LINETYPE = 0
+              AND S.IOCODE   = 2
+              AND S.TRCODE   = 25
+              AND S.STOCKREF = @ItemRef
+              AND ' + @WhExpr_STLINE + N' = WD.WhNr           -- COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2) veya S.SOURCEINDEX
+              AND S.DATE_   >= @DateFrom
+              AND S.DATE_   <  @DateToPlus1
+          ) AS Transfer
 
           OUTER APPLY (
             SELECT TOP (1) S.DATE_, S.PRICE
@@ -383,15 +428,15 @@ export default function MalzemeDetayModal({
 
             EXEC sp_executesql 
               @sql,
-              N'@Firm INT, @ItemRef INT, @DateFrom DATE, @DateTo DATE, @WarehouseList dbo.IdList READONLY',
-              @Firm=@Firm, @ItemRef=@ItemRef, @DateFrom=@DateFrom, @DateTo=@DateTo, @WarehouseList=@WarehouseList;
+              N'@Firm INT, @ItemRef INT, @DateFrom DATE, @DateTo DATE, @WarehouseList dbo.IdList READONLY, @ClientRef INT',
+              @Firm=@Firm, @ItemRef=@ItemRef, @DateFrom=@DateFrom, @DateTo=@DateTo, @WarehouseList=@WarehouseList,@ClientRef=@ClientRef;
           END
         `;
 
-                console.log('🔧 İkinci Sorgu - CREATE PROCEDURE:');
-        console.log('='.repeat(80));
-        console.log(createSpQuery);
-        console.log('='.repeat(80));
+                         console.log('🔧 CREATE PROCEDURE başlıyor:');
+         console.log('='.repeat(80));
+         console.log(createSpQuery);
+         console.log('='.repeat(80));
 
         const createResponse = await sendSecureProxyRequest(
           companyRef,
@@ -401,40 +446,58 @@ export default function MalzemeDetayModal({
           300000
         );
 
-        if (!createResponse.ok) {
-          const errorText = await createResponse.text();
-          console.error('❌ CREATE PROCEDURE hatası:', {
-            status: createResponse.status,
-            statusText: createResponse.statusText,
-            error: errorText
-          });
-          throw new Error('Stored procedure oluşturulamadı');
-        }
+                 if (!createResponse.ok) {
+           const errorText = await createResponse.text();
+           console.error('❌ CREATE PROCEDURE hatası:', {
+             status: createResponse.status,
+             statusText: createResponse.statusText,
+             error: errorText,
+             responseHeaders: Object.fromEntries(createResponse.headers.entries())
+           });
+           
+           // Hata detayını daha açık göster
+           let errorMessage = 'Stored procedure oluşturulamadı';
+           try {
+             const errorJson = JSON.parse(errorText);
+             if (errorJson.error) {
+               errorMessage = `Stored procedure hatası: ${errorJson.error}`;
+             } else if (errorJson.message) {
+               errorMessage = `Stored procedure hatası: ${errorJson.message}`;
+             }
+           } catch (e) {
+             if (errorText) {
+               errorMessage = `Stored procedure hatası: ${errorText}`;
+             }
+           }
+           
+           throw new Error(errorMessage);
+         }
 
         const createResult = await createResponse.json();
         console.log('✅ CREATE PROCEDURE başarılı:', createResult);
         
-        // Üçüncü sorgu: Stored procedure'ü parametrelerle çağır
-        const executeSpQuery = `
-          DECLARE @Wh dbo.IdList; 
-          -- Tüm ambarlar için boş bırakıyoruz
+                 // Üçüncü sorgu: Stored procedure'ü parametrelerle çağır
+         const executeSpQuery = `
+           DECLARE @Wh dbo.IdList; 
+           -- Tüm ambarlar için boş bırakıyoruz
 
-          EXEC dbo.sp_MalzemeDetayByItem
-            @Firm=9,
-            @Period=1,
-            @ItemRef=2,
-            @DateFrom='2025-01-01',
-            @DateTo='2025-09-01',
-            @WarehouseList=@Wh,
-            @HasMarketModule=1,
-            @GoDb='GO3',
-            @GoSchema='dbo';
-        `;
+           EXEC dbo.sp_MalzemeDetayByItem
+             @Firm=9,
+             @Period=1,
+             @ItemRef=31742,
+             @DateFrom='2025-01-01',
+             @DateTo='2025-09-01',
+             @WarehouseList=@Wh,
+             @HasMarketModule=1,
+             @GoDb='GO3',
+             @GoSchema='dbo',
+             @ClientRef=3;
+         `;
 
-        console.log('🔧 Üçüncü Sorgu - EXEC PROCEDURE:');
-        console.log('='.repeat(80));
-        console.log(executeSpQuery);
-        console.log('='.repeat(80));
+                 console.log('🔧 Test EXEC PROCEDURE başlıyor:');
+         console.log('='.repeat(80));
+         console.log(executeSpQuery);
+         console.log('='.repeat(80));
 
         const executeResponse = await sendSecureProxyRequest(
           companyRef,
@@ -444,15 +507,32 @@ export default function MalzemeDetayModal({
           300000
         );
 
-        if (!executeResponse.ok) {
-          const errorText = await executeResponse.text();
-          console.error('❌ EXEC PROCEDURE hatası:', {
-            status: executeResponse.status,
-            statusText: executeResponse.statusText,
-            error: errorText
-          });
-          throw new Error('Stored procedure çalıştırılamadı');
-        }
+                 if (!executeResponse.ok) {
+           const errorText = await executeResponse.text();
+           console.error('❌ EXEC PROCEDURE hatası:', {
+             status: executeResponse.status,
+             statusText: executeResponse.statusText,
+             error: errorText,
+             responseHeaders: Object.fromEntries(executeResponse.headers.entries())
+           });
+           
+           // Hata detayını daha açık göster
+           let errorMessage = 'Stored procedure çalıştırılamadı';
+           try {
+             const errorJson = JSON.parse(errorText);
+             if (errorJson.error) {
+               errorMessage = `EXEC hatası: ${errorJson.error}`;
+             } else if (errorJson.message) {
+               errorMessage = `EXEC hatası: ${errorJson.message}`;
+             }
+           } catch (e) {
+             if (errorText) {
+               errorMessage = `EXEC hatası: ${errorText}`;
+             }
+           }
+           
+           throw new Error(errorMessage);
+         }
 
         const executeResult = await executeResponse.json();
         console.log('✅ EXEC PROCEDURE başarılı:', executeResult);
@@ -491,7 +571,8 @@ export default function MalzemeDetayModal({
            @WarehouseList=@Wh,
            @HasMarketModule=1,
            @GoDb='GO3',
-           @GoSchema='dbo';
+           @GoSchema='dbo',
+           @ClientRef=${clientRef};
        `;
 
       console.log('🔍 Malzeme Detay SQL Sorgusu:');
@@ -576,33 +657,42 @@ export default function MalzemeDetayModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <span className="text-blue-600 text-lg">📊</span>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Malzeme Detayları</h2>
-              <p className="text-sm text-gray-600">
-                {malzemeKodu} - {malzemeAdi}
-              </p>
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        onClick={onClose}
+      ></div>
+      
+      {/* Modal */}
+      <div className="flex min-h-full items-start sm:items-center justify-center p-0 sm:p-4">
+        <div className="relative w-full h-full sm:h-auto sm:max-w-[98vw] lg:max-w-[95vw] xl:max-w-[92vw] sm:max-h-[95vh] bg-white sm:rounded-lg shadow-xl sm:my-4 flex flex-col">
+          {/* Modal Header */}
+          <div className="flex-shrink-0 bg-gradient-to-r from-red-800 to-red-900 text-white p-4 sm:p-6 sm:rounded-t-lg">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg sm:text-xl font-bold">📊 Malzeme Detayları</h3>
+                <p className="text-red-100 text-xs sm:text-sm mt-2 break-words">
+                  Malzeme Kodu: {malzemeKodu} • Malzeme Adı: {malzemeAdi}
+                  {data.length > 0 && ` • ${data.length} şube/ambar bulundu`}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:gap-4">
+                <button
+                  onClick={onClose}
+                  className="text-white hover:text-red-200 transition-colors p-2 lg:p-3 rounded-lg hover:bg-red-700"
+                  title="Detayları kapat"
+                >
+                  <svg className="w-6 h-6 sm:w-7 sm:h-7 lg:w-7 lg:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
 
-                 {/* Content */}
-         <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                           {/* Modal Body */}
+          <div className="flex-1 p-3 sm:p-6 overflow-y-auto min-h-0">
            {loading ? (
              <div className="flex flex-col items-center justify-center py-12">
                {animationData && (
@@ -639,139 +729,231 @@ export default function MalzemeDetayModal({
             </div>
                       ) : (
               <div className="space-y-6">
-                {/* Özet Bilgiler */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <div className="text-sm text-blue-600 font-medium">Toplam İşyeri</div>
-                    <div className="text-2xl font-bold text-blue-900">
-                      {new Set(data.map(item => item['İşyeri No'])).size}
-                    </div>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <div className="text-sm text-green-600 font-medium">Toplam Ambar</div>
-                    <div className="text-2xl font-bold text-green-900">
-                      {new Set(data.map(item => item['Ambar No'])).size}
-                    </div>
-                  </div>
-                  <div className="bg-purple-50 rounded-lg p-4">
-                    <div className="text-sm text-purple-600 font-medium">Toplam Stok</div>
-                    <div className="text-2xl font-bold text-purple-900">
-                      {formatNumber(data.reduce((sum, item) => sum + (item['Stok Miktarı'] || 0), 0))}
-                    </div>
-                  </div>
-                  <div className="bg-orange-50 rounded-lg p-4">
-                    <div className="text-sm text-orange-600 font-medium">Ortalama Fiyat</div>
-                    <div className="text-2xl font-bold text-orange-900">
-                      {formatCurrency(data.reduce((sum, item) => sum + (item['Aktif Satış Fiyatı'] || 0), 0) / Math.max(data.length, 1))}
-                    </div>
-                  </div>
-                </div>
+                                 {/* Şube Detayları Tablosu */}
+                 <div className="space-y-4">
+                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                     <span className="text-red-600">🏢</span>
+                     Şube Detayları
+                   </h3>
+                   
+                   <div className="bg-white rounded-lg shadow overflow-hidden">
+                     <div className="p-4 border-b border-gray-200">
+                       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+                         <h4 className="text-lg font-semibold text-gray-800">Malzeme Detay Listesi</h4>
+                         <div className="flex items-center gap-2 text-sm text-gray-500">
+                           <span>{data.length} kayıt</span>
+                         </div>
+                       </div>
+                     </div>
+                     
+                     <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative">
+                       <table className="min-w-full divide-y divide-gray-200 table-fixed w-max">
+                         <thead className="sticky top-0 z-10">
+                           {/* Grup başlıkları */}
+                           <tr className="bg-gradient-to-r from-gray-700 to-gray-800 text-white">
+                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
+                               Şube No
+                             </th>
+                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
+                               Şube Adı
+                             </th>
+                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
+                               Ambar No
+                             </th>
+                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
+                               Ambar Adı
+                             </th>
+                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
+                               Fiyat Kaynağı
+                             </th>
+                             <th colSpan={10} className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider border-r border-gray-500 bg-red-800 sticky top-0 z-20">
+                               Genel
+                             </th>
+                                                           <th colSpan={6} className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider bg-red-800 sticky top-0 z-20">
+                                Tarih Aralığı
+                              </th>
+                           </tr>
+                           {/* Alt başlıklar */}
+                           <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Aktif Satış Fiyatı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Stok Miktarı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Devir Miktarı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Ambar Giriş Miktarı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Son Alış Tarihi
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Son Alış Fiyatı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Son Alış Miktarı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Son Satış Tarihi
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
+                               Son Satış Fiyatı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-12 z-15">
+                               Son Satış Miktarı
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
+                               Son Alış Tarihi (Aralık İçi)
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
+                               Son Alış Fiyatı (Aralık İçi)
+                             </th>
+                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
+                               Son Satış Tarihi (Aralık İçi)
+                             </th>
+                                                           <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
+                                Son Satış Fiyatı (Aralık İçi)
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
+                                Son Alış Toplamı (Aralık İçi)
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
+                                Son Satış Toplamı (Aralık İçi)
+                              </th>
+                           </tr>
+                         </thead>
+                         <tbody className="bg-white divide-y divide-gray-200">
+                           {data.map((item, index) => (
+                             <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-red-50 transition-colors duration-200`}>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 min-w-[120px]">
+                                 {item['İşyeri No']}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[250px]">
+                                 {item['İşyeri Adı']}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[120px]">
+                                 {item['Ambar No']}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
+                                 {item['Ambar Adı']}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 min-w-[150px]">
+                                 {item['Fiyat Kaynağı']}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[180px]">
+                                 {formatCurrency(item['Aktif Satış Fiyatı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 min-w-[150px]">
+                                 {formatNumber(item['Stok Miktarı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-purple-600 min-w-[150px]">
+                                 {formatNumber(item['Devir Miktarı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 min-w-[180px]">
+                                 {formatNumber(item['Ambar Transfer Giriş Miktarı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[160px]">
+                                 {formatDate(item['Son Alış Tarihi'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[160px]">
+                                 {formatCurrency(item['Son Alış Birim Fiyatı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 min-w-[150px]">
+                                 {formatNumber(item['Son Alış Miktarı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[160px]">
+                                 {formatDate(item['Son Satış Tarihi'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[160px]">
+                                 {formatCurrency(item['Son Satış Birim Fiyatı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[150px]">
+                                 {formatNumber(item['Son Satış Miktarı'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
+                                 {formatDate(item['Son Alış Tarihi (Aralık İçi)'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[200px]">
+                                 {formatCurrency(item['Son Alış Fiyatı (Aralık İçi)'])}
+                               </td>
+                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
+                                 {formatDate(item['Son Satış Tarihi (Aralık İçi)'])}
+                               </td>
+                                                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[200px]">
+                                  {formatCurrency(item['Son Satış Fiyatı (Aralık İçi)'])}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[200px]">
+                                  {formatNumber(item['Son Alış Toplamı (Aralık İçi)'])}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[200px]">
+                                  {formatNumber(item['Son Satış Toplamı (Aralık İçi)'])}
+                                </td>
+                             </tr>
+                           ))}
+                         </tbody>
+                       </table>
+                     </div>
+                   </div>
+                   
+                   {/* Özet Bilgiler - Tablo Altında */}
+                   <div className="mt-6">
+                     <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                       <span className="text-green-600">📊</span>
+                       Özet Bilgiler
+                     </h3>
+                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                       <div className="bg-blue-50 rounded-lg p-4">
+                         <div className="text-sm text-blue-600 font-medium">Toplam İşyeri</div>
+                         <div className="text-2xl font-bold text-blue-900">
+                           {new Set(data.map(item => item['İşyeri No'])).size}
+                         </div>
+                       </div>
+                       <div className="bg-green-50 rounded-lg p-4">
+                         <div className="text-sm text-green-600 font-medium">Toplam Ambar</div>
+                         <div className="text-2xl font-bold text-green-900">
+                           {new Set(data.map(item => item['Ambar No'])).size}
+                         </div>
+                       </div>
+                       <div className="bg-purple-50 rounded-lg p-4">
+                         <div className="text-sm text-purple-600 font-medium">Toplam Stok</div>
+                         <div className="text-2xl font-bold text-purple-900">
+                           {formatNumber(data.reduce((sum, item) => sum + (item['Stok Miktarı'] || 0), 0))}
+                         </div>
+                       </div>
+                       <div className="bg-orange-50 rounded-lg p-4">
+                         <div className="text-sm text-orange-600 font-medium">Ortalama Fiyat</div>
+                         <div className="text-2xl font-bold text-orange-900">
+                           {formatCurrency(data.reduce((sum, item) => sum + (item['Aktif Satış Fiyatı'] || 0), 0) / Math.max(data.length, 1))}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+                             </div>
+           )}
+          </div>
 
-                {/* Şube Kartları */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <span className="text-blue-600">🏢</span>
-                    Şube Detayları
-                  </h3>
-                  
-                  {Array.from(new Set(data.map(item => item['İşyeri No']))).map(divNr => {
-                    const subeData = data.filter(item => item['İşyeri No'] === divNr);
-                    const subeAdi = subeData[0]?.['İşyeri Adı'] || 'Bilinmeyen Şube';
-                    const toplamStok = subeData.reduce((sum, item) => sum + (item['Stok Miktarı'] || 0), 0);
-                    const ortalamaFiyat = subeData.reduce((sum, item) => sum + (item['Aktif Satış Fiyatı'] || 0), 0) / Math.max(subeData.length, 1);
-                    
-                    return (
-                      <div key={divNr} className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                        {/* Şube Başlığı */}
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                <span className="text-blue-600 font-bold text-lg">{divNr}</span>
-                              </div>
-                              <div>
-                                <h4 className="text-lg font-semibold text-gray-900">{subeAdi}</h4>
-                                <p className="text-sm text-gray-600">{subeData.length} ambar</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <div className="text-right">
-                                <div className="text-sm text-gray-600">Toplam Stok</div>
-                                <div className="text-lg font-bold text-blue-600">{formatNumber(toplamStok)}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm text-gray-600">Ort. Fiyat</div>
-                                <div className="text-lg font-bold text-green-600">{formatCurrency(ortalamaFiyat)}</div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Ambar Detayları */}
-                        <div className="p-6">
-                          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {subeData.map((item, index) => (
-                              <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-                                      <span className="text-green-600 text-xs font-bold">{item['Ambar No']}</span>
-                                    </div>
-                                    <span className="font-medium text-gray-900">{item['Ambar Adı']}</span>
-                                  </div>
-                                  <span className="text-xs text-gray-500">{item['Fiyat Kaynağı']}</span>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Stok:</span>
-                                    <span className="font-bold text-blue-600">{formatNumber(item['Stok Miktarı'])}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Fiyat:</span>
-                                    <span className="font-bold text-green-600">{formatCurrency(item['Aktif Satış Fiyatı'])}</span>
-                                  </div>
-                                  
-                                  {/* Son İşlemler */}
-                                  <div className="mt-3 pt-3 border-t border-gray-200">
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
-                                      <div>
-                                        <div className="text-gray-500">Son Alış:</div>
-                                        <div className="font-medium">{formatDate(item['Son Alış Tarihi'])}</div>
-                                        <div className="text-green-600">{formatCurrency(item['Son Alış Birim Fiyatı'])}</div>
-                                      </div>
-                                      <div>
-                                        <div className="text-gray-500">Son Satış:</div>
-                                        <div className="font-medium">{formatDate(item['Son Satış Tarihi'])}</div>
-                                        <div className="text-red-600">{formatCurrency(item['Son Satış Birim Fiyatı'])}</div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Aralık Toplamları */}
-                                  <div className="mt-2 pt-2 border-t border-gray-200">
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
-                                      <div>
-                                        <div className="text-gray-500">Alış Toplamı:</div>
-                                        <div className="font-bold text-green-600">{formatCurrency(item['Son Alış Toplamı (Aralık İçi)'])}</div>
-                                      </div>
-                                      <div>
-                                        <div className="text-gray-500">Satış Toplamı:</div>
-                                        <div className="font-bold text-red-600">{formatCurrency(item['Son Satış Toplamı (Aralık İçi)'])}</div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+          {/* Modal Footer */}
+          <div className="flex-shrink-0 bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 sm:rounded-b-lg border-t border-gray-200">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <div className="text-xs sm:text-sm text-gray-600">
+                {data.length > 0 && (
+                  <span>Toplam {data.length} şube/ambar<span className="hidden sm:inline"> • İşyeri ve ambar bazında detaylı bilgi</span></span>
+                )}
               </div>
-          )}
+              <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 justify-end">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 sm:px-6 sm:py-2 lg:px-8 lg:py-3 bg-red-800 text-white rounded-lg hover:bg-red-900 transition-colors font-medium text-sm lg:text-base"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

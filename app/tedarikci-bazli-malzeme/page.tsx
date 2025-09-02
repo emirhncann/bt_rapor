@@ -1002,6 +1002,7 @@ export default function TedarikciMalzemeRaporu() {
           malzemeKodu={selectedMalzemeForDetail.kodu}
           malzemeAdi={selectedMalzemeForDetail.adi}
           itemRef={selectedMalzemeForDetail.itemRef}
+          clientRef={selectedTedarikci || ''}
           startDate={startDate}
           endDate={endDate}
         />
