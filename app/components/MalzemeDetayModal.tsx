@@ -67,16 +67,64 @@ export default function MalzemeDetayModal({
   // Modal açıldığında veriyi getir
   useEffect(() => {
     if (isOpen && itemRef) {
-      // Stored procedure oluşturulmuşsa detayları getir
-      if (spCreated) {
+      // Önce stored procedure'ın mevcut olup olmadığını kontrol et
+      if (!spCreated) {
+        checkAndCreateStoredProcedure();
+      } else {
         fetchMalzemeDetay();
       }
     }
-  }, [isOpen, itemRef, spCreated]);
+  }, [isOpen, itemRef]);
+
+  const checkAndCreateStoredProcedure = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
+
+      // Önce stored procedure'ın mevcut olup olmadığını kontrol et
+      const checkSpQuery = `
+        SELECT COUNT(*) as SPCount 
+        FROM sys.objects 
+        WHERE object_id = OBJECT_ID(N'dbo.sp_MalzemeDetayByItem') 
+        AND type in (N'P', N'PC')
+      `;
+
+      console.log('🔍 Stored procedure kontrol ediliyor...');
+      const checkResponse = await sendSecureProxyRequest(
+        companyRef,
+        'first_db_key',
+        { query: checkSpQuery },
+        'https://api.btrapor.com/proxy',
+        300000
+      );
+
+      if (checkResponse.ok) {
+        const checkResult = await checkResponse.json();
+        const spExists = checkResult.data && checkResult.data.length > 0 && checkResult.data[0].SPCount > 0;
+        
+        if (spExists) {
+          console.log('✅ Stored procedure zaten mevcut, direkt veri getiriliyor...');
+          setSpCreated(true);
+          await fetchMalzemeDetay();
+        } else {
+          console.log('🔧 Stored procedure mevcut değil, oluşturuluyor...');
+          await createStoredProcedure();
+        }
+      } else {
+        console.log('⚠️ Stored procedure kontrolü başarısız, oluşturuluyor...');
+        await createStoredProcedure();
+      }
+    } catch (err) {
+      console.error('Stored procedure kontrol hatası:', err);
+      setError(err instanceof Error ? err.message : 'Bilinmeyen hata');
+      setLoading(false);
+    }
+  };
 
                    const createStoredProcedure = async () => {
-      setLoading(true);
-      setError(null);
+      // Loading state zaten checkAndCreateStoredProcedure tarafından yönetiliyor
 
       try {
         const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
@@ -169,15 +217,23 @@ export default function MalzemeDetayModal({
             DECLARE @P2 VARCHAR(2) = RIGHT('00' + CAST(@Period AS VARCHAR(2)), 2);
 
             DECLARE @T_STLINE_NAME   NVARCHAR(300) = N'LG_' + @F3 + N'_' + @P2 + N'_STLINE';
+            DECLARE @T_LKDIV_NAME    NVARCHAR(300) = N'LK_' + @F3 + N'_CAPIDIVPARAMS';
             DECLARE @T_LKPLC_NAME    NVARCHAR(300) = N'LK_' + @F3 + N'_PRCLIST';
             DECLARE @T_LGPLC_NAME    NVARCHAR(300) = N'LG_' + @F3 + N'_PRCLIST';
             DECLARE @T_STINVTOT_LV   NVARCHAR(300) = N'LV_' + @F3 + N'_' + @P2 + N'_STINVTOT';
             DECLARE @T_STINVTOT_TBL  NVARCHAR(300) = N'LG_' + @F3 + N'_' + @P2 + N'_STINVTOT';
-
+            DECLARE @T_LKDIV_FQN     NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LKDIV_NAME);
             -- Firma tabloları (aynı DB, dbo varsayıldı)
             DECLARE @T_STLINE_FQN   NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_STLINE_NAME);
             DECLARE @T_LKPLC_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LKPLC_NAME);
             DECLARE @T_LGPLC_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LGPLC_NAME);
+
+            -- YENİ: Market modülü varsa CAPIDIVPARAMS join'ini hazırla, yoksa boş bırak
+            DECLARE @divJoin NVARCHAR(500) = N'';
+            IF @HasMarketModule = 1
+            SET @divJoin = N'
+            JOIN ' + @T_LKDIV_FQN + N' CD WITH (NOLOCK)
+             ON WD.DivNr = CD._VALUE AND CD._INDEX = 1';
 
             DECLARE @T_STINVTOT_FQN NVARCHAR(400);
             IF OBJECT_ID(N'[dbo].' + QUOTENAME(@T_STINVTOT_LV)) IS NOT NULL
@@ -343,6 +399,7 @@ export default function MalzemeDetayModal({
 
           FROM WhDiv WD
           LEFT JOIN OnHand O ON O.WhNr = WD.WhNr
+          ' + @divJoin + N'
 
           OUTER APPLY (
             SELECT TOP (1) S.DATE_, S.PRICE, S.AMOUNT, S.LINENET
@@ -538,10 +595,12 @@ export default function MalzemeDetayModal({
         console.log('✅ EXEC PROCEDURE başarılı:', executeResult);
         
         setSpCreated(true);
+        
+        // Stored procedure oluşturulduktan sonra detayları getir
+        await fetchMalzemeDetay();
      } catch (err) {
        console.error('Stored procedure oluşturma hatası:', err);
        setError(err instanceof Error ? err.message : 'Bilinmeyen hata');
-     } finally {
        setLoading(false);
      }
    };
@@ -654,6 +713,315 @@ export default function MalzemeDetayModal({
     }).format(num);
   };
 
+  // Excel export fonksiyonu
+  const exportToExcel = () => {
+    if (data.length === 0) return;
+    
+    // Excel için veri hazırlama
+    const excelData = data.map((item, index) => ({
+      'Sıra': index + 1,
+      'Şube No': item['İşyeri No'],
+      'Şube Adı': item['İşyeri Adı'],
+      'Ambar No': item['Ambar No'],
+      'Ambar Adı': item['Ambar Adı'],
+      'Fiyat Kaynağı': item['Fiyat Kaynağı'],
+      'Aktif Satış Fiyatı': item['Aktif Satış Fiyatı'],
+      'Stok Miktarı': item['Stok Miktarı'],
+      'Devir Miktarı': item['Devir Miktarı'],
+      'Ambar Giriş Miktarı': item['Ambar Transfer Giriş Miktarı'],
+      'Son Alış Tarihi': item['Son Alış Tarihi'],
+      'Son Alış Birim Fiyatı': item['Son Alış Birim Fiyatı'],
+      'Son Alış Miktarı': item['Son Alış Miktarı'],
+      'Son Satış Tarihi': item['Son Satış Tarihi'],
+      'Son Satış Birim Fiyatı': item['Son Satış Birim Fiyatı'],
+      'Son Satış Miktarı': item['Son Satış Miktarı'],
+      'Son Alış Tarihi (Aralık)': item['Son Alış Tarihi (Aralık İçi)'],
+      'Son Alış Fiyatı (Aralık)': item['Son Alış Fiyatı (Aralık İçi)'],
+      'Son Satış Tarihi (Aralık)': item['Son Satış Tarihi (Aralık İçi)'],
+      'Son Satış Fiyatı (Aralık)': item['Son Satış Fiyatı (Aralık İçi)'],
+      'Son Alış Toplamı (Aralık)': item['Son Alış Toplamı (Aralık İçi)'],
+      'Son Satış Toplamı (Aralık)': item['Son Satış Toplamı (Aralık İçi)']
+    }));
+
+    // CSV formatına çevirme
+    const headers = Object.keys(excelData[0]);
+    const csvContent = [
+      headers.join(','),
+      ...excelData.map(row => 
+        headers.map(header => {
+          const value = (row as any)[header];
+          // Virgül içeren değerleri tırnak içine alma
+          if (typeof value === 'string' && value.includes(',')) {
+            return `"${value}"`;
+          }
+          return value;
+        }).join(',')
+      )
+    ].join('\n');
+
+    // Dosya indirme
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `malzeme_detay_${malzemeKodu}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // PDF export fonksiyonu
+  const exportToPDF = () => {
+    if (data.length === 0) return;
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Malzeme Detay Raporu - PDF</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 12px; }
+            .header { margin-bottom: 25px; background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); color: white; padding: 20px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+            .header-top { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; }
+            .logo { width: 100px; height: auto; flex-shrink: 0; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+            .header-content { flex: 1; }
+            .header h1 { color: white; margin: 0 0 8px 0; font-size: 24px; text-align: left; font-weight: bold; letter-spacing: 0.5px; }
+            .header p { margin: 3px 0; color: rgba(255,255,255,0.9); font-size: 14px; text-align: left; }
+            
+            /* İstatistik Kutuları */
+            .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+            .stat-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; background-color: #f9fafb; }
+            .stat-box.primary { border-color: #991b1b; background-color: #fef2f2; }
+            .stat-box.success { border-color: #059669; background-color: #ecfdf5; }
+            .stat-box.warning { border-color: #d97706; background-color: #fffbeb; }
+            .stat-box.info { border-color: #0284c7; background-color: #f0f9ff; }
+            .stat-title { font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; }
+            .stat-value { font-size: 16px; font-weight: bold; color: #1f2937; }
+            .stat-subtitle { font-size: 9px; color: #9ca3af; margin-top: 2px; }
+            
+            /* Malzeme Bilgileri */
+            .malzeme-info { background-color: #f0f9ff; border: 1px solid #0ea5e9; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
+            .malzeme-info h3 { margin: 0 0 10px 0; color: #0c4a6e; font-size: 16px; }
+            .malzeme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+            .malzeme-item { text-align: center; }
+            .malzeme-value { font-size: 18px; font-weight: bold; color: #0c4a6e; }
+            .malzeme-label { color: #0369a1; margin-top: 5px; font-size: 11px; }
+            
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; table-layout: auto; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 11px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .number { text-align: right; }
+            .currency { font-weight: bold; }
+            .center { text-align: center; }
+            .section-title { color: #991b1b; margin: 20px 0 10px 0; font-size: 16px; border-bottom: 2px solid #991b1b; padding-bottom: 5px; }
+            
+            /* Kolon genişlikleri - optimize edilmiş */
+            th:nth-child(1), td:nth-child(1) { min-width: 30px; max-width: 30px; } /* Şube No */
+            th:nth-child(2), td:nth-child(2) { min-width: 45px; max-width: 45px; } /* Şube Adı */
+            th:nth-child(3), td:nth-child(3) { min-width: 30px; max-width: 30px; } /* Ambar No */
+            th:nth-child(4), td:nth-child(4) { min-width: 45px; max-width: 45px; } /* Ambar Adı */
+            th:nth-child(5), td:nth-child(5) { min-width: 40px; max-width: 40px; } /* Fiyat Kaynağı */
+            th:nth-child(6), td:nth-child(6) { min-width: 40px; max-width: 40px; } /* Aktif Satış Fiyatı */
+            th:nth-child(7), td:nth-child(7) { min-width: 30px; max-width: 30px; } /* Stok Miktarı */
+            th:nth-child(8), td:nth-child(8) { min-width: 30px; max-width: 30px; } /* Devir Miktarı */
+            th:nth-child(9), td:nth-child(9) { min-width: 40px; max-width: 40px; } /* Ambar Giriş Miktarı */
+            th:nth-child(10), td:nth-child(10) { min-width: 40px; max-width: 40px; } /* Son Alış Tarihi */
+            th:nth-child(11), td:nth-child(11) { min-width: 40px; max-width: 40px; } /* Son Alış Fiyatı */
+            th:nth-child(12), td:nth-child(12) { min-width: 30px; max-width: 30px; } /* Son Alış Miktarı */
+            th:nth-child(13), td:nth-child(13) { min-width: 40px; max-width: 40px; } /* Son Satış Tarihi */
+            th:nth-child(14), td:nth-child(14) { min-width: 40px; max-width: 40px; } /* Son Satış Fiyatı */
+            th:nth-child(15), td:nth-child(15) { min-width: 30px; max-width: 30px; } /* Son Satış Miktarı */
+            th:nth-child(16), td:nth-child(16) { min-width: 40px; max-width: 40px; } /* Son Alış Tarihi */
+            th:nth-child(17), td:nth-child(17) { min-width: 40px; max-width: 40px; } /* Son Alış Fiyatı */
+            th:nth-child(18), td:nth-child(18) { min-width: 40px; max-width: 40px; } /* Son Satış Tarihi */
+            th:nth-child(19), td:nth-child(19) { min-width: 40px; max-width: 40px; } /* Son Satış Fiyatı */
+            th:nth-child(20), td:nth-child(20) { min-width: 40px; max-width: 40px; } /* Son Alış Toplamı */
+            th:nth-child(21), td:nth-child(21) { min-width: 40px; max-width: 40px; } /* Son Satış Toplamı */
+            
+            @media print {
+              body { margin: 0; font-size: 12px; }
+              .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+              .malzeme-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+              .stat-box, .malzeme-info { padding: 10px; }
+              table { font-size: 11px; }
+              th, td { padding: 3px; }
+              .header { margin-bottom: 25px; padding: 18px; }
+              .header-top { gap: 18px; margin-bottom: 12px; }
+              .logo { width: 90px; }
+              .header h1 { font-size: 22px; margin: 0 0 4px 0; }
+              .header p { font-size: 14px; margin: 2px 0; }
+              .stat-title { font-size: 11px; }
+              .stat-value { font-size: 16px; }
+              .stat-subtitle { font-size: 9px; }
+              .malzeme-value { font-size: 18px; }
+              .malzeme-label { font-size: 11px; }
+              .section-title { font-size: 16px; margin: 18px 0 10px 0; }
+              
+              /* Print için kolon genişlikleri - daha kompakt */
+              th:nth-child(1), td:nth-child(1) { min-width: 25px; max-width: 25px; } /* Şube No */
+              th:nth-child(2), td:nth-child(2) { min-width: 40px; max-width: 40px; } /* Şube Adı */
+              th:nth-child(3), td:nth-child(3) { min-width: 25px; max-width: 25px; } /* Ambar No */
+              th:nth-child(4), td:nth-child(4) { min-width: 40px; max-width: 40px; } /* Ambar Adı */
+              th:nth-child(5), td:nth-child(5) { min-width: 35px; max-width: 35px; } /* Fiyat Kaynağı */
+              th:nth-child(6), td:nth-child(6) { min-width: 35px; max-width: 35px; } /* Aktif Satış Fiyatı */
+              th:nth-child(7), td:nth-child(7) { min-width: 25px; max-width: 25px; } /* Stok Miktarı */
+              th:nth-child(8), td:nth-child(8) { min-width: 25px; max-width: 25px; } /* Devir Miktarı */
+              th:nth-child(9), td:nth-child(9) { min-width: 35px; max-width: 35px; } /* Ambar Giriş Miktarı */
+              th:nth-child(10), td:nth-child(10) { min-width: 35px; max-width: 35px; } /* Son Alış Tarihi */
+              th:nth-child(11), td:nth-child(11) { min-width: 35px; max-width: 35px; } /* Son Alış Fiyatı */
+              th:nth-child(12), td:nth-child(12) { min-width: 25px; max-width: 25px; } /* Son Alış Miktarı */
+              th:nth-child(13), td:nth-child(13) { min-width: 35px; max-width: 35px; } /* Son Satış Tarihi */
+              th:nth-child(14), td:nth-child(14) { min-width: 35px; max-width: 35px; } /* Son Satış Fiyatı */
+              th:nth-child(15), td:nth-child(15) { min-width: 25px; max-width: 25px; } /* Son Satış Miktarı */
+              th:nth-child(16), td:nth-child(16) { min-width: 35px; max-width: 35px; } /* Son Alış Tarihi */
+              th:nth-child(17), td:nth-child(17) { min-width: 35px; max-width: 35px; } /* Son Alış Fiyatı */
+              th:nth-child(18), td:nth-child(18) { min-width: 35px; max-width: 35px; } /* Son Satış Tarihi */
+              th:nth-child(19), td:nth-child(19) { min-width: 35px; max-width: 35px; } /* Son Satış Fiyatı */
+              th:nth-child(20), td:nth-child(20) { min-width: 35px; max-width: 35px; } /* Son Alış Toplamı */
+              th:nth-child(21), td:nth-child(21) { min-width: 35px; max-width: 35px; } /* Son Satış Toplamı */
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+              <div class="header-content">
+                <h1>MALZEME DETAY RAPORU</h1>
+                <p><strong>Rapor Tarihi:</strong> ${new Date().toLocaleDateString('tr-TR')} - ${new Date().toLocaleTimeString('tr-TR')}</p>
+                <p><strong>Malzeme Kodu:</strong> ${malzemeKodu}</p>
+                <p><strong>Malzeme Adı:</strong> ${malzemeAdi}</p>
+                <p><strong>Tarih Aralığı:</strong> ${startDate} - ${endDate}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- İstatistikler -->
+          <div class="stats-grid">
+            <div class="stat-box primary">
+              <div class="stat-title">TOPLAM ŞUBE</div>
+              <div class="stat-value">${new Set(data.map(item => item['İşyeri No'])).size}</div>
+              <div class="stat-subtitle">Farklı şube sayısı</div>
+            </div>
+            <div class="stat-box success">
+              <div class="stat-title">TOPLAM AMBAR</div>
+              <div class="stat-value">${new Set(data.map(item => item['Ambar No'])).size}</div>
+              <div class="stat-subtitle">Farklı ambar sayısı</div>
+            </div>
+            <div class="stat-box warning">
+              <div class="stat-title">TOPLAM STOK</div>
+              <div class="stat-value">${formatNumber(data.reduce((sum, item) => sum + (item['Stok Miktarı'] || 0), 0))}</div>
+              <div class="stat-subtitle">Miktar toplamı</div>
+            </div>
+            <div class="stat-box info">
+              <div class="stat-title">ORTALAMA FİYAT</div>
+              <div class="stat-value">${formatCurrency(data.reduce((sum, item) => sum + (item['Aktif Satış Fiyatı'] || 0), 0) / Math.max(data.length, 1))}</div>
+              <div class="stat-subtitle">Birim fiyat ortalaması</div>
+            </div>
+          </div>
+
+          <!-- Malzeme Bilgileri -->
+          <div class="malzeme-info">
+            <h3>Malzeme Özet Bilgileri</h3>
+            <div class="malzeme-grid">
+              <div class="malzeme-item">
+                <div class="malzeme-value">${malzemeKodu}</div>
+                <div class="malzeme-label">Malzeme Kodu</div>
+              </div>
+              <div class="malzeme-item">
+                <div class="malzeme-value">${malzemeAdi}</div>
+                <div class="malzeme-label">Malzeme Adı</div>
+              </div>
+              <div class="malzeme-item">
+                <div class="malzeme-value">${data.length}</div>
+                <div class="malzeme-label">Toplam Kayıt</div>
+              </div>
+              <div class="malzeme-item">
+                <div class="malzeme-value">${startDate} - ${endDate}</div>
+                <div class="malzeme-label">Tarih Aralığı</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Detay Tablosu -->
+          <div class="section-title">Şube ve Ambar Detayları</div>
+          <table>
+            <thead>
+              <tr>
+                <th rowspan="2">Şube No</th>
+                <th rowspan="2">Şube Adı</th>
+                <th rowspan="2">Ambar No</th>
+                <th rowspan="2">Ambar Adı</th>
+                <th rowspan="2">Fiyat Kaynağı</th>
+                <th colspan="10" class="center">Genel Bilgiler</th>
+                <th colspan="6" class="center">Tarih Aralığı</th>
+              </tr>
+              <tr>
+                <th>Aktif Satış Fiyatı</th>
+                <th>Stok Miktarı</th>
+                <th>Devir Miktarı</th>
+                <th>Ambar Giriş Miktarı</th>
+                <th>Son Alış Tarihi</th>
+                <th>Son Alış Fiyatı</th>
+                <th>Son Alış Miktarı</th>
+                <th>Son Satış Tarihi</th>
+                <th>Son Satış Fiyatı</th>
+                <th>Son Satış Miktarı</th>
+                <th>Son Alış Tarihi</th>
+                <th>Son Alış Fiyatı</th>
+                <th>Son Satış Tarihi</th>
+                <th>Son Satış Fiyatı</th>
+                <th>Son Alış Toplamı</th>
+                <th>Son Satış Toplamı</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.map((item, index) => `
+                <tr>
+                  <td>${item['İşyeri No'] || '-'}</td>
+                  <td>${item['İşyeri Adı'] || '-'}</td>
+                  <td>${item['Ambar No'] || '-'}</td>
+                  <td>${item['Ambar Adı'] || '-'}</td>
+                  <td>${item['Fiyat Kaynağı'] || '-'}</td>
+                  <td class="currency">${item['Aktif Satış Fiyatı'] ? formatCurrency(item['Aktif Satış Fiyatı']) : '-'}</td>
+                  <td class="number">${item['Stok Miktarı'] ? formatNumber(item['Stok Miktarı']) : '-'}</td>
+                  <td class="number">${item['Devir Miktarı'] ? formatNumber(item['Devir Miktarı']) : '-'}</td>
+                  <td class="number">${item['Ambar Transfer Giriş Miktarı'] ? formatNumber(item['Ambar Transfer Giriş Miktarı']) : '-'}</td>
+                  <td>${item['Son Alış Tarihi'] ? formatDate(item['Son Alış Tarihi']) : '-'}</td>
+                  <td class="currency">${item['Son Alış Birim Fiyatı'] ? formatCurrency(item['Son Alış Birim Fiyatı']) : '-'}</td>
+                  <td class="number">${item['Son Alış Miktarı'] ? formatNumber(item['Son Alış Miktarı']) : '-'}</td>
+                  <td>${item['Son Satış Tarihi'] ? formatDate(item['Son Satış Tarihi']) : '-'}</td>
+                  <td class="currency">${item['Son Satış Birim Fiyatı'] ? formatCurrency(item['Son Satış Birim Fiyatı']) : '-'}</td>
+                  <td class="number">${item['Son Satış Miktarı'] ? formatNumber(item['Son Satış Miktarı']) : '-'}</td>
+                  <td>${item['Son Alış Tarihi (Aralık İçi)'] ? formatDate(item['Son Alış Tarihi (Aralık İçi)']) : '-'}</td>
+                  <td class="currency">${item['Son Alış Fiyatı (Aralık İçi)'] ? formatCurrency(item['Son Alış Fiyatı (Aralık İçi)']) : '-'}</td>
+                  <td>${item['Son Satış Tarihi (Aralık İçi)'] ? formatDate(item['Son Satış Tarihi (Aralık İçi)']) : '-'}</td>
+                  <td class="currency">${item['Son Satış Fiyatı (Aralık İçi)'] ? formatCurrency(item['Son Satış Fiyatı (Aralık İçi)']) : '-'}</td>
+                  <td class="number">${item['Son Alış Toplamı (Aralık İçi)'] ? formatNumber(item['Son Alış Toplamı (Aralık İçi)']) : '-'}</td>
+                  <td class="number">${item['Son Satış Toplamı (Aralık İçi)'] ? formatNumber(item['Son Satış Toplamı (Aralık İçi)']) : '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    // Direkt yazdırma penceresi aç
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    
+    // Sayfa yüklendikten sonra otomatik yazdırma penceresi aç
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -678,6 +1046,31 @@ export default function MalzemeDetayModal({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:gap-4">
+                {/* Export Butonları */}
+                {data.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => exportToExcel()}
+                      className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-800 bg-green-100 border border-green-300 rounded-lg hover:bg-green-200 hover:border-green-400 transition-all duration-200"
+                      title="Excel olarak dışa aktar"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Excel
+                    </button>
+                    <button
+                      onClick={() => exportToPDF()}
+                      className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-800 bg-red-100 border border-red-300 rounded-lg hover:bg-red-200 hover:border-red-400 transition-all duration-200"
+                      title="PDF olarak dışa aktar"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      PDF
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={onClose}
                   className="text-white hover:text-red-200 transition-colors p-2 lg:p-3 rounded-lg hover:bg-red-700"
@@ -714,13 +1107,7 @@ export default function MalzemeDetayModal({
                        ) : !spCreated ? (
               <div className="text-center py-12">
                 <div className="text-gray-400 text-6xl mb-4">🔧</div>
-                                 <p className="text-gray-600 mb-6">Malzeme detayları için stored procedure oluşturulması gerekiyor</p>
-                 <button
-                   onClick={createStoredProcedure}
-                   className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
-                 >
-                   Stored Procedure Oluştur
-                 </button>
+                                 <p className="text-gray-600 mb-6">Malzeme detayları için stored procedure oluşturuluyor...</p>
               </div>
            ) : data.length === 0 ? (
             <div className="text-center py-12">
@@ -736,167 +1123,199 @@ export default function MalzemeDetayModal({
                      Şube Detayları
                    </h3>
                    
-                   <div className="bg-white rounded-lg shadow overflow-hidden">
-                     <div className="p-4 border-b border-gray-200">
-                       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
-                         <h4 className="text-lg font-semibold text-gray-800">Malzeme Detay Listesi</h4>
-                         <div className="flex items-center gap-2 text-sm text-gray-500">
-                           <span>{data.length} kayıt</span>
+                   <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                       <div className="bg-gray-50 p-4 border-b border-gray-200">
+                         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+                           <div className="flex items-center gap-3">
+                             <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                               <span className="text-gray-600 text-sm">📊</span>
+                             </div>
+                             <div>
+                               <h4 className="text-lg font-semibold text-gray-800">Malzeme Detay Listesi</h4>
+                               <p className="text-gray-500 text-sm mt-1">
+                                 {data.length} kayıt bulundu
+                               </p>
+                             </div>
+                           </div>
+                           <div className="text-sm text-gray-500">
+                             Şube ve ambar bazında detaylı analiz
+                           </div>
                          </div>
                        </div>
-                     </div>
-                     
-                     <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative">
-                       <table className="min-w-full divide-y divide-gray-200 table-fixed w-max">
-                         <thead className="sticky top-0 z-10">
-                           {/* Grup başlıkları */}
-                           <tr className="bg-gradient-to-r from-gray-700 to-gray-800 text-white">
-                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
-                               Şube No
-                             </th>
-                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
-                               Şube Adı
-                             </th>
-                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
-                               Ambar No
-                             </th>
-                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
-                               Ambar Adı
-                             </th>
-                             <th rowSpan={2} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-0 z-20">
-                               Fiyat Kaynağı
-                             </th>
-                             <th colSpan={10} className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider border-r border-gray-500 bg-red-800 sticky top-0 z-20">
-                               Genel
-                             </th>
-                                                           <th colSpan={6} className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wider bg-red-800 sticky top-0 z-20">
-                                Tarih Aralığı
-                              </th>
-                           </tr>
-                           {/* Alt başlıklar */}
-                           <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Aktif Satış Fiyatı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Stok Miktarı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Devir Miktarı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Ambar Giriş Miktarı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Son Alış Tarihi
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Son Alış Fiyatı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Son Alış Miktarı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Son Satış Tarihi
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider sticky top-12 z-15">
-                               Son Satış Fiyatı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider border-r border-gray-500 sticky top-12 z-15">
-                               Son Satış Miktarı
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
-                               Son Alış Tarihi (Aralık İçi)
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
-                               Son Alış Fiyatı (Aralık İçi)
-                             </th>
-                             <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
-                               Son Satış Tarihi (Aralık İçi)
-                             </th>
-                                                           <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
-                                Son Satış Fiyatı (Aralık İçi)
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
-                                Son Alış Toplamı (Aralık İçi)
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider bg-red-900 sticky top-12 z-15">
-                                Son Satış Toplamı (Aralık İçi)
-                              </th>
-                           </tr>
-                         </thead>
-                         <tbody className="bg-white divide-y divide-gray-200">
-                           {data.map((item, index) => (
-                             <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-red-50 transition-colors duration-200`}>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 min-w-[120px]">
-                                 {item['İşyeri No']}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[250px]">
-                                 {item['İşyeri Adı']}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[120px]">
-                                 {item['Ambar No']}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
-                                 {item['Ambar Adı']}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 min-w-[150px]">
-                                 {item['Fiyat Kaynağı']}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[180px]">
-                                 {formatCurrency(item['Aktif Satış Fiyatı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 min-w-[150px]">
-                                 {formatNumber(item['Stok Miktarı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-purple-600 min-w-[150px]">
-                                 {formatNumber(item['Devir Miktarı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 min-w-[180px]">
-                                 {formatNumber(item['Ambar Transfer Giriş Miktarı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[160px]">
-                                 {formatDate(item['Son Alış Tarihi'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[160px]">
-                                 {formatCurrency(item['Son Alış Birim Fiyatı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 min-w-[150px]">
-                                 {formatNumber(item['Son Alış Miktarı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[160px]">
-                                 {formatDate(item['Son Satış Tarihi'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[160px]">
-                                 {formatCurrency(item['Son Satış Birim Fiyatı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[150px]">
-                                 {formatNumber(item['Son Satış Miktarı'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
-                                 {formatDate(item['Son Alış Tarihi (Aralık İçi)'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[200px]">
-                                 {formatCurrency(item['Son Alış Fiyatı (Aralık İçi)'])}
-                               </td>
-                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-[200px]">
-                                 {formatDate(item['Son Satış Tarihi (Aralık İçi)'])}
-                               </td>
-                                                               <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[200px]">
-                                  {formatCurrency(item['Son Satış Fiyatı (Aralık İçi)'])}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 min-w-[200px]">
-                                  {formatNumber(item['Son Alış Toplamı (Aralık İçi)'])}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 min-w-[200px]">
-                                  {formatNumber(item['Son Satış Toplamı (Aralık İçi)'])}
-                                </td>
+                       
+                       <div className="overflow-x-auto overflow-y-auto max-h-[40vh] relative">
+                         <table className="min-w-full divide-y divide-gray-200 table-fixed w-max">
+                           <thead className="sticky top-0 z-20">
+                             {/* Ana Grup Başlıkları */}
+                             <tr className="bg-gray-100 border-b border-gray-300">
+                               <th rowSpan={2} className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-300 sticky left-0 z-30 bg-gray-100">
+                                 <div>
+                                   <div>Şube No</div>
+                                   <div className="text-xs font-normal text-gray-500">Kod</div>
+                                 </div>
+                               </th>
+                               <th rowSpan={2} className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-300 sticky left-[100px] z-30 bg-gray-100">
+                                 <div>
+                                   <div>Şube Adı</div>
+                                   <div className="text-xs font-normal text-gray-500">Açıklama</div>
+                                 </div>
+                               </th>
+                               <th rowSpan={2} className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-300">
+                                 <div>
+                                   <div>Ambar No</div>
+                                   <div className="text-xs font-normal text-gray-500">Kod</div>
+                                 </div>
+                               </th>
+                               <th rowSpan={2} className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-300 sticky top-0 z-20 bg-gray-100">
+                                 <div>
+                                   <div>Ambar Adı</div>
+                                   <div className="text-xs font-normal text-gray-500">Açıklama</div>
+                                 </div>
+                               </th>
+                               <th rowSpan={2} className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-300 sticky top-0 z-20 bg-gray-100">
+                                 <div>
+                                   <div>Fiyat Kaynağı</div>
+                                   <div className="text-xs font-normal text-gray-500">Bilgi</div>
+                                 </div>
+                               </th>
+                               <th colSpan={10} className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-300 bg-blue-50 sticky top-0 z-20">
+                                 <div>
+                                   <div>Genel Bilgiler</div>
+                                   <div className="text-xs font-normal text-blue-600">Stok, fiyat ve hareket bilgileri</div>
+                                 </div>
+                               </th>
+                               <th colSpan={6} className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-orange-50 sticky top-0 z-20">
+                                 <div>
+                                   <div>Tarih Aralığı</div>
+                                   <div className="text-xs font-normal text-orange-600">Belirtilen tarih aralığındaki veriler</div>
+                                 </div>
+                               </th>
                              </tr>
-                           ))}
-                         </tbody>
-                       </table>
+                             {/* Alt Başlıklar - Genel Bilgiler */}
+                             <tr className="bg-blue-100 border-b border-blue-200">
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Aktif Satış Fiyatı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Stok Miktarı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Devir Miktarı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Ambar Giriş Miktarı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Son Alış Tarihi
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Son Alış Fiyatı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Son Alış Miktarı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Son Satış Tarihi
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Son Satış Fiyatı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 border-r border-blue-200 sticky top-12 z-15 bg-blue-100">
+                                 Son Satış Miktarı
+                               </th>
+                               {/* Alt Başlıklar - Tarih Aralığı */}
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
+                                 Son Alış Tarihi (Aralık)
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
+                                 Son Alış Fiyatı (Aralık)
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
+                                 Son Satış Tarihi (Aralık)
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
+                                 Son Satış Fiyatı (Aralık)
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
+                                 Son Alış Toplamı (Aralık)
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
+                                 Son Satış Toplamı (Aralık)
+                               </th>
+                             </tr>
+                           </thead>
+                           <tbody className="bg-white divide-y divide-gray-200">
+                             {data.map((item, index) => (
+                               <tr key={index} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 transition-colors duration-150`}>
+                                 <td className={`px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 min-w-[100px] border-r border-gray-200 sticky left-0 z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                                   {item['İşyeri No']}
+                                 </td>
+                                 <td className={`px-4 py-3 whitespace-nowrap text-sm text-gray-900 min-w-[200px] border-r border-gray-200 sticky left-[100px] z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100`}>
+                                   {item['İşyeri Adı']}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 min-w-[100px] border-r border-gray-200">
+                                   {item['Ambar No']}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 min-w-[150px] border-r border-gray-200">
+                                   {item['Ambar Adı']}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 min-w-[120px] border-r border-gray-200">
+                                   <span className="font-medium">{item['Fiyat Kaynağı']}</span>
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[150px] bg-blue-50">
+                                   {formatCurrency(item['Aktif Satış Fiyatı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-blue-700 min-w-[120px] bg-blue-50">
+                                   {formatNumber(item['Stok Miktarı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-purple-700 min-w-[120px] bg-blue-50">
+                                   {formatNumber(item['Devir Miktarı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-indigo-700 min-w-[150px] bg-blue-50">
+                                   {formatNumber(item['Ambar Transfer Giriş Miktarı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[130px] bg-blue-50">
+                                   {formatDate(item['Son Alış Tarihi'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[130px] bg-blue-50">
+                                   {formatCurrency(item['Son Alış Birim Fiyatı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-blue-700 min-w-[120px] bg-blue-50">
+                                   {formatNumber(item['Son Alış Miktarı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[130px] bg-blue-50">
+                                   {formatDate(item['Son Satış Tarihi'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[130px] bg-blue-50">
+                                   {formatCurrency(item['Son Satış Birim Fiyatı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[120px] bg-blue-50 border-r border-blue-200">
+                                   {formatNumber(item['Son Satış Miktarı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[180px] bg-orange-50">
+                                   {formatDate(item['Son Alış Tarihi (Aralık İçi)'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[180px] bg-orange-50">
+                                   {formatCurrency(item['Son Alış Fiyatı (Aralık İçi)'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[180px] bg-orange-50">
+                                   {formatDate(item['Son Satış Tarihi (Aralık İçi)'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[180px] bg-orange-50">
+                                   {formatCurrency(item['Son Satış Fiyatı (Aralık İçi)'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[180px] bg-orange-50">
+                                   {formatNumber(item['Son Alış Toplamı (Aralık İçi)'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[180px] bg-orange-50">
+                                   {formatNumber(item['Son Satış Toplamı (Aralık İçi)'])}
+                                 </td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>
                      </div>
-                   </div>
                    
                    {/* Özet Bilgiler - Tablo Altında */}
                    <div className="mt-6">
