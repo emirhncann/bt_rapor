@@ -6,7 +6,6 @@ import Lottie from 'lottie-react';
 import DashboardLayout from '../components/DashboardLayout';
 import { sendSecureProxyRequest } from '../utils/api';
 import { getCurrentUser } from '../utils/simple-permissions';
-import { trackReportView, trackFileUpload } from '../utils/yandex-metrica';
 import * as XLSX from 'xlsx';
 
 export default function ExcelCompare() {

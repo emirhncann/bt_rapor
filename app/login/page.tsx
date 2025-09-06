@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
-import { trackUserLogin, trackLoginAttempt } from '../utils/yandex-metrica';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -37,7 +36,6 @@ export default function Login() {
 
     try {
       // Login girişimi tracking
-      trackLoginAttempt(email);
       
       // Doğrudan backend'e login isteği gönder (static export için)
       const response = await fetch('https://api.btrapor.com/login', {
@@ -66,7 +64,6 @@ export default function Login() {
         localStorage.setItem('companyName', data.user.company_name || '');
         
         // Başarılı login tracking
-        trackUserLogin(data.user.id.toString(), data.user.role);
         
         router.push('/');
       } else {

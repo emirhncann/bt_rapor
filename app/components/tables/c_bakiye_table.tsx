@@ -7,7 +7,6 @@ import 'jspdf-autotable';
 import Lottie from 'lottie-react';
 import { sendSecureProxyRequest } from '../../utils/api';
 import { getCurrentUser } from '../../utils/simple-permissions';
-import { trackReportExport } from '../../utils/yandex-metrica';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -438,7 +437,6 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       // Dosyayı indir
       const fileName = `Cari_Bakiye_${new Date().toLocaleDateString('tr-TR').replace(/\//g, '_')}.xlsx`;
       XLSX.writeFile(workbook, fileName);
-      trackReportExport('c_bakiye', 'excel');
     } catch (error) {
       console.error('Excel export hatası:', error);
       alert('Excel dosyası oluşturulurken hata oluştu.');

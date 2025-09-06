@@ -12,6 +12,7 @@ interface MalzemeDetay {
   'Stok Miktarı': number;
   'Aktif Satış Fiyatı': number;
   'Fiyat Kaynağı': string;
+  'Son Fiyat Değişim Tarihi': string;
   'Devir Miktarı': number;
   'Ambar Transfer Giriş Miktarı': number;
   'Son Alış Tarihi': string;
@@ -19,13 +20,12 @@ interface MalzemeDetay {
   'Son Alış Miktarı': number;
   'Son Satış Tarihi': string;
   'Son Satış Birim Fiyatı': number;
-  'Son Satış Miktarı': number;
-  'Son Alış Tarihi (Aralık İçi)': string;
-  'Son Alış Fiyatı (Aralık İçi)': number;
-  'Son Alış Toplamı (Aralık İçi)': number;
-  'Son Satış Tarihi (Aralık İçi)': string;
-  'Son Satış Fiyatı (Aralık İçi)': number;
-  'Son Satış Toplamı (Aralık İçi)': number;
+  'Dönem İçi Son Alım Tarihi': string;
+  'Dönem İçi Son Alım Fiyatı': number;
+  'Dönem İçi Son Alım Miktarı': number;
+  'Son Satış Tarihi (Tarih Aralığı)': string;
+  'Dönem İçi Son Satış Fiyatı': number;
+  'Dönem İçi Satış Toplamı': number;
 }
 
 interface MalzemeDetayModalProps {
@@ -216,301 +216,323 @@ export default function MalzemeDetayModal({
           console.log('⚠️ DROP PROCEDURE hatası (devam ediliyor):', dropError);
         }
 
-        // İkinci sorgu: CREATE PROCEDURE
+        // İkinci sorgu: CREATE PROCEDURE (Yeni Optimized Version)
         const createSpQuery = `
-          CREATE PROCEDURE dbo.sp_MalzemeDetayByItem
-            @Firm              INT,
-            @Period            INT,
-            @ItemRef           INT,
-            @DateFrom          DATE,
-            @DateTo            DATE,
-            @WarehouseList     dbo.IdList READONLY,  -- NR listesi (boş=tümü)
-            @HasMarketModule   BIT,                  -- 1: LK>LG>0, 0: LG>0
-            @GoDb              SYSNAME = NULL,       -- GO tabloları DB (örn. GO3); NULL/'' = current DB
-            @GoSchema          SYSNAME = N'dbo',     -- GO tabloları şema
-            @ClientRef         INT
-          AS
-          BEGIN
-            SET NOCOUNT ON;
 
-            ------------------------------------------------------------
-            -- 0) Firma/Dönem ve tablo adları
-            ------------------------------------------------------------
-            DECLARE @F3 VARCHAR(3) = RIGHT('000' + CAST(@Firm AS VARCHAR(3)), 3);
-            DECLARE @P2 VARCHAR(2) = RIGHT('00' + CAST(@Period AS VARCHAR(2)), 2);
 
-            DECLARE @T_STLINE_NAME   NVARCHAR(300) = N'LG_' + @F3 + N'_' + @P2 + N'_STLINE';
-            DECLARE @T_LKDIV_NAME    NVARCHAR(300) = N'LK_' + @F3 + N'_CAPIDIVPARAMS';
-            DECLARE @T_LKPLC_NAME    NVARCHAR(300) = N'LK_' + @F3 + N'_PRCLIST';
-            DECLARE @T_LGPLC_NAME    NVARCHAR(300) = N'LG_' + @F3 + N'_PRCLIST';
-            DECLARE @T_STINVTOT_LV   NVARCHAR(300) = N'LV_' + @F3 + N'_' + @P2 + N'_STINVTOT';
-            DECLARE @T_STINVTOT_TBL  NVARCHAR(300) = N'LG_' + @F3 + N'_' + @P2 + N'_STINVTOT';
-            DECLARE @T_LKDIV_FQN     NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LKDIV_NAME);
-            -- Firma tabloları (aynı DB, dbo varsayıldı)
-            DECLARE @T_STLINE_FQN   NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_STLINE_NAME);
-            DECLARE @T_LKPLC_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LKPLC_NAME);
-            DECLARE @T_LGPLC_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LGPLC_NAME);
+CREATE PROCEDURE dbo.sp_MalzemeDetayByItem2
+    @Firm              INT,
+    @Period            INT,
+    @ItemRef           INT,
+    @DateFrom          DATE,
+    @DateTo            DATE,
+    @WarehouseList     dbo.IdList READONLY,  -- NR listesi (boş=tümü)
+    @HasMarketModule   BIT,                  -- 1: sadece LK; 0: sadece LG
+    @GoDb              SYSNAME = NULL,       -- GO tabloları DB (örn. GO3); NULL/'' = current DB
+    @GoSchema          SYSNAME = N'dbo',     -- GO tabloları şema
+    @ClientRef         INT                   -- alış tedarikçi filtresi
+AS
+BEGIN
+    SET NOCOUNT ON;
 
-            -- YENİ: Market modülü varsa CAPIDIVPARAMS join'ini hazırla, yoksa boş bırak
-            DECLARE @divJoin NVARCHAR(500) = N'';
-            IF @HasMarketModule = 1
-            SET @divJoin = N'
-            JOIN ' + @T_LKDIV_FQN + N' CD WITH (NOLOCK)
-             ON WD.DivNr = CD._VALUE AND CD._INDEX = 1';
+    -- (İsteğe bağlı) SSMS≠Web plan farklarını azalt
+    SET ARITHABORT ON;
+    SET ANSI_WARNINGS ON;
+    SET CONCAT_NULL_YIELDS_NULL ON;
+    SET QUOTED_IDENTIFIER ON;
+    SET ANSI_PADDING ON;
+    SET NUMERIC_ROUNDABORT OFF;
 
-            DECLARE @T_STINVTOT_FQN NVARCHAR(400);
-            IF OBJECT_ID(N'[dbo].' + QUOTENAME(@T_STINVTOT_LV)) IS NOT NULL
-              SET @T_STINVTOT_FQN = N'[dbo].' + QUOTENAME(@T_STINVTOT_LV);
-            ELSE
-              SET @T_STINVTOT_FQN = N'[dbo].' + QUOTENAME(@T_STINVTOT_TBL);
+    ------------------------------------------------------------
+    -- 0) Firma/Dönem ve tablo adları
+    ------------------------------------------------------------
+    DECLARE @F3 VARCHAR(3) = RIGHT('000' + CAST(@Firm AS VARCHAR(3)), 3);
+    DECLARE @P2 VARCHAR(2) = RIGHT('00' + CAST(@Period AS VARCHAR(2)), 2);
 
-            ------------------------------------------------------------
-            -- 1) GO tabloları (başka DB'de olabilir) - fully qualified
-            ------------------------------------------------------------
-            DECLARE @DbPrefix NVARCHAR(260);
-            DECLARE @SchPrefix NVARCHAR(130);
-            DECLARE @WH_FQN NVARCHAR(512);
-            DECLARE @DIV_FQN NVARCHAR(512);
+    DECLARE @T_STLINE_NAME   NVARCHAR(300) = N'LG_' + @F3 + N'_' + @P2 + N'_STLINE';
+    DECLARE @T_LKPLC_NAME    NVARCHAR(300) = N'LK_' + @F3 + N'_PRCLIST';
+    DECLARE @T_LKDIV_NAME    NVARCHAR(300) = N'LK_' + @F3 + N'_CAPIDIVPARAMS';
+    DECLARE @T_LGPLC_NAME    NVARCHAR(300) = N'LG_' + @F3 + N'_PRCLIST';
+    DECLARE @T_STINVTOT_LV   NVARCHAR(300) = N'LV_' + @F3 + N'_' + @P2 + N'_STINVTOT';
+    DECLARE @T_STINVTOT_TBL  NVARCHAR(300) = N'LG_' + @F3 + N'_' + @P2 + N'_STINVTOT';
 
-            SET @DbPrefix  = CASE WHEN @GoDb IS NULL OR LTRIM(RTRIM(@GoDb)) = '' THEN N'' ELSE QUOTENAME(@GoDb) + N'.' END;
-            SET @SchPrefix = QUOTENAME(@GoSchema) + N'.';
-            SET @WH_FQN    = @DbPrefix + @SchPrefix + QUOTENAME(N'L_CAPIWHOUSE');
-            SET @DIV_FQN   = @DbPrefix + @SchPrefix + QUOTENAME(N'L_CAPIDIV');
+    DECLARE @T_STLINE_FQN   NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_STLINE_NAME);
+    DECLARE @T_LKPLC_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LKPLC_NAME);
+    DECLARE @T_LGPLC_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LGPLC_NAME);
+    DECLARE @T_LKDIV_FQN    NVARCHAR(400) = N'[dbo].' + QUOTENAME(@T_LKDIV_NAME);
 
-            ------------------------------------------------------------
-            -- 2) Ambar kolon tespiti + COALESCE ifadeleri
-            ------------------------------------------------------------
-            DECLARE @WhCol_STLINE SYSNAME, @WhCol_STINVTOT SYSNAME,@WhCol_STLINE_Dest SYSNAME;
-            DECLARE @WhExpr_STLINE NVARCHAR(100), @WhExpr_STINVTOT NVARCHAR(120), @WhExpr_STLINE_Dest NVARCHAR(100);
+    DECLARE @T_STINVTOT_FQN NVARCHAR(400);
+    IF OBJECT_ID(N'dbo.' + QUOTENAME(@T_STINVTOT_LV)) IS NOT NULL
+        SET @T_STINVTOT_FQN = N'[dbo].' + QUOTENAME(@T_STINVTOT_LV);
+    ELSE
+        SET @T_STINVTOT_FQN = N'[dbo].' + QUOTENAME(@T_STINVTOT_TBL);
 
-            SET @WhCol_STLINE = N'SOURCEINDEX';
-            SET @WhExpr_STLINE = N'S.' + QUOTENAME(@WhCol_STLINE);
-                
-            SET @WhCol_STLINE_Dest = N'DESTINDEX';
-            SET @WhExpr_STLINE_Dest = N'S.' + QUOTENAME(@WhCol_STLINE_Dest);
-            
-            SET @WhCol_STINVTOT = N'INVENNO';
-            SET @WhExpr_STINVTOT = N'T.' + QUOTENAME(@WhCol_STINVTOT);
+    ------------------------------------------------------------
+    -- 1) GO tabloları (başka DB’de olabilir) - fully qualified
+    ------------------------------------------------------------
+    DECLARE @DbPrefix NVARCHAR(260);
+    DECLARE @SchPrefix NVARCHAR(130);
+    DECLARE @WH_FQN NVARCHAR(512);
+    DECLARE @DIV_FQN NVARCHAR(512);
 
-            ------------------------------------------------------------
-            -- 3) Fiyat kaynak blokları (LG/LK)
-            ------------------------------------------------------------
-            DECLARE @lgApply NVARCHAR(MAX);
-            IF OBJECT_ID(@T_LGPLC_FQN) IS NOT NULL
-              SET @lgApply = N'
-          OUTER APPLY (
-            SELECT TOP (1) CAST(P.PRICE AS NUMERIC(19,4)) AS PRICE
-            FROM ' + @T_LGPLC_FQN + N' P WITH (NOLOCK)
-            WHERE P.CARDREF = @ItemRef AND P.ACTIVE = 0
+    SET @DbPrefix  = CASE WHEN @GoDb IS NULL OR LTRIM(RTRIM(@GoDb)) = '' THEN N'' ELSE QUOTENAME(@GoDb) + N'.' END;
+    SET @SchPrefix = QUOTENAME(@GoSchema) + N'.';
+    SET @WH_FQN    = @DbPrefix + @SchPrefix + QUOTENAME(N'L_CAPIWHOUSE');
+    SET @DIV_FQN   = @DbPrefix + @SchPrefix + QUOTENAME(N'L_CAPIDIV');
+
+    ------------------------------------------------------------
+    -- 2) Ambar kolon/ifadeleri
+    ------------------------------------------------------------
+    DECLARE @WhExpr_STLINE       NVARCHAR(100) = N'S.[SOURCEINDEX]';
+    DECLARE @WhExpr_STLINE_Dest  NVARCHAR(100) = N'S.[DESTINDEX]';
+    DECLARE @WhExpr_STINVTOT     NVARCHAR(120) = N'T.[INVENNO]';
+
+    ------------------------------------------------------------
+    -- 3) Fiyat kaynak blokları (seçim: sadece LK veya sadece LG)
+    ------------------------------------------------------------
+    DECLARE @priceApply NVARCHAR(MAX);
+    DECLARE @priceExpr  NVARCHAR(MAX);
+    DECLARE @srcExpr    NVARCHAR(MAX);
+    DECLARE @chgExpr    NVARCHAR(MAX);
+    DECLARE @divJoin    NVARCHAR(MAX) = N'';
+
+    IF @HasMarketModule = 1
+    BEGIN
+        -- Sadece LK; yoksa NULL (LG fallback YOK)
+        IF OBJECT_ID(N'dbo.' + QUOTENAME(@T_LKPLC_NAME)) IS NOT NULL
+            SET @priceApply = N'
+        OUTER APPLY (
+            SELECT TOP (1)
+                   CAST(P.BUYPRICE AS DECIMAL(19,4)) AS BUYPRICE,
+                   CAST(P.CHANGEDATE AS DATETIME)    AS CHANGEDATE
+            FROM ' + @T_LKPLC_FQN + N' P WITH (NOLOCK)
+            WHERE P.STREF = @ItemRef
+              AND P.OFFICECODE = WD.DivNr
             ORDER BY P.LOGICALREF DESC
-          ) AS LGP';
-            ELSE
-              SET @lgApply = N'
-          OUTER APPLY (SELECT CAST(NULL AS NUMERIC(19,4)) AS PRICE) AS LGP';
+        ) AS LKP';
+        ELSE
+            SET @priceApply = N'
+        OUTER APPLY (SELECT CAST(NULL AS DECIMAL(19,4)) AS BUYPRICE,
+                            CAST(NULL AS DATETIME)      AS CHANGEDATE) AS LKP';
 
-            DECLARE @lkJoin NVARCHAR(MAX), @aktifFiyatExpr NVARCHAR(MAX), @kaynakExpr NVARCHAR(MAX);
-            IF @HasMarketModule = 1
-            BEGIN
-              IF OBJECT_ID(@T_LKPLC_FQN) IS NOT NULL
-                SET @lkJoin = N'
-          LEFT JOIN ' + @T_LKPLC_FQN + N' LKP WITH (NOLOCK)
-                 ON LKP.STREF = @ItemRef AND LKP.OFFICECODE = WD.DivNr';
-              ELSE
-                SET @lkJoin = N'
-          OUTER APPLY (SELECT CAST(NULL AS NUMERIC(19,4)) AS BUYPRICE) AS LKP';
+        SET @priceExpr = N'
+            CAST(CASE WHEN LKP.BUYPRICE IS NOT NULL THEN LKP.BUYPRICE ELSE 0 END AS DECIMAL(19,4)) AS [Aktif Satış Fiyatı]';
+        SET @srcExpr   = N'
+            CASE WHEN LKP.BUYPRICE IS NOT NULL THEN ''Market(Kalem)'' ELSE ''tanımlı fiyat yok'' END AS [Fiyat Kaynağı]';
+        SET @chgExpr   = N'
+            LKP.CHANGEDATE AS [Son Fiyat Değişim Tarihi]';
 
-              SET @aktifFiyatExpr = N'
-          CASE 
-            WHEN LKP.BUYPRICE IS NOT NULL THEN LKP.BUYPRICE
-            WHEN LGP.PRICE    IS NOT NULL THEN LGP.PRICE
-            ELSE 0
-          END AS [Aktif Satış Fiyatı]';
+        -- Market parametre tablosu varsa join
+        IF OBJECT_ID(N'dbo.' + QUOTENAME(@T_LKDIV_NAME)) IS NOT NULL
+            SET @divJoin = N'
+JOIN ' + @T_LKDIV_FQN + N' CD WITH (NOLOCK)
+  ON CD._INDEX = 1
+ AND CD._VALUE = CONVERT(VARCHAR(32), WD.DivNr)';
+    END
+    ELSE
+    BEGIN
+        -- Sadece LG
+        IF OBJECT_ID(N'dbo.' + QUOTENAME(@T_LGPLC_NAME)) IS NOT NULL
+            SET @priceApply = N'
+        OUTER APPLY (
+            SELECT TOP (1)
+                   CAST(P.PRICE AS DECIMAL(19,4)) AS PRICE,
+                   CAST(COALESCE(P.CAPIBLOCK_MODIFIEDDATE, P.CAPIBLOCK_CREADEDDATE) AS DATETIME) AS CHANGEDATE
+            FROM ' + @T_LGPLC_FQN + N' P WITH (NOLOCK)
+            WHERE P.CARDREF = @ItemRef
+              AND P.ACTIVE  = 0
+            ORDER BY P.LOGICALREF DESC
+        ) AS LGO';
+        ELSE
+            SET @priceApply = N'
+        OUTER APPLY (SELECT CAST(NULL AS DECIMAL(19,4)) AS PRICE,
+                            CAST(NULL AS DATETIME)      AS CHANGEDATE) AS LGO';
 
-              SET @kaynakExpr = N'
-          CASE 
-            WHEN LKP.BUYPRICE IS NOT NULL THEN ''Market(Kalem)''
-            WHEN LGP.PRICE    IS NOT NULL THEN ''Logo''
-            ELSE ''tanımlı fiyat yok''
-          END AS [Fiyat Kaynağı]';
-            END
-            ELSE
-            BEGIN
-              SET @lkJoin = N'
-          OUTER APPLY (SELECT CAST(NULL AS NUMERIC(19,4)) AS BUYPRICE) AS LKP';
+        SET @priceExpr = N'
+            CAST(CASE WHEN LGO.PRICE IS NOT NULL THEN LGO.PRICE ELSE 0 END AS DECIMAL(19,4)) AS [Aktif Satış Fiyatı]';
+        SET @srcExpr   = N'
+            CASE WHEN LGO.PRICE IS NOT NULL THEN ''Logo'' ELSE ''tanımlı fiyat yok'' END AS [Fiyat Kaynağı]';
+        SET @chgExpr   = N'
+            LGO.CHANGEDATE AS [Son Fiyat Değişim Tarihi]';
+    END
 
-              SET @aktifFiyatExpr = N'
-          CASE 
-            WHEN LGP.PRICE IS NOT NULL THEN LGP.PRICE
-            ELSE 0
-          END AS [Aktif Satış Fiyatı]';
+    ------------------------------------------------------------
+    -- 4) WhFilter JOIN kararı
+    ------------------------------------------------------------
+    DECLARE @WhJoin NVARCHAR(200);
+    IF EXISTS (SELECT 1 FROM @WarehouseList)
+        SET @WhJoin = N' INNER JOIN WhFilter F ON F.NR = W.NR ';
+    ELSE
+        SET @WhJoin = N'';
 
-              SET @kaynakExpr = N'
-          CASE 
-            WHEN LGP.PRICE IS NOT NULL THEN ''Logo''
-            ELSE ''tanımlı fiyat yok''
-          END AS [Fiyat Kaynağı]';
-            END
+    ------------------------------------------------------------
+    -- 5) Dinamik SQL
+    ------------------------------------------------------------
+    DECLARE @sql NVARCHAR(MAX);
 
-            ------------------------------------------------------------
-            -- 4) WhFilter JOIN kararı (tırnaksız, direkt SQL parçası!)
-            ------------------------------------------------------------
-            DECLARE @WhJoin NVARCHAR(200);
-            IF EXISTS (SELECT 1 FROM @WarehouseList)
-              SET @WhJoin = N' INNER JOIN WhFilter F ON F.NR = W.NR ';
-            ELSE
-              SET @WhJoin = N'';
+    SET @sql = N'
+DECLARE @DateToPlus1 DATE = DATEADD(DAY,1,@DateTo);
 
-            ------------------------------------------------------------
-            -- 5) Dinamik SQL
-            ------------------------------------------------------------
-            DECLARE @sql NVARCHAR(MAX);
+;WITH WhFilter AS (
+    SELECT ID AS NR FROM @WarehouseList
+),
+Wh AS (
+    SELECT W.NR, W.NAME, W.DIVISNR
+    FROM ' + @WH_FQN + N' W WITH (NOLOCK)
+    ' + @WhJoin + N'
+    WHERE W.FIRMNR = @Firm
+),
+Divs AS (
+    SELECT D.NR, D.NAME
+    FROM ' + @DIV_FQN + N' D WITH (NOLOCK)
+    WHERE D.FIRMNR = @Firm
+),
+WhDiv AS (
+    SELECT W.NR AS WhNr, W.NAME AS WhName, D.NR AS DivNr, D.NAME AS DivName
+    FROM Wh W
+    LEFT JOIN Divs D ON D.NR = W.DIVISNR
+),
+OnHand AS (
+    SELECT ' + @WhExpr_STINVTOT + N' AS WhNr,
+           SUM(CAST(T.ONHAND AS NUMERIC(19,4))) AS OnHandQty
+    FROM ' + @T_STINVTOT_FQN + N' T WITH (NOLOCK)
+    WHERE T.STOCKREF = @ItemRef
+    GROUP BY ' + @WhExpr_STINVTOT + N'
+)
+SELECT
+    WD.DivNr                             AS [İşyeri No],
+    WD.DivName                           AS [İşyeri Adı],
+    WD.WhNr                              AS [Ambar No],
+    WD.WhName                            AS [Ambar Adı],
+    ISNULL(O.OnHandQty,0)                AS [Stok Miktarı],
+    ' + @priceExpr + N',
+    ' + @srcExpr   + N',
+    ' + @chgExpr   + N',
+    Devir.DevirTotal                     AS [Devir Miktarı],
+    Transfer.TransferTotal               AS [Ambar Transfer Giriş Miktarı],
+    LBL.DATE_                            AS [Son Alış Tarihi],
+    LBL.PRICE                            AS [Son Alış Birim Fiyatı],
+    LBL.AMOUNT                           AS [Son Alış Miktarı],
 
-            SET @sql =
-          N'DECLARE @DateToPlus1 DATE = DATEADD(DAY,1,@DateTo);
-          ;WITH WhFilter AS (
-            SELECT ID AS NR FROM @WarehouseList
-          ),
-          Wh AS (
-            SELECT W.NR, W.NAME, W.DIVISNR
-            FROM ' + @WH_FQN + N' W WITH (NOLOCK)
-            ' + @WhJoin + N'
-            WHERE W.FIRMNR = @Firm
-          ),
-          Divs AS (
-            SELECT D.NR, D.NAME
-            FROM ' + @DIV_FQN + N' D WITH (NOLOCK)
-            WHERE D.FIRMNR = @Firm
-          ),
-          WhDiv AS (
-            SELECT W.NR AS WhNr, W.NAME AS WhName, D.NR AS DivNr, D.NAME AS DivName
-            FROM Wh W
-            LEFT JOIN Divs D ON D.NR = W.DIVISNR   -- WH.DIVISNR = DIV.NR
-          ),
-          OnHand AS (
-            SELECT ' + @WhExpr_STINVTOT + N' AS WhNr,
-                   SUM(CAST(T.ONHAND AS NUMERIC(19,4))) AS OnHandQty
-            FROM ' + @T_STINVTOT_FQN + N' T WITH (NOLOCK)
-            WHERE T.STOCKREF = @ItemRef
-            GROUP BY ' + @WhExpr_STINVTOT + N'
-          )
-          SELECT
-            WD.DivNr                             AS [İşyeri No],
-            WD.DivName                           AS [İşyeri Adı],
-            WD.WhNr                              AS [Ambar No],
-            WD.WhName                            AS [Ambar Adı],
-            ISNULL(O.OnHandQty,0)                AS [Stok Miktarı],
-            ' + @aktifFiyatExpr + N',
-            ' + @kaynakExpr + N',
-            Devir.DevirTotal					 AS [Devir Miktarı],
-            Transfer.TransferTotal				 AS [Ambar Transfer Giriş Miktarı],
-            LBL.DATE_                            AS [Son Alış Tarihi],
-            LBL.PRICE                            AS [Son Alış Birim Fiyatı],
-            LBL.AMOUNT                           AS [Son Alış Miktarı],
+    LSL.DATE_                            AS [Son Satış Tarihi],
+    LSL.PRICE                            AS [Son Satış Birim Fiyatı],
+    
+    RBL.DATE_                            AS [Dönem İçi Son Alım Tarihi],
+    RBL.PRICE                            AS [Dönem İçi Son Alım Fiyatı],
+    RBT.BuyTotal                         AS [Dönem İçi Son Alım Miktarı],
 
-            LSL.DATE_                            AS [Son Satış Tarihi],
-            LSL.PRICE                            AS [Son Satış Birim Fiyatı],
-            LSL.AMOUNT                           AS [Son Satış Miktarı],
+    RSL.DATE_                            AS [Son Satış Tarihi (Tarih Aralığı)],
+    RSL.PRICE                            AS [Dönem İçi Son Satış Fiyatı],
+    RST.SaleTotal                        AS [Dönem İçi Satış Toplamı]
+FROM WhDiv WD
+LEFT JOIN OnHand O ON O.WhNr = WD.WhNr
+' + @divJoin + N'
 
-            RBL.DATE_                            AS [Son Alış Tarihi (Aralık İçi)],
-            RBL.PRICE                            AS [Son Alış Fiyatı (Aralık İçi)],
-            RBT.BuyTotal                         AS [Son Alış Toplamı (Aralık İçi)],
+-- SON ALIŞ (global)
+OUTER APPLY (
+    SELECT TOP (1) S.DATE_, S.PRICE, S.AMOUNT, S.LINENET
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.STOCKREF=@ItemRef AND S.CLIENTREF=@ClientRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+    ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
+) AS LBL
 
-            RSL.DATE_                            AS [Son Satış Tarihi (Aralık İçi)],
-            RSL.PRICE                            AS [Son Satış Fiyatı (Aralık İçi)],
-            RST.SaleTotal                        AS [Son Satış Toplamı (Aralık İçi)]
+-- SON SATIŞ (global)
+OUTER APPLY (
+    SELECT TOP (1) S.DATE_, S.PRICE, S.AMOUNT, S.LINENET
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.STOCKREF=@ItemRef AND S.LINETYPE=0 AND S.IOCODE=4 AND S.TRCODE IN(7,8)
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+    ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
+) AS LSL
 
+-- SON ALIŞ (Aralık İçi)
+OUTER APPLY (
+    SELECT TOP (1) S.DATE_, S.PRICE
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.STOCKREF=@ItemRef 
+      AND S.CLIENTREF=@ClientRef 
+      AND S.LINETYPE=0 
+      AND S.IOCODE=1 
+      AND S.TRCODE=1
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+      AND S.DATE_>=@DateFrom AND S.DATE_<@DateToPlus1
+    ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
+) AS RBL
 
-          FROM WhDiv WD
-          LEFT JOIN OnHand O ON O.WhNr = WD.WhNr
-          ' + @divJoin + N'
+-- ALIŞ TOPLAMI (Aralık İçi)
+OUTER APPLY (
+    SELECT SUM(S.AMOUNT) AS BuyTotal
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.LINETYPE = 0
+      AND S.CLIENTREF=@ClientRef
+      AND S.IOCODE   = 1
+      AND S.TRCODE   = 1
+      AND S.STOCKREF = @ItemRef
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+      AND S.DATE_   >= @DateFrom
+      AND S.DATE_   <  @DateToPlus1
+) AS RBT
 
-          OUTER APPLY (
-            SELECT TOP (1) S.DATE_, S.PRICE, S.AMOUNT, S.LINENET
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.STOCKREF=@ItemRef AND S.CLIENTREF=@ClientRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1 AND ' + @WhExpr_STLINE + N' = WD.WhNr
-            ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
-          ) AS LBL
+-- DEVİR (Aralık İçi)
+OUTER APPLY (
+    SELECT SUM(S.AMOUNT) AS DevirTotal
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.LINETYPE = 0
+      AND S.IOCODE   = 1
+      AND S.TRCODE   = 14
+      AND S.STOCKREF = @ItemRef
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+      AND S.DATE_   >= @DateFrom
+      AND S.DATE_   <  @DateToPlus1
+) AS Devir
 
-          OUTER APPLY (
-            SELECT TOP (1) S.DATE_, S.PRICE, S.AMOUNT, S.LINENET
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.STOCKREF=@ItemRef AND S.LINETYPE=0 AND S.IOCODE=4 AND S.TRCODE IN(7,8) AND ' + @WhExpr_STLINE + N' = WD.WhNr
-            ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
-          ) AS LSL
+-- AMBAR TRANSFER GİRİŞ (Aralık İçi)  >>> IOCODE=3 ve DESTINDEX ile
+OUTER APPLY (
+    SELECT SUM(S.AMOUNT) AS TransferTotal
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.LINETYPE = 0
+      AND S.IOCODE   = 3
+      AND S.TRCODE   = 25
+      AND S.STOCKREF = @ItemRef
+      AND ' + @WhExpr_STLINE_Dest + N' = WD.WhNr
+      AND S.DATE_   >= @DateFrom
+      AND S.DATE_   <  @DateToPlus1
+) AS Transfer
 
-          OUTER APPLY (
-            SELECT TOP (1) S.DATE_, S.PRICE
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.STOCKREF=@ItemRef AND S.CLIENTREF=@ClientRef AND S.LINETYPE=0 AND S.IOCODE=1 AND S.TRCODE=1 AND ' + @WhExpr_STLINE + N' = WD.WhNr
-              AND S.DATE_>=@DateFrom AND S.DATE_<@DateToPlus1
-            ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
-          ) AS RBL
+-- SON SATIŞ (Aralık İçi)
+OUTER APPLY (
+    SELECT TOP (1) S.DATE_, S.PRICE
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.STOCKREF=@ItemRef AND S.LINETYPE=0 AND S.IOCODE=4 AND S.TRCODE IN(7,8)
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+      AND S.DATE_>=@DateFrom AND S.DATE_<@DateToPlus1
+    ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
+) AS RSL
 
-          OUTER APPLY (
-            SELECT SUM(S.AMOUNT) AS BuyTotal
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.LINETYPE = 0
-              AND S.CLIENTREF=@ClientRef
-              AND S.IOCODE   = 1
-              AND S.TRCODE   = 1
-              AND S.STOCKREF = @ItemRef
-              AND ' + @WhExpr_STLINE + N' = WD.WhNr           -- COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2) veya S.SOURCEINDEX
-              AND S.DATE_   >= @DateFrom
-              AND S.DATE_   <  @DateToPlus1
-          ) AS RBT
+-- SATIŞ TOPLAMI (Aralık İçi)
+OUTER APPLY (
+    SELECT SUM(S.AMOUNT) AS SaleTotal
+    FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
+    WHERE S.LINETYPE = 0
+      AND S.IOCODE   = 4
+      AND S.TRCODE   IN (7,8)
+      AND S.STOCKREF = @ItemRef
+      AND ' + @WhExpr_STLINE + N' = WD.WhNr
+      AND S.DATE_   >= @DateFrom
+      AND S.DATE_   <  @DateToPlus1
+) AS RST
 
-          OUTER APPLY (
-            SELECT SUM(S.AMOUNT) AS DevirTotal
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.LINETYPE = 0
-              AND S.IOCODE   = 1
-              AND S.TRCODE   = 14
-              AND S.STOCKREF = @ItemRef
-              AND ' + @WhExpr_STLINE + N' = WD.WhNr           -- COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2) veya S.SOURCEINDEX
-              AND S.DATE_   >= @DateFrom
-              AND S.DATE_   <  @DateToPlus1
-          ) AS Devir
+' + @priceApply + N'
+ORDER BY WD.DivNr, WD.WhNr
+OPTION (OPTIMIZE FOR UNKNOWN, RECOMPILE);';
 
-          OUTER APPLY (
-            SELECT SUM(S.AMOUNT) AS TransferTotal
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.LINETYPE = 0
-              AND S.IOCODE   = 2
-              AND S.TRCODE   = 25
-              AND S.STOCKREF = @ItemRef
-              AND ' + @WhExpr_STLINE + N' = WD.WhNr           -- COALESCE(S.SOURCEINDEX, S.SOURCEINDEX2) veya S.SOURCEINDEX
-              AND S.DATE_   >= @DateFrom
-              AND S.DATE_   <  @DateToPlus1
-          ) AS Transfer
+    EXEC sp_executesql 
+        @sql,
+        N'@Firm INT, @ItemRef INT, @DateFrom DATE, @DateTo DATE, @WarehouseList dbo.IdList READONLY, @ClientRef INT',
+        @Firm=@Firm, @ItemRef=@ItemRef, @DateFrom=@DateFrom, @DateTo=@DateTo, @WarehouseList=@WarehouseList, @ClientRef=@ClientRef;
+END
 
-          OUTER APPLY (
-            SELECT TOP (1) S.DATE_, S.PRICE
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.STOCKREF=@ItemRef AND S.LINETYPE=0 AND S.IOCODE=4 AND S.TRCODE IN(7,8) AND ' + @WhExpr_STLINE + N' = WD.WhNr
-              AND S.DATE_>=@DateFrom AND S.DATE_<@DateToPlus1
-            ORDER BY S.DATE_ DESC, S.LOGICALREF DESC
-          ) AS RSL
-
-          OUTER APPLY (
-            SELECT SUM(S.AMOUNT) AS SaleTotal
-            FROM ' + @T_STLINE_FQN + N' S WITH (NOLOCK)
-            WHERE S.LINETYPE = 0
-              AND S.IOCODE   = 4
-          AND S.TRCODE   IN (7,8)
-              AND S.STOCKREF = @ItemRef
-              AND ' + @WhExpr_STLINE + N' = WD.WhNr
-              AND S.DATE_   >= @DateFrom
-              AND S.DATE_   <  @DateToPlus1
-          ) AS RST
-
-          ' + @lkJoin + @lgApply + N'
-          ORDER BY WD.DivNr, WD.WhNr;';
-
-            EXEC sp_executesql 
-              @sql,
-              N'@Firm INT, @ItemRef INT, @DateFrom DATE, @DateTo DATE, @WarehouseList dbo.IdList READONLY, @ClientRef INT',
-              @Firm=@Firm, @ItemRef=@ItemRef, @DateFrom=@DateFrom, @DateTo=@DateTo, @WarehouseList=@WarehouseList,@ClientRef=@ClientRef;
-          END
         `;
 
                          console.log('🔧 CREATE PROCEDURE başlıyor:');
@@ -796,6 +818,7 @@ export default function MalzemeDetayModal({
       'Ambar Adı': item['Ambar Adı'],
       'Fiyat Kaynağı': item['Fiyat Kaynağı'],
       'Aktif Satış Fiyatı': item['Aktif Satış Fiyatı'],
+      'Son Fiyat Değişim Tarihi': item['Son Fiyat Değişim Tarihi'],
       'Stok Miktarı': item['Stok Miktarı'],
       'Devir Miktarı': item['Devir Miktarı'],
       'Ambar Giriş Miktarı': item['Ambar Transfer Giriş Miktarı'],
@@ -804,13 +827,12 @@ export default function MalzemeDetayModal({
       'Son Alış Miktarı': item['Son Alış Miktarı'],
       'Son Satış Tarihi': item['Son Satış Tarihi'],
       'Son Satış Birim Fiyatı': item['Son Satış Birim Fiyatı'],
-      'Son Satış Miktarı': item['Son Satış Miktarı'],
-      'Son Alış Tarihi (Aralık)': item['Son Alış Tarihi (Aralık İçi)'],
-      'Son Alış Fiyatı (Aralık)': item['Son Alış Fiyatı (Aralık İçi)'],
-      'Son Satış Tarihi (Aralık)': item['Son Satış Tarihi (Aralık İçi)'],
-      'Son Satış Fiyatı (Aralık)': item['Son Satış Fiyatı (Aralık İçi)'],
-      'Son Alış Toplamı (Aralık)': item['Son Alış Toplamı (Aralık İçi)'],
-      'Son Satış Toplamı (Aralık)': item['Son Satış Toplamı (Aralık İçi)']
+      'Dönem İçi Son Alım Tarihi': item['Dönem İçi Son Alım Tarihi'],
+      'Dönem İçi Son Alım Fiyatı': item['Dönem İçi Son Alım Fiyatı'],
+      'Dönem İçi Son Alım Miktarı': item['Dönem İçi Son Alım Miktarı'],
+      'Son Satış Tarihi (Tarih Aralığı)': item['Son Satış Tarihi (Tarih Aralığı)'],
+      'Dönem İçi Son Satış Fiyatı': item['Dönem İçi Son Satış Fiyatı'],
+      'Dönem İçi Satış Toplamı': item['Dönem İçi Satış Toplamı']
     }));
 
     // CSV formatına çevirme
@@ -1025,11 +1047,12 @@ export default function MalzemeDetayModal({
                 <th rowspan="2">Ambar No</th>
                 <th rowspan="2">Ambar Adı</th>
                 <th rowspan="2">Fiyat Kaynağı</th>
-                <th colspan="10" class="center">Genel Bilgiler</th>
-                <th colspan="6" class="center">Tarih Aralığı</th>
+                <th colspan="11" class="center">Genel Bilgiler</th>
+                <th colspan="6" class="center">Dönem İçi Veriler</th>
               </tr>
               <tr>
                 <th>Aktif Satış Fiyatı</th>
+                <th>Son Fiyat Değişim Tarihi</th>
                 <th>Stok Miktarı</th>
                 <th>Devir Miktarı</th>
                 <th>Ambar Giriş Miktarı</th>
@@ -1038,13 +1061,12 @@ export default function MalzemeDetayModal({
                 <th>Son Alış Miktarı</th>
                 <th>Son Satış Tarihi</th>
                 <th>Son Satış Fiyatı</th>
-                <th>Son Satış Miktarı</th>
-                <th>Son Alış Tarihi</th>
-                <th>Son Alış Fiyatı</th>
-                <th>Son Satış Tarihi</th>
-                <th>Son Satış Fiyatı</th>
-                <th>Son Alış Toplamı</th>
-                <th>Son Satış Toplamı</th>
+                <th>Dönem İçi Son Alım Tarihi</th>
+                <th>Dönem İçi Son Alım Fiyatı</th>
+                <th>Dönem İçi Son Alım Miktarı</th>
+                <th>Son Satış Tarihi (Aralık)</th>
+                <th>Dönem İçi Son Satış Fiyatı</th>
+                <th>Dönem İçi Satış Toplamı</th>
               </tr>
             </thead>
             <tbody>
@@ -1056,6 +1078,7 @@ export default function MalzemeDetayModal({
                   <td>${item['Ambar Adı'] || '-'}</td>
                   <td>${item['Fiyat Kaynağı'] || '-'}</td>
                   <td class="currency">${item['Aktif Satış Fiyatı'] ? formatCurrency(item['Aktif Satış Fiyatı']) : '-'}</td>
+                  <td>${item['Son Fiyat Değişim Tarihi'] ? formatDate(item['Son Fiyat Değişim Tarihi']) : '-'}</td>
                   <td class="number">${item['Stok Miktarı'] ? formatNumber(item['Stok Miktarı']) : '-'}</td>
                   <td class="number">${item['Devir Miktarı'] ? formatNumber(item['Devir Miktarı']) : '-'}</td>
                   <td class="number">${item['Ambar Transfer Giriş Miktarı'] ? formatNumber(item['Ambar Transfer Giriş Miktarı']) : '-'}</td>
@@ -1064,13 +1087,12 @@ export default function MalzemeDetayModal({
                   <td class="number">${item['Son Alış Miktarı'] ? formatNumber(item['Son Alış Miktarı']) : '-'}</td>
                   <td>${item['Son Satış Tarihi'] ? formatDate(item['Son Satış Tarihi']) : '-'}</td>
                   <td class="currency">${item['Son Satış Birim Fiyatı'] ? formatCurrency(item['Son Satış Birim Fiyatı']) : '-'}</td>
-                  <td class="number">${item['Son Satış Miktarı'] ? formatNumber(item['Son Satış Miktarı']) : '-'}</td>
-                  <td>${item['Son Alış Tarihi (Aralık İçi)'] ? formatDate(item['Son Alış Tarihi (Aralık İçi)']) : '-'}</td>
-                  <td class="currency">${item['Son Alış Fiyatı (Aralık İçi)'] ? formatCurrency(item['Son Alış Fiyatı (Aralık İçi)']) : '-'}</td>
-                  <td>${item['Son Satış Tarihi (Aralık İçi)'] ? formatDate(item['Son Satış Tarihi (Aralık İçi)']) : '-'}</td>
-                  <td class="currency">${item['Son Satış Fiyatı (Aralık İçi)'] ? formatCurrency(item['Son Satış Fiyatı (Aralık İçi)']) : '-'}</td>
-                  <td class="number">${item['Son Alış Toplamı (Aralık İçi)'] ? formatNumber(item['Son Alış Toplamı (Aralık İçi)']) : '-'}</td>
-                  <td class="number">${item['Son Satış Toplamı (Aralık İçi)'] ? formatNumber(item['Son Satış Toplamı (Aralık İçi)']) : '-'}</td>
+                  <td>${item['Dönem İçi Son Alım Tarihi'] ? formatDate(item['Dönem İçi Son Alım Tarihi']) : '-'}</td>
+                  <td class="currency">${item['Dönem İçi Son Alım Fiyatı'] ? formatCurrency(item['Dönem İçi Son Alım Fiyatı']) : '-'}</td>
+                  <td class="number">${item['Dönem İçi Son Alım Miktarı'] ? formatNumber(item['Dönem İçi Son Alım Miktarı']) : '-'}</td>
+                  <td>${item['Son Satış Tarihi (Tarih Aralığı)'] ? formatDate(item['Son Satış Tarihi (Tarih Aralığı)']) : '-'}</td>
+                  <td class="currency">${item['Dönem İçi Son Satış Fiyatı'] ? formatCurrency(item['Dönem İçi Son Satış Fiyatı']) : '-'}</td>
+                  <td class="number">${item['Dönem İçi Satış Toplamı'] ? formatNumber(item['Dönem İçi Satış Toplamı']) : '-'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1269,7 +1291,7 @@ export default function MalzemeDetayModal({
                                </th>
                                <th colSpan={6} className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-orange-50 sticky top-0 z-20">
                                  <div>
-                                   <div>Tarih Aralığı</div>
+                                   <div>Dönem İçi Veriler</div>
                                    <div className="text-xs font-normal text-orange-600">Belirtilen tarih aralığındaki veriler</div>
                                  </div>
                                </th>
@@ -1278,6 +1300,9 @@ export default function MalzemeDetayModal({
                              <tr className="bg-blue-100 border-b border-blue-200">
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
                                  Aktif Satış Fiyatı
+                               </th>
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                                 Son Fiyat Değişim Tarihi
                                </th>
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
                                  Stok Miktarı
@@ -1300,30 +1325,27 @@ export default function MalzemeDetayModal({
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
                                  Son Satış Tarihi
                                </th>
-                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky top-12 z-15 bg-blue-100">
+                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 border-r border-blue-200 sticky top-12 z-15 bg-blue-100">
                                  Son Satış Fiyatı
                                </th>
-                               <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 border-r border-blue-200 sticky top-12 z-15 bg-blue-100">
-                                 Son Satış Miktarı
-                               </th>
-                               {/* Alt Başlıklar - Tarih Aralığı */}
+                               {/* Alt Başlıklar - Dönem İçi Veriler */}
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
-                                 Son Alış Tarihi (Aralık)
+                                 Dönem İçi Son Alım Tarihi
                                </th>
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
-                                 Son Alış Fiyatı (Aralık)
+                                 Dönem İçi Son Alım Fiyatı
                                </th>
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
-                                 Son Satış Tarihi (Aralık)
+                                 Dönem İçi Son Alım Miktarı
                                </th>
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
-                                 Son Satış Fiyatı (Aralık)
+                                 Son Satış Tarihi (Tarih Aralığı)
                                </th>
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
-                                 Son Alış Toplamı (Aralık)
+                                 Dönem İçi Son Satış Fiyatı
                                </th>
                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 bg-orange-100">
-                                 Son Satış Toplamı (Aralık)
+                                 Dönem İçi Satış Toplamı
                                </th>
                              </tr>
                            </thead>
@@ -1347,6 +1369,9 @@ export default function MalzemeDetayModal({
                                  </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[150px] bg-blue-50">
                                    {formatCurrency(item['Aktif Satış Fiyatı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[180px] bg-blue-50">
+                                   {formatDate(item['Son Fiyat Değişim Tarihi'])}
                                  </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-blue-700 min-w-[120px] bg-blue-50">
                                    {formatNumber(item['Stok Miktarı'])}
@@ -1372,26 +1397,23 @@ export default function MalzemeDetayModal({
                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[130px] bg-blue-50">
                                    {formatCurrency(item['Son Satış Birim Fiyatı'])}
                                  </td>
-                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[120px] bg-blue-50 border-r border-blue-200">
-                                   {formatNumber(item['Son Satış Miktarı'])}
-                                 </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[180px] bg-orange-50">
-                                   {formatDate(item['Son Alış Tarihi (Aralık İçi)'])}
+                                   {formatDate(item['Dönem İçi Son Alım Tarihi'])}
                                  </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[180px] bg-orange-50">
-                                   {formatCurrency(item['Son Alış Fiyatı (Aralık İçi)'])}
+                                   {formatCurrency(item['Dönem İçi Son Alım Fiyatı'])}
+                                 </td>
+                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-blue-700 min-w-[180px] bg-orange-50">
+                                   {formatNumber(item['Dönem İçi Son Alım Miktarı'])}
                                  </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 min-w-[180px] bg-orange-50">
-                                   {formatDate(item['Son Satış Tarihi (Aralık İçi)'])}
+                                   {formatDate(item['Son Satış Tarihi (Tarih Aralığı)'])}
                                  </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[180px] bg-orange-50">
-                                   {formatCurrency(item['Son Satış Fiyatı (Aralık İçi)'])}
-                                 </td>
-                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-green-700 min-w-[180px] bg-orange-50">
-                                   {formatNumber(item['Son Alış Toplamı (Aralık İçi)'])}
+                                   {formatCurrency(item['Dönem İçi Son Satış Fiyatı'])}
                                  </td>
                                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-700 min-w-[180px] bg-orange-50">
-                                   {formatNumber(item['Son Satış Toplamı (Aralık İçi)'])}
+                                   {formatNumber(item['Dönem İçi Satış Toplamı'])}
                                  </td>
                                </tr>
                              ))}

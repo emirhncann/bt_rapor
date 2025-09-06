@@ -8,7 +8,6 @@ import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
-import { trackReportView, trackReportGeneration, trackDateFilter } from '../utils/yandex-metrica';
 
 // Yardımcı fonksiyon: Date'i 'YYYY-MM-DD' formatına çevir
 function formatDateToYMD(date: string | Date): string {
@@ -147,7 +146,6 @@ export default function EnCokSatilanMalzemeler() {
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
         // Sayfa görüntüleme tracking
-        trackReportView('en_cok_satilan_malzemeler');
       } else {
         router.push('/login');
       }
@@ -552,7 +550,6 @@ EXEC sp_executesql
         // Rapor oluşturma tracking
         const totalAmount = result.results.reduce((sum: number, item: any) => 
           sum + (parseFloat(item['Toplam Tutar']) || 0), 0);
-        trackReportGeneration('en_cok_satilan_malzemeler', result.results.length, totalAmount);
       } else if (result.data && Array.isArray(result.data)) {
         // Alternatif response formatı
         setData(result.data);
@@ -807,7 +804,6 @@ EXEC sp_executesql
                     value={startDate}
                     onChange={(date) => {
                       setStartDate(formatDateToYMD(date));
-                      trackDateFilter('custom', formatDateToYMD(date), endDate);
                     }}
                   />
                 </div>

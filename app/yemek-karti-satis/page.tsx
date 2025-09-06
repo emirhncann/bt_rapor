@@ -9,15 +9,6 @@ import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
-import { 
-  trackReportView, 
-  trackFilterUsage, 
-  trackDateFilter, 
-  trackBranchSelection, 
-  trackReportGeneration, 
-  trackErrorAnalysis,
-  trackAccordionToggle
-} from '../utils/yandex-metrica';
 
 // Yardımcı fonksiyon: Date'i 'YYYY-MM-DD' formatına çevir
 function formatDateToYMD(date: string | Date): string {
@@ -95,7 +86,6 @@ export default function YemekKartiSatis() {
       [section]: newState
     }));
     // Akordiyon açma/kapama tracking
-    trackAccordionToggle(section, newState);
   };
 
   // Authentication kontrolü
@@ -105,7 +95,6 @@ export default function YemekKartiSatis() {
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
         // Sayfa görüntülendiğinde tracking
-        trackReportView('yemek_karti_satis');
       } else {
         router.push('/login');
       }
@@ -340,7 +329,6 @@ export default function YemekKartiSatis() {
     setDatePreset(preset);
     
     // Tarih filtresi tracking
-    trackDateFilter(preset, startDisplay, endDisplay);
   };
 
   // Şubeleri yükle (diğer raporlar gibi direkt ENPOS'tan)
@@ -602,7 +590,6 @@ export default function YemekKartiSatis() {
       
       // Rapor oluşturma tracking
       const totalAmount = data.reduce((sum: number, item: any) => sum + (parseFloat(item.Tutar) || 0), 0);
-      trackReportGeneration('yemek_karti_satis', data.length, totalAmount);
 
     } catch (error: any) {
       console.error('❌ Yemek kartı satış verileri çekilirken hata:', error);
@@ -630,7 +617,6 @@ export default function YemekKartiSatis() {
       const selectedBranchNames = newSelection.map(id => 
         subeler.find(s => s.value === id)?.label || `Şube ${id}`
       );
-      trackBranchSelection(newSelection.length, selectedBranchNames);
       
       return newSelection;
     });
@@ -901,7 +887,6 @@ export default function YemekKartiSatis() {
   useEffect(() => {
     if (hataliKayitlar.length > 0) {
       const totalErrorAmount = hataliKayitlar.reduce((sum, item) => sum + (parseFloat(item.Tutar) || 0), 0);
-      trackErrorAnalysis(hataliKayitlar.length, totalErrorAmount);
     }
   }, [hataliKayitlar.length]);
 

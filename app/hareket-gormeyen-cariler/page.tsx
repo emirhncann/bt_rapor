@@ -8,7 +8,6 @@ import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
-import { trackReportView, trackReportGeneration } from '../utils/yandex-metrica';
 
 // Modül kategorileri ve TR Kodları
 const MODULE_CATEGORIES = [
@@ -274,7 +273,6 @@ export default function HareketGormeyenler() {
       const isLoggedIn = localStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
-        trackReportView('hareket_gormeyen_cariler');
       } else {
         router.push('/login');
       }

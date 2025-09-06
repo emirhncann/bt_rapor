@@ -4,7 +4,6 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { trackReportExport } from '../../utils/yandex-metrica';
 import { getCurrentUser } from '../../utils/simple-permissions';
 
 // jsPDF türleri için extend
@@ -94,7 +93,6 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
       // Dosyayı indir
       const fileName = `Enpos_Ciro_${new Date().toLocaleDateString('tr-TR').replace(/\//g, '_')}.xlsx`;
       XLSX.writeFile(workbook, fileName);
-      trackReportExport('enpos_ciro', 'excel');
     } catch (error) {
       console.error('Excel export hatası:', error);
       alert('Excel dosyası oluşturulurken hata oluştu.');
@@ -328,7 +326,6 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
       printWindow.document.write(printContent);
       printWindow.document.close();
       printWindow.focus();
-      trackReportExport('enpos_ciro', 'print');
     } catch (error) {
       console.error('PDF yazdırma hatası:', error);
       alert('PDF yazdırma işlemi sırasında hata oluştu.');

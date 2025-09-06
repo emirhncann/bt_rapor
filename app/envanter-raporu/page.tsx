@@ -8,7 +8,6 @@ import DashboardLayout from '../components/DashboardLayout';
 import MalzemeDetayModal from '../components/MalzemeDetayModal';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
-import { trackReportView, trackReportGeneration } from '../utils/yandex-metrica';
 import { buildInventoryFilters } from '../utils/buildFilter';
 
 // Şube isimlerini doğal sırayla (1,2,10 yerine 1,2,3) sıralamak için yardımcı fonksiyon
@@ -57,7 +56,6 @@ export default function EnvanterRaporu() {
       const isLoggedIn = localStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
-        trackReportView('envanter_raporu');
       } else {
         router.push('/login');
       }

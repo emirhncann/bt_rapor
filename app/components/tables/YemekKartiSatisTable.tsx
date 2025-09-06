@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { trackReportExport } from '../../utils/yandex-metrica';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -130,7 +129,6 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
     const workbook = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(workbook, worksheet, 'Yemek Kartı Satışları');
       XLSX.writeFile(workbook, `yemek_karti_satislari_${new Date().toISOString().split('T')[0]}.xlsx`);
-      trackReportExport('yemek_karti_satis', 'excel');
   };
 
   // Yazdırma fonksiyonu
@@ -312,7 +310,6 @@ export default function YemekKartiSatisTable({ data, stats, currentUser }: Yemek
       printWindow.document.write(printContent);
               printWindow.document.close();
         printWindow.focus();
-        trackReportExport('yemek_karti_satis', 'print');
     } catch (error) {
       console.error('Yazdırma hatası:', error);
       alert('Yazdırma işlemi sırasında hata oluştu.');

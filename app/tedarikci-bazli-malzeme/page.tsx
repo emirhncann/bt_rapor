@@ -8,7 +8,6 @@ import DatePicker from '../components/DatePicker';
 import MalzemeDetayModal from '../components/MalzemeDetayModal';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
-import { trackReportView, trackReportGeneration } from '../utils/yandex-metrica';
 
 // Yardımcı fonksiyon: Date'i 'YYYY-MM-DD' formatına çevir
 function formatDateToYMD(date: string | Date): string {
@@ -101,7 +100,6 @@ export default function TedarikciMalzemeRaporu() {
       const isLoggedIn = localStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
-        trackReportView('tedarikci_bazli_malzeme');
       } else {
         router.push('/login');
       }
@@ -480,7 +478,6 @@ export default function TedarikciMalzemeRaporu() {
         // Rapor oluşturma tracking
         const totalAmount = result.results.reduce((sum: number, item: any) => 
           sum + (parseFloat(item['Toplam Tutar']) || 0), 0);
-        trackReportGeneration('tedarikci_bazli_malzeme', result.results.length, totalAmount);
       } else if (result.data && Array.isArray(result.data)) {
         setData(result.data);
         setFilteredData(result.data);
