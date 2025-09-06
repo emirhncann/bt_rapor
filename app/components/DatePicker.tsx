@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface DatePickerProps {
   value: string;
@@ -14,6 +15,7 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<'top' | 'bottom'>('bottom');
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
   // YYYY-MM-DD formatını DD/MM/YYYY formatına çevir
@@ -31,7 +33,14 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
     if (!dateStr || !dateStr.includes('/')) return null;
     const [dd, mm, yyyy] = dateStr.split('/');
     if (dd && mm && yyyy && yyyy.length === 4) {
-      return new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+      const year = parseInt(yyyy);
+      const month = parseInt(mm) - 1; // JavaScript'te ay 0-11 arası
+      const day = parseInt(dd);
+      const date = new Date(year, month, day);
+      // Geçerli tarih kontrolü
+      if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
+        return date;
+      }
     }
     return null;
   };
@@ -46,24 +55,48 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
 
   // Value değiştiğinde selectedDate'i güncelle
   useEffect(() => {
-    const parsed = parseDisplayDate(formatToDisplay(value));
-    setSelectedDate(parsed);
-    if (parsed) {
-      setCurrentMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+    if (value) {
+      // YYYY-MM-DD formatından Date'e çevir
+      const [yyyy, mm, dd] = value.split('-');
+      if (yyyy && mm && dd && yyyy.length === 4) {
+        const year = parseInt(yyyy);
+        const month = parseInt(mm) - 1;
+        const day = parseInt(dd);
+        const date = new Date(year, month, day);
+        if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
+          setSelectedDate(date);
+          setCurrentMonth(new Date(year, month, 1));
+        }
+      }
+    } else {
+      setSelectedDate(null);
     }
   }, [value]);
 
   // Dışarıya tıklandığında kapat
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+      if (isOpen) {
+        const target = event.target as Node;
+        const container = containerRef.current;
+        const calendar = document.querySelector('[data-calendar-portal]');
+        
+        if (container && !container.contains(target) && 
+            calendar && !calendar.contains(target)) {
+          setIsOpen(false);
+        }
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    if (isOpen) {
+      // Biraz gecikme ile event listener ekle
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+    }
+    
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen]);
 
   // Takvim açılırken pozisyonu hesapla
   const handleToggleCalendar = () => {
@@ -72,15 +105,38 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
       const rect = containerRef.current?.getBoundingClientRect();
       if (rect) {
         const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
         const spaceBelow = viewportHeight - rect.bottom;
         const spaceAbove = rect.top;
-        const calendarHeight = 400; // Takvim yüksekliği (yaklaşık)
+        const spaceRight = viewportWidth - rect.left;
+        const calendarHeight = 450; // Takvim yüksekliği
+        const calendarWidth = 320; // Takvim genişliği
         
-        if (spaceBelow >= calendarHeight || spaceBelow > spaceAbove) {
-          setDropdownPosition('bottom');
-        } else {
-          setDropdownPosition('top');
+        let top = rect.bottom + 8;
+        let left = rect.left;
+        
+        // Yatay pozisyon ayarla (ekran dışına taşmaması için)
+        if (left + calendarWidth > viewportWidth) {
+          left = viewportWidth - calendarWidth - 16;
         }
+        if (left < 16) {
+          left = 16;
+        }
+        
+        // Dikey pozisyon ayarla
+        if (spaceBelow < calendarHeight && spaceAbove > spaceBelow) {
+          setDropdownPosition('top');
+          top = rect.top - calendarHeight - 8;
+        } else {
+          setDropdownPosition('bottom');
+        }
+        
+        setDropdownStyle({
+          position: 'fixed',
+          top: `${top}px`,
+          left: `${left}px`,
+          zIndex: 9999
+        });
       }
     }
     setIsOpen(!isOpen);
@@ -109,6 +165,8 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
   const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
   const handleDateClick = (day: number, isCurrentMonth: boolean = true) => {
+    console.log('Date clicked:', day, isCurrentMonth); // Debug için
+    
     let selectedYear = year;
     let selectedMonth = month;
     
@@ -131,9 +189,15 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
     }
 
     const newDate = new Date(selectedYear, selectedMonth, day);
+    console.log('New date:', newDate); // Debug için
+    
     setSelectedDate(newDate);
     onChange(formatToYMD(newDate)); // YYYY-MM-DD formatında gönder
-    setIsOpen(false);
+    
+    // Tarih seçildikten sonra kısa bir gecikme ile takvimi kapat
+    setTimeout(() => {
+      setIsOpen(false);
+    }, 100);
   };
 
   const goToPrevMonth = () => {
@@ -149,7 +213,7 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
     setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedDate(today);
     onChange(formatToYMD(today)); // YYYY-MM-DD formatında gönder
-    setIsOpen(false);
+    setIsOpen(false); // Bugün butonuna tıklandıktan sonra takvimi kapat
   };
 
   const isToday = (day: number) => {
@@ -225,19 +289,31 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
       
       {/* Input Field */}
       <div className="relative">
-                 <input
-           type="text"
-           value={formatToDisplay(value)}
-           onChange={(e) => onChange(e.target.value)}
-           onClick={handleToggleCalendar}
-           placeholder={placeholder}
-           className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent cursor-pointer"
-         />
-         <button
-           type="button"
-           onClick={handleToggleCalendar}
-           className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-600 transition-colors"
-         >
+        <input
+          type="text"
+          value={formatToDisplay(value)}
+          onChange={(e) => {
+            const inputValue = e.target.value;
+            // DD/MM/YYYY formatında manuel giriş kontrolü
+            if (inputValue.length === 10 && inputValue.includes('/')) {
+              const parsed = parseDisplayDate(inputValue);
+              if (parsed) {
+                onChange(formatToYMD(parsed));
+              }
+            } else if (inputValue === '') {
+              onChange('');
+            }
+          }}
+          onFocus={handleToggleCalendar}
+          placeholder={placeholder || "GG/AA/YYYY"}
+          className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent cursor-pointer"
+          readOnly
+        />
+        <button
+          type="button"
+          onClick={handleToggleCalendar}
+          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-600 transition-colors"
+        >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
@@ -245,8 +321,12 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
       </div>
 
       {/* Calendar Dropdown */}
-      {isOpen && (
-        <div className={`absolute ${dropdownPosition === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} left-0 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-4 min-w-[320px]`}>
+      {isOpen && createPortal(
+        <div 
+          data-calendar-portal
+          className="bg-white border border-gray-200 rounded-lg shadow-xl p-4 min-w-[320px] max-h-[500px] overflow-visible"
+          style={dropdownStyle}
+        >
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <button
@@ -301,7 +381,8 @@ export default function DatePicker({ value, onChange, placeholder, label }: Date
               Kapat
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

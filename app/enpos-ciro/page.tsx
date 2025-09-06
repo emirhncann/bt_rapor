@@ -341,6 +341,23 @@ export default function EnposCiro() {
     }, 3000);
   };
 
+  // Cache'i temizleme fonksiyonu
+  const clearCacheAndReload = async () => {
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      
+      // Connection info cache'ini temizle
+      localStorage.removeItem('connectionInfo');
+      
+      console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
+      await fetchCiroData();
+      
+    } catch (error) {
+      console.error('❌ Cache temizlenirken hata:', error);
+      showErrorMessage('Cache temizlenirken bir hata oluştu!');
+    }
+  };
+
   const fetchCiroData = async () => {
     if (!isAuthenticated) return;
     
@@ -972,13 +989,26 @@ GROUP BY B.Sube_No,D.NAME
                 }}
               />
             </div>
-            <button
-              onClick={fetchCiroData}
-              disabled={loading}
-              className="px-6 py-2 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Yükleniyor...' : 'Raporu Getir'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={clearCacheAndReload}
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Cache'i temizle ve yeni veri getir"
+              >
+                <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Yeniden Yükle
+              </button>
+              <button
+                onClick={fetchCiroData}
+                disabled={loading}
+                className="px-6 py-2 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Yükleniyor...' : 'Raporu Getir'}
+              </button>
+            </div>
           </div>
         </div>
 

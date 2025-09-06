@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import EnvanterRaporuTable from '../components/tables/EnvanterRaporuTable';
 import DashboardLayout from '../components/DashboardLayout';
+import MalzemeDetayModal from '../components/MalzemeDetayModal';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 import { trackReportView, trackReportGeneration } from '../utils/yandex-metrica';
@@ -40,6 +41,15 @@ export default function EnvanterRaporu() {
   const [failedAnimationData, setFailedAnimationData] = useState(null);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  
+  // MalzemeDetayModal için state'ler
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedMalzemeForDetail, setSelectedMalzemeForDetail] = useState<{
+    itemRef: string;
+    malzemeKodu: string;
+    malzemeAdi: string;
+    clientRef: string;
+  } | null>(null);
 
   // Authentication kontrolü
   useEffect(() => {
@@ -615,6 +625,36 @@ export default function EnvanterRaporu() {
     setHasFetched(true);
   };
 
+  // Cache'i temizleme fonksiyonu
+  const clearCacheAndReload = async () => {
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      
+      // Connection info cache'ini temizle
+      localStorage.removeItem('connectionInfo');
+      
+      console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
+      await fetchEnvanterData(selectedFiltersRef.current);
+      setHasFetched(true);
+      
+    } catch (error) {
+      console.error('❌ Cache temizlenirken hata:', error);
+      showErrorMessage('Cache temizlenirken bir hata oluştu!');
+    }
+  };
+
+  // MalzemeDetayModal'ı açma fonksiyonu
+  const handleOpenMalzemeDetail = (itemRef: string, malzemeKodu: string, malzemeAdi: string, clientRef: string) => {
+    console.log('🔍 MalzemeDetayModal açılıyor:', { itemRef, malzemeKodu, malzemeAdi, clientRef });
+    setSelectedMalzemeForDetail({
+      itemRef,
+      malzemeKodu,
+      malzemeAdi,
+      clientRef
+    });
+    setIsDetailModalOpen(true);
+  };
+
   // Kod çoklu seçim handler
   const toggleFilterValue = (codeType: string, value: string) => {
     setSelectedFilters(prev => {
@@ -688,6 +728,17 @@ export default function EnvanterRaporu() {
                 <p className="text-lg lg:text-xl font-semibold text-white">{new Date().toLocaleDateString('tr-TR')}</p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={clearCacheAndReload}
+                  disabled={loading}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Cache'i temizle ve yeni veri getir"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Yeniden Yükle
+                </button>
                 <button
                   onClick={handleFetchReport}
                   disabled={loading}
@@ -852,10 +903,28 @@ export default function EnvanterRaporu() {
               loadingFilterCodes={loadingFilterCodes}
               selectedFilters={selectedFilters}
               onToggleFilter={toggleFilterValue}
+              onOpenMalzemeDetail={handleOpenMalzemeDetail}
             />
           </div>
         )}
       </div>
+
+      {/* Malzeme Detay Modal */}
+      {selectedMalzemeForDetail && (
+        <MalzemeDetayModal
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedMalzemeForDetail(null);
+          }}
+          malzemeKodu={selectedMalzemeForDetail.malzemeKodu}
+          malzemeAdi={selectedMalzemeForDetail.malzemeAdi}
+          itemRef={selectedMalzemeForDetail.itemRef}
+          clientRef={selectedMalzemeForDetail.clientRef}
+          startDate={new Date().toISOString().split('T')[0]}
+          endDate={new Date().toISOString().split('T')[0]}
+        />
+      )}
     </DashboardLayout>
   );
 } 

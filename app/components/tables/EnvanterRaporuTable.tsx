@@ -21,6 +21,7 @@ interface EnvanterRaporuTableProps {
   loadingFilterCodes?: boolean;
   selectedFilters: Record<string, string[]>;
   onToggleFilter: (codeType: string, code: string) => void;
+  onOpenMalzemeDetail?: (itemRef: string, malzemeKodu: string, malzemeAdi: string, clientRef: string) => void;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -31,7 +32,8 @@ export default function EnvanterRaporuTable({
   filterCodes = [], 
   loadingFilterCodes = false,
   selectedFilters,
-  onToggleFilter
+  onToggleFilter,
+  onOpenMalzemeDetail
 }: EnvanterRaporuTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -943,9 +945,16 @@ export default function EnvanterRaporuTable({
                         console.log('🔍 Row data:', row);
                         const itemRef = row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref || '';
                         const itemName = row['Malzeme Adı'] || row.NAME || row.malzeme_adi || 'Malzeme';
+                        const malzemeKodu = row['Malzeme Kodu'] || row.CODE || row.malzeme_kodu || '';
                         console.log('🔍 ItemRef:', itemRef);
                         console.log('🔍 ItemName:', itemName);
-                        if (itemRef) {
+                        console.log('🔍 MalzemeKodu:', malzemeKodu);
+                        
+                        if (itemRef && onOpenMalzemeDetail) {
+                          // Envanter raporunda STLINE verisi yok, bu yüzden CLIENTREF boş
+                          // Gerçek kullanımda STLINE'dan CLIENTREF çekilecek
+                          onOpenMalzemeDetail(itemRef, malzemeKodu, itemName, '');
+                        } else if (itemRef) {
                           fetchItemDetails(itemRef, itemName);
                         } else {
                           alert('Malzeme referansı bulunamadı!');

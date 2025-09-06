@@ -64,15 +64,35 @@ export default function MalzemeDetayModal({
     });
   }, []);
 
+  // Cache'i temizleme fonksiyonu
+  const clearCacheAndReload = () => {
+    const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+    localStorage.removeItem(spCacheKey);
+    console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
+    setSpCreated(false);
+    checkAndCreateStoredProcedure();
+  };
+
   // Modal açıldığında veriyi getir
   useEffect(() => {
     if (isOpen && itemRef) {
-      // Önce stored procedure'ın mevcut olup olmadığını kontrol et
-      if (!spCreated) {
-        checkAndCreateStoredProcedure();
-      } else {
+      // Stored procedure kontrolünü localStorage'da cache'le
+      const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+      const spExists = localStorage.getItem(spCacheKey) === 'true';
+      
+      if (spExists) {
+        console.log('✅ Stored procedure cache\'den mevcut, direkt veri getiriliyor...');
+        setSpCreated(true);
         fetchMalzemeDetay();
+      } else {
+        console.log('🔍 Stored procedure kontrol ediliyor...');
+        checkAndCreateStoredProcedure();
       }
+    } else if (!isOpen) {
+      // Modal kapandığında state'leri temizle
+      setData([]);
+      setError(null);
+      setLoading(false);
     }
   }, [isOpen, itemRef]);
 
@@ -97,7 +117,7 @@ export default function MalzemeDetayModal({
         'first_db_key',
         { query: checkSpQuery },
         'https://api.btrapor.com/proxy',
-        300000
+        10000 // 10 saniye timeout
       );
 
       if (checkResponse.ok) {
@@ -107,6 +127,9 @@ export default function MalzemeDetayModal({
         if (spExists) {
           console.log('✅ Stored procedure zaten mevcut, direkt veri getiriliyor...');
           setSpCreated(true);
+          // Cache'i güncelle
+          const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+          localStorage.setItem(spCacheKey, 'true');
           await fetchMalzemeDetay();
         } else {
           console.log('🔧 Stored procedure mevcut değil, oluşturuluyor...');
@@ -151,7 +174,7 @@ export default function MalzemeDetayModal({
              'first_db_key',
              { query: createIdListQuery },
              'https://api.btrapor.com/proxy',
-             300000
+             600000 // 10 dakika timeout
            );
 
            if (createIdListResponse.ok) {
@@ -180,7 +203,7 @@ export default function MalzemeDetayModal({
             'first_db_key',
             { query: dropSpQuery },
             'https://api.btrapor.com/proxy',
-            300000
+            600000 // 10 dakika timeout
           );
 
           if (dropResponse.ok) {
@@ -500,7 +523,7 @@ export default function MalzemeDetayModal({
           'first_db_key',
           { query: createSpQuery },
           'https://api.btrapor.com/proxy',
-          300000
+          600000 // 10 dakika timeout
         );
 
                  if (!createResponse.ok) {
@@ -534,6 +557,24 @@ export default function MalzemeDetayModal({
         console.log('✅ CREATE PROCEDURE başarılı:', createResult);
         
                  // Üçüncü sorgu: Stored procedure'ü parametrelerle çağır
+         // Connection info'dan market_module kontrol et
+         const testConnectionInfo = JSON.parse(localStorage.getItem('connectionInfo') || '{}');
+         const testConnectionMarketModule = testConnectionInfo.market_module;
+         const testHasMarketModule = testConnectionMarketModule === 1 ? 1 : 0;
+         console.log('🔍 createStoredProcedure - connectionInfo.market_module:', testConnectionMarketModule);
+         console.log('🔍 createStoredProcedure - connectionInfo.market_module tipi:', typeof testConnectionMarketModule);
+         console.log('🔍 createStoredProcedure - testHasMarketModule sonucu:', testHasMarketModule);
+         
+         // Connection bilgilerinden GO database bilgilerini al
+         const connectionInfo = JSON.parse(localStorage.getItem('connectionInfo') || '{}');
+         const testGoDb = connectionInfo.logo_kurulum_db_name || connectionInfo.logoKurulumDbName || 'GOWINGS';
+         const testGoSchema = connectionInfo.go_schema || connectionInfo.goSchema || 'dbo';
+         // Test için varsayılan bir cari ref kullan (gerçek kullanımda prop'tan gelecek)
+         const testClientRef = '1';
+         
+         console.log('🔍 Test GO Database bilgileri:', { testGoDb, testGoSchema, testClientRef });
+         console.log('⚠️ Test ClientRef sabit değer kullanıyor, gerçek kullanımda prop\'tan gelecek');
+         
          const executeSpQuery = `
            DECLARE @Wh dbo.IdList; 
            -- Tüm ambarlar için boş bırakıyoruz
@@ -545,10 +586,10 @@ export default function MalzemeDetayModal({
              @DateFrom='2025-01-01',
              @DateTo='2025-09-01',
              @WarehouseList=@Wh,
-             @HasMarketModule=1,
-             @GoDb='GO3',
-             @GoSchema='dbo',
-             @ClientRef=3;
+             @HasMarketModule=${testHasMarketModule},
+             @GoDb='${testGoDb}',
+             @GoSchema='${testGoSchema}',
+             @ClientRef=${testClientRef};
          `;
 
                  console.log('🔧 Test EXEC PROCEDURE başlıyor:');
@@ -561,7 +602,7 @@ export default function MalzemeDetayModal({
           'first_db_key',
           { query: executeSpQuery },
           'https://api.btrapor.com/proxy',
-          300000
+          600000 // 10 dakika timeout
         );
 
                  if (!executeResponse.ok) {
@@ -596,6 +637,10 @@ export default function MalzemeDetayModal({
         
         setSpCreated(true);
         
+        // Cache'i güncelle
+        const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+        localStorage.setItem(spCacheKey, 'true');
+        
         // Stored procedure oluşturulduktan sonra detayları getir
         await fetchMalzemeDetay();
      } catch (err) {
@@ -615,6 +660,23 @@ export default function MalzemeDetayModal({
        const firmaNo = connectionInfo.firmaNo || connectionInfo.first_firma_no || '9';
        const donemNo = connectionInfo.donemNo || connectionInfo.first_donem_no || '1';
        const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
+       
+       // Market module parametresini connectionInfo'dan al (localStorage'da yok)
+       const connectionMarketModule = connectionInfo.market_module;
+       const hasMarketModule = connectionMarketModule === 1 ? 1 : 0;
+      console.log('🔍 fetchMalzemeDetay - connectionInfo.market_module:', connectionMarketModule);
+      console.log('🔍 fetchMalzemeDetay - connectionInfo.market_module tipi:', typeof connectionMarketModule);
+      console.log('🔍 fetchMalzemeDetay - hasMarketModule sonucu:', hasMarketModule);
+       
+       // GO veritabanı bilgilerini connection bilgilerinden al
+       const goDb = connectionInfo.logo_kurulum_db_name || connectionInfo.logoKurulumDbName || 'GO3';
+       const goSchema = connectionInfo.go_schema || connectionInfo.goSchema || 'dbo';
+       // ClientRef prop'tan gelen seçili cari ref'ini kullan
+       const selectedClientRef = clientRef || '3';
+       
+       console.log('🔍 GO Database bilgileri:', { goDb, goSchema, selectedClientRef });
+       console.log('🔍 Connection Info:', connectionInfo);
+       console.log('🔍 Seçili Cari Ref (prop):', clientRef);
 
        // SQL sorgusu - Stored procedure çağrısı (gerçek parametrelerle)
        const sqlQuery = `
@@ -628,10 +690,10 @@ export default function MalzemeDetayModal({
            @DateFrom='${startDate}',
            @DateTo='${endDate}',
            @WarehouseList=@Wh,
-           @HasMarketModule=1,
-           @GoDb='GO3',
-           @GoSchema='dbo',
-           @ClientRef=${clientRef};
+           @HasMarketModule=${hasMarketModule},
+           @GoDb='${goDb}',
+           @GoSchema='${goSchema}',
+           @ClientRef=${selectedClientRef};
        `;
 
       console.log('🔍 Malzeme Detay SQL Sorgusu:');
@@ -644,19 +706,27 @@ export default function MalzemeDetayModal({
         itemRef, 
         startDate, 
         endDate,
+        hasMarketModule,
+        goDb,
+        goSchema,
+        clientRef,
         companyRef 
       });
       console.log('🔗 Proxy URL:', 'https://api.btrapor.com/proxy');
-      console.log('⏱️ Timeout:', '300000ms (5 dakika)');
+      console.log('⏱️ Timeout:', '120000ms (2 dakika)');
 
       // Proxy üzerinden SQL sorgusunu çalıştır
+      console.log('🚀 SQL sorgusu gönderiliyor...');
+      const startTime = Date.now();
       const response = await sendSecureProxyRequest(
         companyRef,
         'first_db_key',
         { query: sqlQuery },
         'https://api.btrapor.com/proxy',
-        300000 // 5 dakika timeout
+        120000 // 2 dakika timeout
       );
+      const endTime = Date.now();
+      console.log(`⏱️ SQL sorgusu tamamlandı: ${endTime - startTime}ms`);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -1046,6 +1116,19 @@ export default function MalzemeDetayModal({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:gap-4">
+                {/* Yeniden Yükle Butonu */}
+                <button
+                  onClick={clearCacheAndReload}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-800 bg-blue-100 border border-blue-300 rounded-lg hover:bg-blue-200 hover:border-blue-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Cache'i temizle ve yeni veri getir"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {loading ? 'Yükleniyor...' : 'Yeniden Yükle'}
+                </button>
+                
                 {/* Export Butonları */}
                 {data.length > 0 && (
                   <>

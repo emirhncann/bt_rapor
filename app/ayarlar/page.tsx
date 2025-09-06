@@ -44,6 +44,12 @@ export default function Settings() {
   const [userReportPermissions, setUserReportPermissions] = useState<{[userId: number]: number[]}>({});
   const [loadingReports, setLoadingReports] = useState(false);
   
+  // Market module ve veritabanı parametreleri
+  const [hasMarketModule, setHasMarketModule] = useState(false);
+  const [goDb, setGoDb] = useState('GO3');
+  const [goSchema, setGoSchema] = useState('dbo');
+  const [clientRef, setClientRef] = useState('3');
+  
   const [formData, setFormData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -134,6 +140,9 @@ export default function Settings() {
         }
         // Database ayarlarını yükle
         loadDatabaseSettings();
+        
+        // Market module parametrelerini yükle
+        loadMarketModuleSettings();
       } else {
         router.push('/login');
       }
@@ -408,11 +417,85 @@ export default function Settings() {
     }
   };
 
+  // Market module parametrelerini yükle
+  const loadMarketModuleSettings = () => {
+    try {
+      const hasMarketModule = localStorage.getItem('hasMarketModule') === 'true';
+      const goDb = localStorage.getItem('goDb') || 'GO3';
+      const goSchema = localStorage.getItem('goSchema') || 'dbo';
+      const clientRef = localStorage.getItem('clientRef') || '3';
+      
+      setHasMarketModule(hasMarketModule);
+      setGoDb(goDb);
+      setGoSchema(goSchema);
+      setClientRef(clientRef);
+      
+      console.log('✅ Market module parametreleri yüklendi:', {
+        hasMarketModule,
+        goDb,
+        goSchema,
+        clientRef
+      });
+    } catch (error) {
+      console.error('❌ Market module parametreleri yüklenirken hata:', error);
+    }
+  };
+
+  // Market module parametrelerini kaydet
+  const saveMarketModuleSettings = () => {
+    try {
+      localStorage.setItem('hasMarketModule', hasMarketModule.toString());
+      localStorage.setItem('goDb', goDb);
+      localStorage.setItem('goSchema', goSchema);
+      localStorage.setItem('clientRef', clientRef);
+      
+      loadAnimation('success', 'Market module parametreleri başarıyla kaydedildi!');
+      console.log('✅ Market module parametreleri kaydedildi:', {
+        hasMarketModule,
+        goDb,
+        goSchema,
+        clientRef
+      });
+    } catch (error) {
+      console.error('❌ Market module parametreleri kaydedilirken hata:', error);
+      loadAnimation('failed', 'Market module parametreleri kaydedilemedi!');
+    }
+  };
+
   // Alt kullanıcı silme onayı
   const handleDeleteUser = (user: {id: number, name: string}) => {
     console.log('Silinecek kullanıcı:', user); // Debug için
     setUserToDelete(user);
     setShowDeleteModal(true);
+  };
+
+  // Tüm cache'i temizleme fonksiyonu
+  const clearAllCache = () => {
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      
+      // Stored procedure cache'lerini temizle
+      const spCacheKey = `sp_MalzemeDetayByItem_${companyRef}`;
+      localStorage.removeItem(spCacheKey);
+      
+      // Connection info cache'ini temizle
+      localStorage.removeItem('connectionInfo');
+      
+      // User reports cache'ini temizle
+      localStorage.removeItem('userAuthorizedReports');
+      localStorage.removeItem('userReportsLastUpdate');
+      
+      // Market module cache'ini temizle
+      localStorage.removeItem('market_module');
+      localStorage.removeItem('hasMarketModule');
+      
+      console.log('🗑️ Tüm cache temizlendi');
+      loadAnimation('success', 'Tüm cache başarıyla temizlendi!');
+      
+    } catch (error) {
+      console.error('❌ Cache temizlenirken hata:', error);
+      loadAnimation('failed', 'Cache temizlenirken bir hata oluştu!');
+    }
   };
 
   // Alt kullanıcı silme işlemi
@@ -902,6 +985,7 @@ export default function Settings() {
   const tabs = [
     { id: 'profile', name: 'Profil & Şifre', icon: '👤' },
     { id: 'database', name: 'Veritabanı ve Sistem Ayarları', icon: '🗄️', adminOnly: true },
+    { id: 'market', name: 'Market Module Ayarları', icon: '🏪', adminOnly: true },
     { id: 'users', name: 'Kullanıcı Yönetimi', icon: '👥', adminOnly: true },
     { id: 'permissions', name: 'Rapor Yetkilendirme', icon: '📊', adminOnly: true },
     { id: 'system', name: 'Sistem', icon: '⚙️', adminOnly: true }
@@ -1509,6 +1593,86 @@ export default function Settings() {
               </div>
             )}
 
+            {/* Market Module Ayarları Tab */}
+            {activeTab === 'market' && userRole === 'admin' && (
+              <div className="space-y-8">
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h3 className="text-lg font-bold text-gray-900 mb-6">🏪 Market Module Ayarları</h3>
+                  
+                  <div className="space-y-6">
+                    {/* Market Module Aktif/Pasif */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <h4 className="text-md font-medium text-gray-900">Market Module</h4>
+                        <p className="text-sm text-gray-600">Market modülünün aktif olup olmadığını belirler</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasMarketModule}
+                          onChange={(e) => setHasMarketModule(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    {/* GO Veritabanı */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        GO Veritabanı Adı
+                      </label>
+                      <input
+                        type="text"
+                        value={goDb}
+                        onChange={(e) => setGoDb(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="GO3"
+                      />
+                    </div>
+
+                    {/* GO Şema */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        GO Şema Adı
+                      </label>
+                      <input
+                        type="text"
+                        value={goSchema}
+                        onChange={(e) => setGoSchema(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="dbo"
+                      />
+                    </div>
+
+                    {/* Client Ref */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Client Reference
+                      </label>
+                      <input
+                        type="text"
+                        value={clientRef}
+                        onChange={(e) => setClientRef(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="3"
+                      />
+                    </div>
+
+                    {/* Kaydet Butonu */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={saveMarketModuleSettings}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                      >
+                        Kaydet
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Kullanıcı Yönetimi Tab */}
             {activeTab === 'users' && userRole === 'admin' && (
               <div className="space-y-8">
@@ -1914,6 +2078,20 @@ export default function Settings() {
                           Sistem Loglarını Görüntüle
                         </button>
                       </div>
+                    </div>
+                    
+                    {/* Cache Temizleme Bölümü */}
+                    <div className="bg-yellow-50 rounded-lg p-4 mt-6">
+                      <h4 className="font-medium text-yellow-900 mb-2">🗑️ Cache Yönetimi</h4>
+                      <p className="text-yellow-700 text-sm mb-3">
+                        Stored procedure cache'ini temizleyerek yeni veri getirilmesini sağlayın
+                      </p>
+                      <button 
+                        onClick={clearAllCache}
+                        className="w-full bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors"
+                      >
+                        Tüm Cache'i Temizle
+                      </button>
                     </div>
                   </div>
                     </div>

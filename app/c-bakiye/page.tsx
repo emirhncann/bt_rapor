@@ -654,6 +654,23 @@ export default function CBakiye() {
 
   const multiCurrencyStats = calculateMultiCurrencyStats();
 
+  // Cache'i temizleme fonksiyonu
+  const clearCacheAndReload = async () => {
+    try {
+      const companyRef = localStorage.getItem('companyRef');
+      
+      // Connection info cache'ini temizle
+      localStorage.removeItem('connectionInfo');
+      
+      console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
+      await fetchSqlData();
+      
+    } catch (error) {
+      console.error('❌ Cache temizlenirken hata:', error);
+      alert('Cache temizlenirken bir hata oluştu!');
+    }
+  };
+
   const fetchSqlData = async () => {
     if (!isAuthenticated) return;
     
@@ -1156,6 +1173,17 @@ export default function CBakiye() {
                   className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium"
                 >
                   💱 Döviz Türü Seçimi
+                </button>
+                <button
+                  onClick={clearCacheAndReload}
+                  disabled={loading || selectedCurrencies.length === 0}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Cache'i temizle ve yeni veri getir"
+                >
+                  <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Yeniden Yükle
                 </button>
                 <button
                   onClick={fetchSqlData}
