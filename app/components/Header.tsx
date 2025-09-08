@@ -34,9 +34,9 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
     
     // Plan bilgisini yükle (geçici - normalde API'den gelecek)
     if (role === 'admin') {
-      setUserPlan('Yönetici Erişimi');
+      setUserPlan('Yönetici');
     } else {
-      setUserPlan('Standart Plan'); // Geçici değer
+      setUserPlan('Kullanıcı'); // Geçici değer
     }
   }, []);
 

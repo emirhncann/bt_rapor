@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { encryptPayloadSecure } from '../utils/api';
 import { getCurrentUser } from '../utils/simple-permissions';
+import ReportAccessGuard from '../components/ReportAccessGuard';
 import Lottie from 'lottie-react';
 
 interface FileReadResult {
@@ -1433,7 +1434,8 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
   };
 
   return (
-    <DashboardLayout title="Akaryakıt Raporu">
+    <ReportAccessGuard reportName="Akaryakıt Raporu">
+      <DashboardLayout title="Akaryakıt Raporu">
       {/* Hata Modal */}
       {showErrorModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1817,5 +1819,6 @@ TARIH      SAAT     FILO ADI                       KODU   PLAKA     YAKIT      L
         </div>
       </div>
     </DashboardLayout>
+    </ReportAccessGuard>
   );
 }

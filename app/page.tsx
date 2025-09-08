@@ -246,12 +246,13 @@ export default function Dashboard() {
 
       console.log('🔄 Dashboard - Kullanıcı raporları yükleniyor...');
       
-      // API'den tüm raporları çek (yetki bilgisi ile birlikte)
+      // fetchUserReports fonksiyonunu kullan (rol bazlı yetki kontrolü ile)
       const {reports: allReports, planInfo: planData} = await fetchUserReports(companyRef, currentUser?.id);
+      
       console.log('📊 Dashboard - Çekilen raporlar:', allReports);
       console.log('📋 Dashboard - Plan bilgileri:', planData);
       
-      // State'e tüm raporları kaydet (kilitli olanlar dahil)
+      // State'e raporları kaydet
       setUserReports(allReports);
       setPlanInfo(planData);
       
@@ -260,10 +261,11 @@ export default function Dashboard() {
       localStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
       localStorage.setItem('userReportsLastUpdate', Date.now().toString());
       
-      console.log('💾 Dashboard - Tüm raporlar yüklendi, yetkili raporlar localStorage\'a kaydedildi');
+      console.log('💾 Dashboard - Raporlar yüklendi, yetkili raporlar localStorage\'a kaydedildi');
       
     } catch (error) {
       console.error('❌ Dashboard - Raporlar yüklenirken hata:', error);
+      setUserReports([]);
     } finally {
       setLoadingReports(false);
     }
@@ -903,14 +905,14 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <h4 className="text-base sm:text-lg font-semibold text-gray-500 mb-1 sm:mb-2">
-                      {pinnedReports.length > 0 ? 'Daha fazla rapor favorilere ekleyin' : 'Yakında'}
+                      Favori Rapor Ekleyin
                     </h4>
                     <p className="text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4">
-                      {pinnedReports.length > 0 ? 'Özelleştir butonuna tıklayarak rapor seçin' : 'Yeni raporlar ekleniyor...'}
+                      Özelleştir butonuna tıklayarak buraya favori raporlarınızı ekleyebilirsiniz
                     </p>
                     <div className="flex items-center space-x-2 mt-auto">
                       <span className="bg-gray-300 text-gray-600 text-xs px-2 py-1 rounded-full">
-                        {pinnedReports.length > 0 ? 'Özelleştir' : 'Geliştiriliyor'}
+                        Özelleştir
                       </span>
                     </div>
                   </div>
@@ -950,178 +952,121 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Raporlar Bölümü - Kategoriler */}
+        {/* Tanımlı Raporlar Bölümü */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl border border-gray-100">
           <div className="p-4 sm:p-6 border-b border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Rapor Kategorileri</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Tanımlı Raporlar</h3>
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-xs sm:text-sm text-gray-500">6 kategori, 15-20 rapor hazırlanıyor</span>
+                <span className="text-xs sm:text-sm text-gray-500">
+                  {loadingReports ? 'Yükleniyor...' : `${userReports.length} rapor mevcut`}
+                </span>
               </div>
             </div>
           </div>
           <div className="p-4 sm:p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {/* Finansal Raporlar Kategorisi */}
-              <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 sm:p-6 border border-red-200 hover:border-red-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Finansal Raporlar</h4>
-                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Cari bakiye, gelir-gider ve mali tablolar</p>
-                  <div className="flex items-center justify-between">
-                    <span className="bg-red-100 text-red-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">5-6 Rapor</span>
-                    <span className="text-xs text-gray-500">Hazırlanıyor</span>
-                  </div>
-                </div>
+            {loadingReports ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="ml-2 text-sm text-gray-500">Raporlar yükleniyor...</span>
               </div>
+            ) : userReports.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg">
+                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 text-lg">Henüz erişilebilir rapor bulunmuyor</p>
+                <p className="text-gray-400 text-sm mt-2">Yöneticinizle iletişime geçerek rapor erişimi talep edebilirsiniz</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {(() => {
+                  // Raporları kategoriye göre grupla
+                  const groupedReports = userReports.reduce((groups: {[key: string]: ReportWithAccess[]}, report) => {
+                    const category = report.category || 'Diğer Raporlar';
+                    if (!groups[category]) {
+                      groups[category] = [];
+                    }
+                    groups[category].push(report);
+                    return groups;
+                  }, {});
 
-              {/* Satış Raporları Kategorisi */}
-              <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 sm:p-6 border border-blue-200 hover:border-blue-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                      </svg>
+                  return Object.entries(groupedReports).map(([categoryName, reports]) => (
+                    <div key={categoryName} className="border border-gray-200 rounded-lg">
+                      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-medium text-gray-900">{categoryName}</h4>
+                              <p className="text-sm text-gray-500">{reports.length} rapor</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {reports.map((report) => (
+                            <div
+                              key={report.id}
+                              className={`group cursor-pointer p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
+                                report.has_access 
+                                  ? 'border-gray-200 hover:border-red-300 hover:bg-red-50' 
+                                  : 'border-gray-200 bg-gray-50 opacity-60'
+                              }`}
+                              onClick={() => handleReportClick(report, router)}
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex-1">
+                                  <h5 className="text-sm font-medium text-gray-900 mb-1">
+                                    {report.report_name}
+                                  </h5>
+                                  <p className="text-xs text-gray-500 line-clamp-2">
+                                    {report.report_description}
+                                  </p>
+                                </div>
+                                <div className="ml-3 flex-shrink-0">
+                                  {report.has_access ? (
+                                    <svg className="w-4 h-4 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                    </svg>
+                                  ) : (
+                                    <div className="w-6 h-6 bg-gray-400 rounded flex items-center justify-center">
+                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                  report.has_access 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-gray-200 text-gray-600'
+                                }`}>
+                                  {report.has_access ? 'Erişilebilir' : 'Kilitli'}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  #{report.id}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Satış Raporları</h4>
-                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Ciro, performans ve satış analizleri</p>
-                  <div className="flex items-center justify-between">
-                    <span className="bg-blue-100 text-blue-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">4-5 Rapor</span>
-                    <span className="text-xs text-gray-500">Hazırlanıyor</span>
-                  </div>
-                </div>
+                  ));
+                })()}
               </div>
-
-              {/* Stok Raporları Kategorisi */}
-              <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 sm:p-6 border border-emerald-200 hover:border-emerald-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
-                    </div>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 group-hover:text-emerald-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Stok Raporları</h4>
-                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Envanter, stok hareket ve analiz raporları</p>
-                  <div className="flex items-center justify-between">
-                    <span className="bg-emerald-100 text-emerald-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">3-4 Rapor</span>
-                    <span className="text-xs text-gray-500">Hazırlanıyor</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Müşteri Raporları Kategorisi */}
-              <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 sm:p-6 border border-orange-200 hover:border-orange-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                    </div>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 group-hover:text-orange-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Müşteri Raporları</h4>
-                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Müşteri analizi, segmentasyon ve CRM raporları</p>
-                  <div className="flex items-center justify-between">
-                    <span className="bg-orange-100 text-orange-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">3-4 Rapor</span>
-                    <span className="text-xs text-gray-500">Hazırlanıyor</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Analiz Raporları Kategorisi */}
-              <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 sm:p-6 border border-purple-200 hover:border-purple-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400 group-hover:text-purple-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Analiz Raporları</h4>
-                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Trend analizi, karşılaştırma ve istatistikler</p>
-                  <div className="flex items-center justify-between">
-                    <span className="bg-purple-100 text-purple-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">2-3 Rapor</span>
-                    <span className="text-xs text-gray-500">Hazırlanıyor</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Diğer Raporlar Kategorisi */}
-              <div className="group cursor-pointer">
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 sm:p-6 border border-gray-200 hover:border-gray-300 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl flex items-center justify-center text-white">
-                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 group-hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <h4 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2">Diğer Raporlar</h4>
-                  <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">Özel raporlar ve sistem kayıtları</p>
-                  <div className="flex items-center justify-between">
-                    <span className="bg-gray-100 text-gray-700 text-xs px-2 sm:px-3 py-1 rounded-full font-medium">1-2 Rapor</span>
-                    <span className="text-xs text-gray-500">Hazırlanıyor</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Alt Bilgi */}
-            <div className="mt-6 sm:mt-8 text-center p-4 sm:p-6 bg-gradient-to-r from-red-50 to-red-100 rounded-xl border border-red-200">
-              <div className="flex items-center justify-center mb-2 sm:mb-3">
-                <svg className="w-6 h-6 sm:w-8 sm:h-8 text-red-600 mr-2 sm:mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <h4 className="text-base sm:text-lg font-semibold text-gray-900">Rapor Geliştirme Süreci</h4>
-              </div>
-              <p className="text-gray-600 text-xs sm:text-sm mb-3 sm:mb-4">
-                Tüm rapor kategorilerinde toplam 15-20 adet detaylı rapor hazırlanmaktadır. Her kategori kendi özel sayfasına sahip olacak ve gelişmiş filtreleme seçenekleri sunacaktır.
-              </p>
-              <div className="flex items-center justify-center space-x-2 sm:space-x-4">
-                <div className="flex items-center">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full mr-1 sm:mr-2"></div>
-                  <span className="text-xs sm:text-sm text-gray-600">Aktif Geliştirme</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 bg-blue-500 rounded-full mr-1 sm:mr-2"></div>
-                  <span className="text-xs sm:text-sm text-gray-600">Kullanıcı Odaklı</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 bg-purple-500 rounded-full mr-1 sm:mr-2"></div>
-                  <span className="text-xs sm:text-sm text-gray-600">Modern Tasarım</span>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -1295,8 +1240,11 @@ const getReportIcon = (reportName: string) => {
 };
 
 const handleReportClick = (report: ReportWithAccess, router: any) => {
+  console.log(`🔍 handleReportClick - Rapor: ${report.report_name}, has_access: ${report.has_access}`);
+  
   // Erişim yetkisi kontrolü
   if (!report.has_access) {
+    console.log(`❌ Erişim reddedildi - ${report.report_name} için yetki yok`);
     alert(`🔒 ${report.report_name} rapora erişim yetkiniz bulunmamaktadır.\n\nBu raporu kullanabilmek için paket yükseltmesi yapmanız gerekmektedir.\n\nPaket bilgileri için Ayarlar > Plan Yönetimi bölümünü ziyaret edebilirsiniz.`);
     return;
   }
@@ -1309,6 +1257,6 @@ const handleReportClick = (report: ReportWithAccess, router: any) => {
     return;
   }
   
-  console.log(`🔄 Dashboard - ${report.report_name} raporu açılıyor: ${route}`);
+  console.log(`✅ Erişim onaylandı - ${report.report_name} raporu açılıyor: ${route}`);
   router.push(route);
 }; 

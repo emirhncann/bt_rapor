@@ -42,26 +42,28 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         return;
       }
 
-      console.log('🔄 Kullanıcı raporları yükleniyor...');
+      console.log('🔄 Sidebar - Kullanıcı raporları yükleniyor...');
       
-      // API'den kullanıcının raporlarını çek (yeni format)
+      // fetchUserReports fonksiyonunu kullan (rol bazlı yetki kontrolü ile)
       const {reports: allReports} = await fetchUserReports(companyRef, currentUser?.id);
-      console.log('📊 Çekilen raporlar:', allReports);
-      console.log('🔗 Route bilgileri:', allReports.map(r => ({name: r.report_name, route: r.route, route_path: r.route_path, category: r.category, icon: r.icon})));
+      
+      console.log('📊 Sidebar - Çekilen raporlar:', allReports);
       
       // Sadece yetkili raporları al
       const authorizedReports = getAuthorizedReports(allReports);
-      console.log('✅ Yetkili raporlar:', authorizedReports);
+      console.log('✅ Sidebar - Yetkili raporlar:', authorizedReports);
       
       // Kategorilere göre grupla
       const grouped = groupReportsByCategory(authorizedReports);
-      console.log('📁 Kategorileştirilmiş raporlar:', grouped);
+      console.log('📁 Sidebar - Kategorileştirilmiş raporlar:', grouped);
       
       setUserReports(authorizedReports);
       setReportsByCategory(grouped);
       
     } catch (error) {
-      console.error('❌ Raporlar yüklenirken hata:', error);
+      console.error('❌ Sidebar - Raporlar yüklenirken hata:', error);
+      setUserReports([]);
+      setReportsByCategory({});
     } finally {
       setLoading(false);
     }
@@ -304,6 +306,19 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   <span className="ml-3">🍽️ Yemek Kartı Satış</span>
                 </a>
               </>
+            )}
+            
+            {/* Admin Yetkileri */}
+            {isAdmin() && (
+              <a
+                href="/kullanici-yetki-yonetimi"
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600 hover:bg-purple-50 rounded-lg group"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+                <span className="ml-3">Kullanıcı Yetkileri</span>
+              </a>
             )}
             
             <a

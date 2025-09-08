@@ -1819,10 +1819,23 @@ export default function Settings() {
             {/* Rapor Yetkilendirme Tab */}
             {activeTab === 'permissions' && userRole === 'admin' && (
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Rapor Yetkilendirme</h3>
-                <p className="text-gray-600 text-sm mb-6">
-                  Kullanıcıların hangi raporlara erişebileceğini belirleyin. Admin kullanıcılar tüm raporlara erişebilir.
-                </p>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Rapor Yetkilendirme</h3>
+                    <p className="text-gray-600 text-sm mt-1">
+                      Kullanıcıların hangi raporlara erişebileceğini belirleyin. Admin kullanıcılar tüm raporlara erişebilir.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => router.push('/kullanici-yetki-yonetimi')}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors"
+                  >
+                    <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                    </svg>
+                    Gelişmiş Yetki Yönetimi
+                  </button>
+                </div>
 
                 {loadingReports ? (
                   <div className="flex items-center justify-center py-8">
