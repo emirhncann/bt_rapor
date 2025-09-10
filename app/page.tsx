@@ -325,9 +325,10 @@ export default function Dashboard() {
         console.log('👥 Kullanıcı sayısı API response:', result);
         
         if (result.status === 'success' && result.data) {
-          const totalUsers = result.data.admin + result.data.user;
-          const userCount = result.data.user; // Sadece user tipindeki kullanıcılar
-          console.log(`✅ Toplam aktif kullanıcı: ${totalUsers} (Admin: ${result.data.admin}, User: ${userCount})`);
+          const adminCount = Number(result.data.admin) || 0;
+          const userCount = Number(result.data.user) || 0;
+          const totalUsers = adminCount + userCount;
+          console.log(`✅ Toplam aktif kullanıcı: ${totalUsers} (Admin: ${adminCount}, User: ${userCount})`);
           return { totalUsers, userCount };
         } else {
           console.log('⚠️ Kullanıcı sayısı API hatası:', result.message);

@@ -492,13 +492,16 @@ export default function EnposCiro() {
         `Server=${connectionInfo.enpos_server_name};Database=${connectionInfo.enpos_database_name};User Id=${connectionInfo.enpos_username || ''};Password=${connectionInfo.enpos_password || ''};` :
         `Server=${connectionInfo.second_server_name || connectionInfo.first_server_name || ''};Database=${connectionInfo.second_db_name || connectionInfo.first_db_name || ''};User Id=${connectionInfo.second_username || connectionInfo.first_username || ''};Password=${connectionInfo.second_password || connectionInfo.first_password || ''};`;
       
-      // Firma no'yu al - ENPOS varsa enpos_firma_no kullan
-      const firmaNo = useEnposDb ? 
-        (connectionInfo.enpos_firma_no || '9') : 
-        (connectionInfo.second_firma_no || connectionInfo.first_firma_no || '9');
+      // Firma no'yu al - connectionInfo'dan first_firma_no oku (diğer raporlarla tutarlı)
+      const firmaNo = connectionInfo.first_firma_no || '009';
+      console.log('🏢 Kullanılacak firma no:', firmaNo);
+      
       
       // Logo kurulum db name'i al
       const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
+      
+      // Database name'i al - localStorage'dan first_db_name oku
+      const firstDbName = connectionInfo.first_db_name;
       
       console.log('🔗 Oluşturulan Connection String (Ciro):', connectionString);
       console.log('🏢 Firma No (Ciro):', firmaNo);
@@ -518,7 +521,11 @@ export default function EnposCiro() {
     SUM(CASE WHEN B.Belge_Tipi NOT IN ('GPS','XRP','ZRP') THEN CREDITTOTAL+CASHTOTAL ELSE 0 END) + SUM(CASE WHEN B.Belge_Tipi='GPS' THEN CASHTOTAL+CREDITTOTAL ELSE 0 END) AS TOPLAM
 
 FROM BELGE B
-        LEFT JOIN ${logoKurulumDbName}..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=${firmaNo}
+        LEFT JOIN ${firstDbName}..LK_${firmaNo}_DIVDEFAULTS DD ON B.Sube_No=dd.SHOPNO
+LEFT JOIN ${firstDbName}..LK_${firmaNo}_CAPIDIVPARAMS CD ON CD._VALUE=DD.OFFICECODE AND _INDEX = 1
+
+        LEFT JOIN ${logoKurulumDbName}..L_CAPIDIV D ON CD._VALUE=D.NR  AND D.FIRMNR=${firmaNo}
+        
 WHERE Iptal=0 AND BELGETARIH BETWEEN '${formatToSQLDate(startYYMMDD)} 00:00:00.000' AND '${formatToSQLDate(endYYMMDD)} 23:59:59.000' AND B.Belge_Tipi NOT IN ('XRP','ZRP')
 GROUP BY B.Sube_No,D.NAME
 `;
