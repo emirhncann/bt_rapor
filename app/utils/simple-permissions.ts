@@ -53,6 +53,11 @@ export async function fetchUserReports(companyRef: string, userId?: number): Pro
       // Company'nin sahip olduğu raporları filtrele (has_access: true olanlar)
       reportsToShow = data.all_reports.filter((report: CompanyReport) => report.has_access);
       userPermissions = reportsToShow.map((r: CompanyReport) => r.id);
+    } else if (userRole === 'super_admin') {
+      // Super admin kullanıcılar rapor göremez, sadece yönetim yapar
+      console.log('🔧 Super admin kullanıcı - rapor erişimi yok');
+      reportsToShow = [];
+      userPermissions = [];
     } else {
       // User kullanıcılar sadece kendilerine atanmış raporları görebilir
       console.log('👤 User kullanıcı - sadece yetkili raporlar gösteriliyor');
@@ -87,7 +92,7 @@ export async function fetchUserReports(companyRef: string, userId?: number): Pro
         route_path: report.route_path || `/${(report.route || report.report_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))}`,
         icon: report.icon || DEFAULT_CATEGORY_INFO.icon,
         category: report.category || DEFAULT_CATEGORY_INFO.name,
-        // Admin ise tüm raporlara erişim, user ise sadece yetkili raporlara
+        // Admin ise tüm raporlara erişim, user ise sadece yetkili raporlara, super admin rapor göremez
         has_access: userRole === 'admin' ? true : userPermissions.includes(report.id)
       };
     });
@@ -149,4 +154,16 @@ export function getCurrentUser() {
 export function isAdmin(): boolean {
   const user = getCurrentUser();
   return user?.role === 'admin';
+}
+
+// Super admin kullanıcı mı kontrol et
+export function isSuperAdmin(): boolean {
+  const user = getCurrentUser();
+  return user?.role === 'super_admin';
+}
+
+// Sistem admini (super_admin veya admin) mı kontrol et
+export function isSystemAdmin(): boolean {
+  const user = getCurrentUser();
+  return user?.role === 'super_admin' || user?.role === 'admin';
 } 

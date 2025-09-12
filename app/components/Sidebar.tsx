@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { fetchUserReports, getAuthorizedReports, groupReportsByCategory, getCurrentUser, isAdmin } from '../utils/simple-permissions';
+import { fetchUserReports, getAuthorizedReports, groupReportsByCategory, getCurrentUser, isAdmin, isSuperAdmin } from '../utils/simple-permissions';
 import type { ReportWithAccess } from '../utils/simple-permissions';
 
 interface SidebarProps {
@@ -307,7 +307,31 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 </a>
               </>
             )}
+
+            {/* Ekstre Karşılaştırma */}
+            <a
+              href="/ekstre-karsilastir"
+              className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-green-600 hover:bg-green-50 rounded-lg group"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span className="ml-3">📊 Ekstre Karşılaştırma</span>
+            </a>
             
+            {/* Super Admin Yetkileri */}
+            {isSuperAdmin() && (
+              <a
+                href="/super-admin"
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg group"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span className="ml-3">🔧 Sistem Yönetimi</span>
+              </a>
+            )}
+
             {/* Admin Yetkileri */}
             {isAdmin() && (
               <a

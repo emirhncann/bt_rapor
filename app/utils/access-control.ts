@@ -37,9 +37,18 @@ export async function checkReportAccess(reportName: string, reportId?: number): 
       };
     }
 
-    // Admin kullanıcılar her zaman erişebilir
+    // Admin kullanıcılar her zaman erişebilir, super admin rapor erişimi yok
     if (userRole === 'admin') {
       return { hasAccess: true };
+    }
+
+    // Super admin kullanıcılar rapor erişimi yok
+    if (userRole === 'super_admin') {
+      return {
+        hasAccess: false,
+        reason: 'Super admin kullanıcıları rapor erişimi yoktur',
+        redirectTo: '/super-admin'
+      };
     }
 
     // User kullanıcılar için yetki kontrolü

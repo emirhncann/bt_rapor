@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import DashboardLayout from './components/DashboardLayout';
-import { fetchUserReports, getCurrentUser, getAuthorizedReports, groupReportsByCategory } from './utils/simple-permissions';
+import { fetchUserReports, getCurrentUser, getAuthorizedReports, groupReportsByCategory, isSuperAdmin } from './utils/simple-permissions';
 import type { ReportWithAccess } from './utils/simple-permissions';
 import { sendSecureProxyRequest } from './utils/api';
 
@@ -450,6 +450,14 @@ export default function Dashboard() {
     }
   }, [isAuthenticated]);
 
+  // Super admin kontrolü - super admin ise sistem yönetimine yönlendir
+  useEffect(() => {
+    if (isAuthenticated && isSuperAdmin()) {
+      router.push('/super-admin');
+      return;
+    }
+  }, [isAuthenticated, router]);
+
   // Authentication kontrolü devam ediyorsa loading göster
   if (isCheckingAuth) {
     return (
@@ -469,6 +477,11 @@ export default function Dashboard() {
   }
 
   if (!isAuthenticated) {
+    return null;
+  }
+
+  // Super admin ise bu sayfayı gösterme
+  if (isSuperAdmin()) {
     return null;
   }
 
