@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCurrentUser, isSuperAdmin } from '../utils/simple-permissions';
 import SuperAdminLayout from '../components/SuperAdminLayout';
@@ -21,7 +21,7 @@ interface SystemStats {
   }>;
 }
 
-export default function SuperAdmin() {
+function SuperAdminContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -490,5 +490,17 @@ export default function SuperAdmin() {
         </div>
       </div>
     </SuperAdminLayout>
+  );
+}
+
+export default function SuperAdmin() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <SuperAdminContent />
+    </Suspense>
   );
 }

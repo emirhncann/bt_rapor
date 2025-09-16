@@ -36,6 +36,7 @@ export default function ExcelUploader({
   const [excelData, setExcelData] = useState<ExcelData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = (file: File): string | null => {
@@ -311,42 +312,68 @@ export default function ExcelUploader({
       {/* Veri Önizleme */}
       {excelData && showPreview && (
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Excel Verileri Önizleme</h3>
+          <div 
+            className="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => setPreviewExpanded(!previewExpanded)}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">👁️</span>
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Excel Verileri Önizleme</h3>
+                  <p className="text-sm text-gray-500">
+                    {excelData.summary.totalRows} satır, {excelData.summary.totalColumns} sütun
+                  </p>
+                </div>
+              </div>
+              <svg 
+                className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${
+                  previewExpanded ? 'rotate-180' : ''
+                }`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {excelData.headers.map((header, index) => (
-                    <th
-                      key={index}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {excelData.rows.slice(0, 50).map((row, rowIndex) => (
-                  <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    {row.map((cell, cellIndex) => (
-                      <td
-                        key={cellIndex}
-                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+          
+          {previewExpanded && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {excelData.headers.map((header, index) => (
+                      <th
+                        key={index}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                       >
-                        {cell !== null && cell !== undefined ? String(cell) : ''}
-                      </td>
+                        {header}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {excelData.rows.length > 50 && (
-            <div className="px-6 py-4 bg-gray-50 text-sm text-gray-500">
-              İlk 50 satır gösteriliyor. Toplam {excelData.rows.length} satır var.
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {excelData.rows.slice(0, 50).map((row, rowIndex) => (
+                    <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={cellIndex}
+                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                        >
+                          {cell !== null && cell !== undefined ? String(cell) : ''}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {excelData.rows.length > 50 && (
+                <div className="px-6 py-4 bg-gray-50 text-sm text-gray-500">
+                  İlk 50 satır gösteriliyor. Toplam {excelData.rows.length} satır var.
+                </div>
+              )}
             </div>
           )}
         </div>

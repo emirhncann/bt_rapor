@@ -303,7 +303,7 @@ export default function Login() {
                 <svg className="w-3 h-3 text-gray-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a1.994 1.994 0 01-1.414.586H7a4 4 0 01-4-4V7a4 4 0 014-4z" />
                 </svg>
-                <span className="text-sm font-medium text-gray-700">v1009</span>
+                <span className="text-sm font-medium text-gray-700">v1609</span>
               </div>
             </div>
           </div>

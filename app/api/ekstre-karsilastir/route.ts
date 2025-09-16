@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendSecureProxyRequest } from '../../../utils/api';
+import { sendSecureProxyRequest } from '../../utils/api';
 
 export async function POST(request: NextRequest) {
   try {

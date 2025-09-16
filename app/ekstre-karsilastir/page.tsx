@@ -66,8 +66,11 @@ export default function EkstreKarsilastirPage() {
   const [endDate, setEndDate] = useState('');
   const [expandedSections, setExpandedSections] = useState({
     matches: true,
-    differences: true
+    differences: true,
+    excelPreview: false
   });
+  const [hiddenDifferences, setHiddenDifferences] = useState<Set<number>>(new Set());
+  const [selectedDifferences, setSelectedDifferences] = useState<Set<number>>(new Set());
 
   // Müşterileri yükle
   useEffect(() => {
@@ -219,11 +222,55 @@ export default function EkstreKarsilastirPage() {
     }));
   };
 
-  const toggleSection = (section: 'matches' | 'differences') => {
+  const toggleSection = (section: 'matches' | 'differences' | 'excelPreview') => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  const toggleDifferenceSelection = (index: number) => {
+    setSelectedDifferences(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  const hideSelectedDifferences = () => {
+    setHiddenDifferences(prev => {
+      const newSet = new Set(prev);
+      selectedDifferences.forEach(index => newSet.add(index));
+      return newSet;
+    });
+    setSelectedDifferences(new Set());
+  };
+
+  const showSelectedDifferences = () => {
+    setHiddenDifferences(prev => {
+      const newSet = new Set(prev);
+      selectedDifferences.forEach(index => newSet.delete(index));
+      return newSet;
+    });
+    setSelectedDifferences(new Set());
+  };
+
+  const selectAllDifferences = () => {
+    if (!comparisonResult) return;
+    setSelectedDifferences(new Set(comparisonResult.differences.map((_, index) => index)));
+  };
+
+  const deselectAllDifferences = () => {
+    setSelectedDifferences(new Set());
+  };
+
+  const showAllDifferences = () => {
+    setHiddenDifferences(new Set());
+    setSelectedDifferences(new Set());
   };
 
   const validateMapping = (): boolean => {
@@ -337,6 +384,7 @@ export default function EkstreKarsilastirPage() {
         WHERE CLF.CLIENTREF = ${selectedCustomer}
         AND CLF.DATE_ >= '${startDate}'
         AND CLF.DATE_ <= '${endDate}'
+        AND CLF.TRCURR = 0
         ORDER BY CLF.CLIENTREF, CLF.DATE_
       `;
 
@@ -438,6 +486,7 @@ export default function EkstreKarsilastirPage() {
       
       // Excel tarih formatını normalize et - Basitleştirilmiş versiyon
       let dateKey;
+      let formattedDate;
       try {
         console.log(`🔍 Tarih parse ediliyor:`, excelDate, 'Type:', typeof excelDate);
         
@@ -456,21 +505,26 @@ export default function EkstreKarsilastirPage() {
               // Yıl kontrolü - 4 haneli olmalı
               if (year.length === 4 && parseInt(year) >= 1900 && parseInt(year) <= 2100) {
                 parsedDate = new Date(`${year}-${month}-${day}`);
+                formattedDate = `${day}.${month}.${year}`;
               } else {
                 console.error('❌ Geçersiz yıl:', year);
-                parsedDate = new Date(); // Bugünün tarihi
+                parsedDate = new Date();
+                formattedDate = new Date().toLocaleDateString('tr-TR');
               }
             } else {
               parsedDate = new Date(excelDate);
+              formattedDate = parsedDate.toLocaleDateString('tr-TR');
             }
           } else {
             parsedDate = new Date(excelDate);
+            formattedDate = parsedDate.toLocaleDateString('tr-TR');
           }
           
           // Tarih geçerliliği kontrolü
           if (isNaN(parsedDate.getTime())) {
             console.error('❌ Geçersiz tarih:', excelDate);
             dateKey = new Date().toDateString();
+            formattedDate = new Date().toLocaleDateString('tr-TR');
           } else {
             dateKey = parsedDate.toDateString();
           }
@@ -487,16 +541,19 @@ export default function EkstreKarsilastirPage() {
           if (isNaN(actualDate.getTime())) {
             console.error('❌ Geçersiz Excel serial date:', excelDate);
             dateKey = new Date().toDateString();
+            formattedDate = new Date().toLocaleDateString('tr-TR');
           } else {
             dateKey = actualDate.toDateString();
+            formattedDate = actualDate.toLocaleDateString('tr-TR');
           }
           
         } else {
           console.error('❌ Boş veya geçersiz tarih değeri:', excelDate);
           dateKey = new Date().toDateString();
+          formattedDate = new Date().toLocaleDateString('tr-TR');
         }
         
-        console.log(`🔍 Final dateKey:`, dateKey);
+        console.log(`🔍 Final dateKey:`, dateKey, 'Formatted:', formattedDate);
         
         // Gelecekteki tarih kontrolü
         const parsedDate = new Date(dateKey);
@@ -508,6 +565,7 @@ export default function EkstreKarsilastirPage() {
       } catch (error) {
         console.error('❌ Tarih parse hatası:', excelDate, error);
         dateKey = new Date().toDateString();
+        formattedDate = new Date().toLocaleDateString('tr-TR');
       }
       
       // Excel'deki borç ve alacak tutarlarını al
@@ -517,10 +575,38 @@ export default function EkstreKarsilastirPage() {
       console.log(`🔍 Excel Kolon İndeksleri - Borç: ${debitIndex}, Alacak: ${creditIndex}`);
       console.log(`🔍 Excel Kolon Adları - Borç: ${columnMapping.debitColumn}, Alacak: ${columnMapping.creditColumn}`);
       
-      const excelDebit = debitIndex !== -1 ? parseFloat(excelRow[debitIndex]) || 0 : 0;
-      const excelCredit = creditIndex !== -1 ? parseFloat(excelRow[creditIndex]) || 0 : 0;
+      // Excel'den gelen sayıları Türkçe formatına göre parse et
+      const parseTurkishNumber = (value: any): number => {
+        if (!value || value === '') return 0;
+        
+        // String'e çevir ve temizle
+        let cleanValue = String(value).trim();
+        
+        // Virgülü nokta ile değiştir (Türkçe ondalık ayırıcı)
+        cleanValue = cleanValue.replace(',', '.');
+        
+        // Binlik ayırıcıları kaldır (nokta varsa ve son 3 karakterden önceyse)
+        if (cleanValue.includes('.')) {
+          const parts = cleanValue.split('.');
+          if (parts.length === 2 && parts[1].length <= 2) {
+            // Bu ondalık ayırıcı, binlik değil
+            return parseFloat(cleanValue) || 0;
+          } else if (parts.length > 2) {
+            // Binlik ayırıcıları var, sadece son kısmı ondalık
+            const integerPart = parts.slice(0, -1).join('');
+            const decimalPart = parts[parts.length - 1];
+            return parseFloat(integerPart + '.' + decimalPart) || 0;
+          }
+        }
+        
+        return parseFloat(cleanValue) || 0;
+      };
       
-      console.log(`🔍 Excel Tutarlar - Borç: ${excelDebit}, Alacak: ${excelCredit}`);
+      const excelDebit = debitIndex !== -1 ? parseTurkishNumber(excelRow[debitIndex]) : 0;
+      const excelCredit = creditIndex !== -1 ? parseTurkishNumber(excelRow[creditIndex]) : 0;
+      
+      console.log(`🔍 Excel Ham Değerler - Borç: "${excelRow[debitIndex]}", Alacak: "${excelRow[creditIndex]}"`);
+      console.log(`🔍 Excel Parse Edilmiş - Borç: ${excelDebit}, Alacak: ${excelCredit}`);
       
       // Belge numarası ve işlem türü bilgilerini al
       const docNoIndex = excelData.headers.findIndex((header: string) => 
@@ -589,7 +675,7 @@ export default function EkstreKarsilastirPage() {
         availableSystemRecords.splice(matchIndex, 1);
         
         matches.push({
-          date: new Date(dateKey).toLocaleDateString('tr-TR'),
+          date: formattedDate,
           excelDocNo: excelDocNo,
           excelTransactionType: excelTransactionType,
           excelDebit: excelDebit,
@@ -612,7 +698,7 @@ export default function EkstreKarsilastirPage() {
       } else {
         // Eşleşen kayıt bulunamadı
         differences.push({
-          date: new Date(dateKey).toLocaleDateString('tr-TR'),
+          date: formattedDate,
           excelDocNo: excelDocNo,
           excelTransactionType: excelTransactionType,
           excelDebit: excelDebit,
@@ -662,6 +748,13 @@ export default function EkstreKarsilastirPage() {
       }
     });
     
+    // Tüm differences array'ini tarihe göre sırala
+    differences.sort((a, b) => {
+      const dateA = new Date(a.date.split('.').reverse().join('-'));
+      const dateB = new Date(b.date.split('.').reverse().join('-'));
+      return dateA.getTime() - dateB.getTime();
+    });
+    
     const totalAmount = [...matches, ...differences].reduce((sum, item) => sum + (item.excelDebit + item.excelCredit), 0);
     
     return {
@@ -675,26 +768,41 @@ export default function EkstreKarsilastirPage() {
     };
   };
 
-  const exportResults = () => {
+  const exportToExcel = () => {
     if (!comparisonResult) return;
     
     try {
-      // Excel export için veri hazırla
+      // Excel export için veri hazırla - Çapraz karşılaştırma formatında
       const exportData = [
-        ['Tarih', 'Müşteri Bakiyesi', 'Sistem Bakiyesi', 'Fark', 'Durum'],
+        ['Tarih', 'Belge No', 'İşlem Türü', 'Excel Borç', 'Logo Alacak', 'Logo Borç', 'Excel Alacak', 'Logo Alacak ↔ Excel Borç Farkı', 'Excel Alacak ↔ Logo Borç Farkı', 'Durum'],
+        // Eşleşen kayıtlar
         ...comparisonResult.matches.map(match => [
           match.date,
-          match.customerBalance,
-          match.systemBalance,
-          match.difference,
+          match.excelDocNo || '',
+          match.excelTransactionType || '',
+          match.excelDebit.toLocaleString('tr-TR'),
+          match.systemCredit.toLocaleString('tr-TR'),
+          match.systemDebit.toLocaleString('tr-TR'),
+          match.excelCredit.toLocaleString('tr-TR'),
+          match.logoCreditVsExcelDebitDifference.toLocaleString('tr-TR'),
+          match.excelCreditVsLogoDebitDifference.toLocaleString('tr-TR'),
           'Eşleşti'
         ]),
-        ...comparisonResult.differences.map(diff => [
+        // Eşleşmeyen kayıtlar (gizlenenler hariç)
+        ...comparisonResult.differences
+          .map((diff, index) => ({ diff, index }))
+          .filter(({ index }) => !hiddenDifferences.has(index))
+          .map(({ diff }) => [
           diff.date,
-          diff.customerBalance,
-          diff.systemBalance,
-          diff.difference,
-          'Farklı'
+          diff.excelDocNo || '',
+          diff.excelTransactionType || '',
+          diff.excelDebit.toLocaleString('tr-TR'),
+          diff.systemCredit.toLocaleString('tr-TR'),
+          diff.systemDebit.toLocaleString('tr-TR'),
+          diff.excelCredit.toLocaleString('tr-TR'),
+          diff.logoCreditVsExcelDebitDifference.toLocaleString('tr-TR'),
+          diff.excelCreditVsLogoDebitDifference.toLocaleString('tr-TR'),
+          diff.status
         ])
       ];
       
@@ -710,8 +818,195 @@ export default function EkstreKarsilastirPage() {
       link.click();
       document.body.removeChild(link);
     } catch (error) {
-      console.error('Export hatası:', error);
-      alert('Sonuçlar indirilirken hata oluştu');
+      console.error('Excel export hatası:', error);
+      alert('Sonuçlar Excel olarak indirilirken hata oluştu');
+    }
+  };
+
+  const printResults = () => {
+    if (!comparisonResult) return;
+    
+    try {
+      // Yazdırma için yeni pencere aç
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Pop-up engelleyici nedeniyle yazdırma penceresi açılamıyor.');
+        return;
+      }
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Ekstre Karşılaştırma Raporu</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 11px; }
+            .header { margin-bottom: 15px; }
+            .header-top { display: flex; align-items: flex-start; gap: 15px; }
+            .logo { width: 60px; height: auto; flex-shrink: 0; }
+            .header-content { flex: 1; }
+            .header h1 { color: #991b1b; margin: 0 0 5px 0; font-size: 16px; text-align: left; }
+            .header p { margin: 2px 0; color: #666; font-size: 10px; text-align: left; }
+            .summary { background: #f3f4f6; padding: 10px; margin: 15px 0; border-radius: 6px; font-size: 10px; }
+            .summary h3 { margin: 0 0 8px 0; color: #374151; font-size: 12px; }
+            .summary p { margin: 3px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9px; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+            th { background-color: #991b1b; color: white; font-weight: bold; font-size: 9px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .number { text-align: right; }
+            .currency { font-weight: bold; }
+            .positive { color: #1f2937; }
+            .negative { color: #dc2626; }
+            .matches { color: #16a34a; font-weight: bold; }
+            .differences { color: #dc2626; font-weight: bold; }
+            .section-title { color: #374151; font-size: 12px; font-weight: bold; margin: 20px 0 10px 0; }
+            .page-break { page-break-before: always; }
+            @media print {
+              body { margin: 0; font-size: 9px; }
+              .no-print { display: none; }
+              table { font-size: 8px; }
+              th, td { padding: 3px; }
+              .header { margin-bottom: 10px; }
+              .header-top { gap: 10px; }
+              .logo { width: 45px; }
+              .header h1 { font-size: 14px; margin: 0 0 3px 0; }
+              .header p { font-size: 8px; margin: 1px 0; }
+              .summary { padding: 8px; margin: 10px 0; }
+              .summary h3 { font-size: 10px; }
+              .summary p { font-size: 8px; margin: 2px 0; }
+              .section-title { font-size: 10px; margin: 15px 0 8px 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <img src="/img/btRapor.png" alt="btRapor Logo" class="logo" />
+              <div class="header-content">
+                <h1>Ekstre Karşılaştırma Raporu</h1>
+                <p>Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}</p>
+                <p>Toplam Eşleşen: ${comparisonResult.summary.totalMatches} | Toplam Eşleşmeyen: ${comparisonResult.summary.totalDifferences}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="summary">
+            <h3>Özet Bilgiler</h3>
+            <p><strong>Eşleşen Kayıtlar:</strong> ${comparisonResult.summary.totalMatches} adet</p>
+            <p><strong>Eşleşmeyen Kayıtlar:</strong> ${comparisonResult.summary.totalDifferences} adet</p>
+            <p><strong>Toplam Tutar:</strong> ${comparisonResult.summary.totalAmount.toLocaleString('tr-TR')} ₺</p>
+          </div>
+
+          <div class="section-title">Eşleşmeyen Kayıtlar (${comparisonResult.differences.filter((_, index) => !hiddenDifferences.has(index)).length} adet)</div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tarih</th>
+                <th>Belge No</th>
+                <th>İşlem Türü</th>
+                <th>Excel Borç</th>
+                <th>Logo Alacak</th>
+                <th>Logo Borç</th>
+                <th>Excel Alacak</th>
+                <th>Logo Alacak ↔ Excel Borç Farkı</th>
+                <th>Excel Alacak ↔ Logo Borç Farkı</th>
+                <th>Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${comparisonResult.differences
+                .map((diff, index) => ({ diff, index }))
+                .filter(({ index }) => !hiddenDifferences.has(index))
+                .map(({ diff, index }, visibleIndex) => `
+                <tr>
+                  <td class="number">${visibleIndex + 1}</td>
+                  <td>${diff.date}</td>
+                  <td>${diff.excelDocNo || '-'}</td>
+                  <td>${diff.excelTransactionType || '-'}</td>
+                  <td class="number currency">${diff.excelDebit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${diff.systemCredit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${diff.systemDebit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${diff.excelCredit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${diff.logoCreditVsExcelDebitDifference.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${diff.excelCreditVsLogoDebitDifference.toLocaleString('tr-TR')} ₺</td>
+                  <td class="differences">${diff.status}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="section-title">Eşleşen Kayıtlar (${comparisonResult.matches.length} adet)</div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tarih</th>
+                <th>Belge No</th>
+                <th>İşlem Türü</th>
+                <th>Excel Borç</th>
+                <th>Logo Alacak</th>
+                <th>Logo Borç</th>
+                <th>Excel Alacak</th>
+                <th>Logo Alacak ↔ Excel Borç Farkı</th>
+                <th>Excel Alacak ↔ Logo Borç Farkı</th>
+                <th>Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${comparisonResult.matches.map((match, index) => `
+                <tr>
+                  <td class="number">${index + 1}</td>
+                  <td>${match.date}</td>
+                  <td>${match.excelDocNo || '-'}</td>
+                  <td>${match.excelTransactionType || '-'}</td>
+                  <td class="number currency">${match.excelDebit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${match.systemCredit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${match.systemDebit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${match.excelCredit.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${match.logoCreditVsExcelDebitDifference.toLocaleString('tr-TR')} ₺</td>
+                  <td class="number currency">${match.excelCreditVsLogoDebitDifference.toLocaleString('tr-TR')} ₺</td>
+                  <td class="matches">${match.status}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${localStorage.getItem('userName') || 'Bilinmeyen Kullanıcı'} tarafından BT Rapor sistemi üzerinden alınmıştır. 
+            Tüm tutarlar Türk Lirası (₺) cinsindendir. Çapraz karşılaştırma: Logo Alacak ↔ Excel Borç, Excel Alacak ↔ Logo Borç.
+          </div>
+          
+          <script>
+            // Sayfa yüklendiğinde otomatik yazdırma diyaloğunu aç
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+            
+            // Yazdırma tamamlandığında veya iptal edildiğinde pencereyi kapat
+            window.onafterprint = function() {
+              window.close();
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      
+      // Yazdırma diyalogunu aç
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    } catch (error) {
+      console.error('Yazdırma hatası:', error);
+      alert('Yazdırma sırasında hata oluştu');
     }
   };
 
@@ -864,10 +1159,38 @@ export default function EkstreKarsilastirPage() {
         </div>
 
         {/* Excel Yükleme */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className="bg-white rounded-lg shadow">
+          <div 
+            className="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => toggleSection('excelPreview')}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📊</span>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
             3. Excel Dosyası Yükleme
           </h2>
+                  <p className="text-sm text-gray-500">
+                    Excel dosyasını yükleyin ve verileri önizleyin
+                  </p>
+                </div>
+              </div>
+              <svg 
+                className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${
+                  expandedSections.excelPreview ? 'rotate-180' : ''
+                }`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+          
+          {expandedSections.excelPreview && (
+            <div className="p-6">
           <ExcelUploader
             onDataLoaded={handleExcelDataLoaded}
             onError={handleExcelError}
@@ -876,6 +1199,8 @@ export default function EkstreKarsilastirPage() {
             showPreview={true}
             showDownload={false}
           />
+            </div>
+          )}
         </div>
 
         {/* Kolon Eşleştirme */}
@@ -975,12 +1300,26 @@ export default function EkstreKarsilastirPage() {
               <h2 className="text-lg font-semibold text-gray-900">
                 Karşılaştırma Sonuçları
               </h2>
+              <div className="flex gap-3">
               <button
-                onClick={exportResults}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
-              >
-                Sonuçları İndir
+                  onClick={exportToExcel}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Excel İndir
+                </button>
+                <button
+                  onClick={printResults}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Yazdır
               </button>
+              </div>
             </div>
 
             {/* Özet */}
@@ -1007,20 +1346,32 @@ export default function EkstreKarsilastirPage() {
 
             {/* Eşleşmeyen Kayıtlar Akordiyon */}
             {comparisonResult.differences.length > 0 && (
-              <div className="mb-6">
+              <div className="mb-8">
                 <div 
-                  className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
+                  className="flex items-center justify-between p-6 bg-gradient-to-r from-red-50 to-red-100 border border-red-200 rounded-xl cursor-pointer hover:from-red-100 hover:to-red-150 transition-all duration-200 shadow-sm"
                   onClick={() => toggleSection('differences')}
                 >
-                  <h3 className="text-md font-semibold text-red-900">
-                    Eşleşmeyen Kayıtlar ({comparisonResult.differences.length} adet)
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-red-600">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 19.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-red-900">
+                        Eşleşmeyen Kayıtlar
+                </h3>
+                      <p className="text-sm text-red-700">
+                        {comparisonResult.differences.length} adet kayıt sistemde bulunamadı
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-red-600 bg-red-200 px-3 py-1 rounded-full">
                       {expandedSections.differences ? 'Gizle' : 'Göster'}
                     </span>
                     <svg 
-                      className={`w-5 h-5 text-red-600 transition-transform ${expandedSections.differences ? 'rotate-180' : ''}`} 
+                      className={`w-6 h-6 text-red-600 transition-transform duration-200 ${expandedSections.differences ? 'rotate-180' : ''}`} 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -1031,103 +1382,203 @@ export default function EkstreKarsilastirPage() {
                 </div>
                 
                 {expandedSections.differences && (
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0 z-10">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Tarih
+                  <div className="mt-6">
+                    {/* Kontrol Butonları */}
+                    <div className="mb-4 flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm font-medium text-gray-700">
+                          Seçilen: {selectedDifferences.size} | Gizlenen: {hiddenDifferences.size} / {comparisonResult.differences.length}
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={selectAllDifferences}
+                            className="px-3 py-1 bg-blue-100 text-blue-700 text-sm rounded-md hover:bg-blue-200 transition-colors"
+                          >
+                            Tümünü Seç
+                          </button>
+                          <button
+                            onClick={deselectAllDifferences}
+                            className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-md hover:bg-gray-200 transition-colors"
+                          >
+                            Seçimi Temizle
+                          </button>
+                          <button
+                            onClick={hideSelectedDifferences}
+                            disabled={selectedDifferences.size === 0}
+                            className="px-3 py-1 bg-red-100 text-red-700 text-sm rounded-md hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Seçilenleri Gizle
+                          </button>
+                          <button
+                            onClick={showAllDifferences}
+                            className="px-3 py-1 bg-green-100 text-green-700 text-sm rounded-md hover:bg-green-200 transition-colors"
+                          >
+                            Tümünü Göster
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        💡 Önce kayıtları seçin, sonra "Seçilenleri Gizle" butonunu kullanın
+                      </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm max-h-[600px] overflow-y-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100 sticky top-0 z-50 shadow-lg border-b-2 border-gray-300">
+                      <tr>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            ☑️
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            #
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            📅 Tarih
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            📄 Belge No
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            🔄 İşlem Türü
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-red-600 uppercase tracking-wider border-r border-gray-200">
+                            💸 Excel Borç
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-green-600 uppercase tracking-wider border-r border-gray-200">
+                            🏢 Logo Alacak
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-red-600 uppercase tracking-wider border-r border-gray-200">
+                            🏢 Logo Borç
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-green-600 uppercase tracking-wider border-r border-gray-200">
+                            💰 Excel Alacak
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-blue-600 uppercase tracking-wider border-r border-gray-200">
+                            ⚖️ Logo Alacak ↔ Excel Borç
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-purple-600 uppercase tracking-wider border-r border-gray-200">
+                            ⚖️ Excel Alacak ↔ Logo Borç
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Belge No
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            İşlem Türü
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Excel Borç
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Excel Alacak
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logo Borç
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logo Alacak
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logo Alacak ↔ Excel Borç Farkı
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Excel Alacak ↔ Logo Borç Farkı
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Durum
-                          </th>
-                        </tr>
-                      </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            🏷️ Durum
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
                       {comparisonResult.differences.map((diff, index) => (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <tr 
+                          key={index} 
+                          className={`hover:bg-gray-50 transition-colors duration-150 ${
+                            hiddenDifferences.has(index) ? 'opacity-50 bg-gray-100' : (index % 2 === 0 ? 'bg-white' : 'bg-gray-25')
+                          }`}
+                          style={{ display: hiddenDifferences.has(index) ? 'none' : 'table-row' }}
+                        >
+                          <td className="px-4 py-4 whitespace-nowrap text-sm border-r border-gray-100">
+                            <div className="flex items-center justify-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedDifferences.has(index)}
+                                onChange={() => toggleDifferenceSelection(index)}
+                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-600 border-r border-gray-100">
+                            <div className="flex items-center justify-center">
+                              <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-semibold">
+                                {index + 1}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400">📅</span>
                             {diff.date}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {diff.excelDocNo || '-'}
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400">📄</span>
+                              {diff.excelDocNo || <span className="text-gray-400 italic">-</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {diff.excelTransactionType || '-'}
+                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400">🔄</span>
+                              {diff.excelTransactionType || <span className="text-gray-400 italic">-</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
-                            {diff.excelDebit.toLocaleString('tr-TR')} ₺
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-400">💸</span>
+                              {diff.excelDebit > 0 ? `${diff.excelDebit.toLocaleString('tr-TR')} ₺` : <span className="text-gray-400">-</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                            {diff.excelCredit.toLocaleString('tr-TR')} ₺
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-400">🏢</span>
+                              {diff.systemCredit > 0 ? `${diff.systemCredit.toLocaleString('tr-TR')} ₺` : <span className="text-gray-400">-</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
-                            {diff.systemDebit.toLocaleString('tr-TR')} ₺
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-red-600 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-red-400">🏢</span>
+                              {diff.systemDebit > 0 ? `${diff.systemDebit.toLocaleString('tr-TR')} ₺` : <span className="text-gray-400">-</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                            {diff.systemCredit.toLocaleString('tr-TR')} ₺
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-green-600 border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-400">💰</span>
+                              {diff.excelCredit > 0 ? `${diff.excelCredit.toLocaleString('tr-TR')} ₺` : <span className="text-gray-400">-</span>}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <span className={`px-2 py-1 rounded-full text-xs ${
-                              diff.logoCreditVsExcelDebitDifference > 0 
-                                ? 'bg-red-100 text-red-800' 
-                                : diff.logoCreditVsExcelDebitDifference < 0
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {diff.logoCreditVsExcelDebitDifference > 0 ? '+' : ''}{diff.logoCreditVsExcelDebitDifference.toLocaleString('tr-TR')} ₺
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-blue-400">⚖️</span>
+                              <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                                diff.logoCreditVsExcelDebitDifference > 0 
+                                  ? 'bg-red-100 text-red-800 border border-red-200' 
+                                  : diff.logoCreditVsExcelDebitDifference < 0
+                                  ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                                  : 'bg-gray-100 text-gray-800 border border-gray-200'
+                              }`}>
+                                {diff.logoCreditVsExcelDebitDifference > 0 ? '+' : ''}{diff.logoCreditVsExcelDebitDifference.toLocaleString('tr-TR')} ₺
                             </span>
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <span className={`px-2 py-1 rounded-full text-xs ${
-                              diff.excelCreditVsLogoDebitDifference > 0 
-                                ? 'bg-green-100 text-green-800' 
-                                : diff.excelCreditVsLogoDebitDifference < 0
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {diff.excelCreditVsLogoDebitDifference > 0 ? '+' : ''}{diff.excelCreditVsLogoDebitDifference.toLocaleString('tr-TR')} ₺
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium border-r border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="text-purple-400">⚖️</span>
+                              <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                                diff.excelCreditVsLogoDebitDifference > 0 
+                                  ? 'bg-green-100 text-green-800 border border-green-200' 
+                                  : diff.excelCreditVsLogoDebitDifference < 0
+                                  ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                                  : 'bg-gray-100 text-gray-800 border border-gray-200'
+                              }`}>
+                                {diff.excelCreditVsLogoDebitDifference > 0 ? '+' : ''}{diff.excelCreditVsLogoDebitDifference.toLocaleString('tr-TR')} ₺
                             </span>
+                            </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              diff.status === 'Sistemde Yok' 
-                                ? 'bg-red-100 text-red-800'
-                                : diff.status === 'Excel\'de Yok'
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400">🏷️</span>
+                              <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                                diff.status === 'Sistemde Yok' 
+                                  ? 'bg-red-100 text-red-800 border border-red-200'
+                                  : diff.status === 'Excel\'de Yok'
+                                  ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                                  : 'bg-gray-100 text-gray-800 border border-gray-200'
+                              }`}>
                               {diff.status}
                             </span>
+                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
-                    </table>
+                  </table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1137,18 +1588,30 @@ export default function EkstreKarsilastirPage() {
             {comparisonResult.matches.length > 0 && (
               <div>
                 <div 
-                  className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg cursor-pointer hover:bg-green-100 transition-colors"
+                  className="flex items-center justify-between p-6 bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-xl cursor-pointer hover:from-green-100 hover:to-green-150 transition-all duration-200 shadow-sm"
                   onClick={() => toggleSection('matches')}
                 >
-                  <h3 className="text-md font-semibold text-green-900">
-                    Eşleşen Kayıtlar ({comparisonResult.summary.totalMatches} adet)
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-green-600">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-green-900">
+                        Eşleşen Kayıtlar
+                </h3>
+                      <p className="text-sm text-green-700">
+                        {comparisonResult.summary.totalMatches} adet kayıt başarıyla eşleşti
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-green-600 bg-green-200 px-3 py-1 rounded-full">
                       {expandedSections.matches ? 'Gizle' : 'Göster'}
                     </span>
                     <svg 
-                      className={`w-5 h-5 text-green-600 transition-transform ${expandedSections.matches ? 'rotate-180' : ''}`} 
+                      className={`w-6 h-6 text-green-600 transition-transform duration-200 ${expandedSections.matches ? 'rotate-180' : ''}`} 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -1159,45 +1622,62 @@ export default function EkstreKarsilastirPage() {
                 </div>
                 
                 {expandedSections.matches && (
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0 z-10">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Tarih
+                  <div className="mt-6 overflow-x-auto rounded-xl border border-gray-200 shadow-sm max-h-[600px] overflow-y-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gradient-to-r from-green-50 to-green-100 sticky top-0 z-50 shadow-lg border-b-2 border-green-300">
+                      <tr>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            #
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            📅 Tarih
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            📄 Belge No
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-800 uppercase tracking-wider border-r border-gray-300 bg-white bg-opacity-90 backdrop-blur-sm">
+                            🔄 İşlem Türü
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-red-600 uppercase tracking-wider border-r border-gray-200">
+                            💸 Excel Borç
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-green-600 uppercase tracking-wider border-r border-gray-200">
+                            🏢 Logo Alacak
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-red-600 uppercase tracking-wider border-r border-gray-200">
+                            🏢 Logo Borç
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-green-600 uppercase tracking-wider border-r border-gray-200">
+                            💰 Excel Alacak
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-blue-600 uppercase tracking-wider border-r border-gray-200">
+                            ⚖️ Logo Alacak ↔ Excel Borç
+                        </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-purple-600 uppercase tracking-wider border-r border-gray-200">
+                            ⚖️ Excel Alacak ↔ Logo Borç
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Belge No
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            İşlem Türü
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Excel Borç
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Excel Alacak
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logo Borç
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logo Alacak
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logo Alacak ↔ Excel Borç Farkı
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Excel Alacak ↔ Logo Borç Farkı
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Durum
-                          </th>
-                        </tr>
-                      </thead>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            🏷️ Durum
+                        </th>
+                      </tr>
+                    </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {comparisonResult.matches.map((match, index) => (
+                      {comparisonResult.matches
+                        .sort((a, b) => {
+                          // Tarih sıralaması için önce tarih parse et
+                          const dateA = new Date(a.date);
+                          const dateB = new Date(b.date);
+                          return dateA.getTime() - dateB.getTime();
+                        })
+                        .map((match, index) => (
                         <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-600">
+                            <div className="flex items-center justify-center">
+                              <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-semibold">
+                                {index + 1}
+                              </span>
+                            </div>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {match.date}
                           </td>
@@ -1211,13 +1691,13 @@ export default function EkstreKarsilastirPage() {
                             {match.excelDebit.toLocaleString('tr-TR')} ₺
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                            {match.excelCredit.toLocaleString('tr-TR')} ₺
+                            {match.systemCredit.toLocaleString('tr-TR')} ₺
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
                             {match.systemDebit.toLocaleString('tr-TR')} ₺
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                            {match.systemCredit.toLocaleString('tr-TR')} ₺
+                            {match.excelCredit.toLocaleString('tr-TR')} ₺
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <span className={`px-2 py-1 rounded-full text-xs ${
@@ -1249,8 +1729,8 @@ export default function EkstreKarsilastirPage() {
                         </tr>
                       ))}
                     </tbody>
-                    </table>
-                  </div>
+                  </table>
+                </div>
                 )}
               </div>
             )}
