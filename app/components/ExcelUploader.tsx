@@ -70,8 +70,12 @@ export default function ExcelUploader({
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       
-      // Excel'i JSON'a çevir
-      jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      // Excel'i JSON'a çevir - tarihleri string olarak bırak
+      jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+        header: 1,
+        raw: false, // Ham değerleri kullanma, formatlanmış değerleri kullan
+        dateNF: 'dd.mm.yyyy' // Tarih formatını belirt
+      });
     }
     
     if (jsonData.length < 1) {

@@ -506,16 +506,16 @@ export default function EkstreKarsilastirPage() {
               if (year.length === 4 && parseInt(year) >= 1900 && parseInt(year) <= 2100) {
                 parsedDate = new Date(`${year}-${month}-${day}`);
                 formattedDate = `${day}.${month}.${year}`;
-              } else {
+            } else {
                 console.error('❌ Geçersiz yıl:', year);
                 parsedDate = new Date();
                 formattedDate = new Date().toLocaleDateString('tr-TR');
-              }
-            } else {
-              parsedDate = new Date(excelDate);
-              formattedDate = parsedDate.toLocaleDateString('tr-TR');
             }
           } else {
+              parsedDate = new Date(excelDate);
+              formattedDate = parsedDate.toLocaleDateString('tr-TR');
+          }
+        } else {
             parsedDate = new Date(excelDate);
             formattedDate = parsedDate.toLocaleDateString('tr-TR');
           }
@@ -1578,7 +1578,7 @@ export default function EkstreKarsilastirPage() {
                       ))}
                     </tbody>
                   </table>
-                    </div>
+                </div>
                   </div>
                 )}
               </div>

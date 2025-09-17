@@ -30,6 +30,10 @@ export async function POST(request: NextRequest) {
     if (isMarketModule) {
       // Market modülü aktif - mevcut sorgu (market fiyatları dahil)
       sqlQuery = `
+        -- IdList tipini oluştur (yoksa)
+        IF TYPE_ID(N'dbo.IdList') IS NULL
+            CREATE TYPE dbo.IdList AS TABLE (ID INT NOT NULL PRIMARY KEY);
+        
         DECLARE @ItemRef INT = ${itemRef};
 
         SELECT 
@@ -142,6 +146,10 @@ export async function POST(request: NextRequest) {
     } else {
       // Market modülü pasif - yeni sorgu (market fiyatları olmadan)
       sqlQuery = `
+        -- IdList tipini oluştur (yoksa)
+        IF TYPE_ID(N'dbo.IdList') IS NULL
+            CREATE TYPE dbo.IdList AS TABLE (ID INT NOT NULL PRIMARY KEY);
+        
         DECLARE @ItemRef INT = ${itemRef};
 
         SELECT 

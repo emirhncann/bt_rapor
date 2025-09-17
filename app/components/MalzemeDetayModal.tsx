@@ -66,7 +66,7 @@ export default function MalzemeDetayModal({
 
   // Cache'i temizleme fonksiyonu
   const clearCacheAndReload = () => {
-    const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+    const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
     localStorage.removeItem(spCacheKey);
     console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
     setSpCreated(false);
@@ -77,7 +77,7 @@ export default function MalzemeDetayModal({
   useEffect(() => {
     if (isOpen && itemRef) {
       // Stored procedure kontrolünü localStorage'da cache'le
-      const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+      const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
       const spExists = localStorage.getItem(spCacheKey) === 'true';
       
       if (spExists) {
@@ -107,7 +107,7 @@ export default function MalzemeDetayModal({
       const checkSpQuery = `
         SELECT COUNT(*) as SPCount 
         FROM sys.objects 
-        WHERE object_id = OBJECT_ID(N'dbo.sp_MalzemeDetayByItem') 
+        WHERE object_id = OBJECT_ID(N'dbo.sp_MalzemeDetayByItem2') 
         AND type in (N'P', N'PC')
       `;
 
@@ -128,7 +128,7 @@ export default function MalzemeDetayModal({
           console.log('✅ Stored procedure zaten mevcut, direkt veri getiriliyor...');
           setSpCreated(true);
           // Cache'i güncelle
-          const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+          const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
           localStorage.setItem(spCacheKey, 'true');
           await fetchMalzemeDetay();
         } else {
@@ -189,8 +189,8 @@ export default function MalzemeDetayModal({
          // DROP PROCEDURE hatası olursa devam et (zaten mevcut olmayabilir)
          try {
            const dropSpQuery = `
-             IF OBJECT_ID('dbo.sp_MalzemeDetayByItem','P') IS NOT NULL
-               DROP PROCEDURE dbo.sp_MalzemeDetayByItem;
+             IF OBJECT_ID('dbo.sp_MalzemeDetayByItem2','P') IS NOT NULL
+               DROP PROCEDURE dbo.sp_MalzemeDetayByItem2;
            `;
 
           console.log('🔧 DROP PROCEDURE deneniyor (mevcut değilse hata normal):');
@@ -220,7 +220,7 @@ export default function MalzemeDetayModal({
         const createSpQuery = `
 
 
-CREATE PROCEDURE dbo.sp_MalzemeDetayByItem2
+CREATE PROCEDURE dbo.sp_MalzemeDetayByItem22
     @Firm              INT,
     @Period            INT,
     @ItemRef           INT,
@@ -578,6 +578,32 @@ END
         const createResult = await createResponse.json();
         console.log('✅ CREATE PROCEDURE başarılı:', createResult);
         
+        // Procedure'ın gerçekten oluşturulup oluşturulmadığını kontrol et
+        const checkSpQuery = `
+          SELECT COUNT(*) as ProcedureExists
+          FROM sys.procedures 
+          WHERE name = 'sp_MalzemeDetayByItem2' AND schema_id = SCHEMA_ID('dbo')
+        `;
+        
+        console.log('🔍 Procedure varlık kontrolü yapılıyor...');
+        const checkResponse = await sendSecureProxyRequest(
+          companyRef,
+          'first_db_key',
+          { query: checkSpQuery },
+          'https://api.btrapor.com/proxy',
+          30000
+        );
+        
+        if (checkResponse.ok) {
+          const checkResult = await checkResponse.json();
+          console.log('✅ Procedure varlık kontrolü:', checkResult);
+          if (checkResult.data && checkResult.data[0] && checkResult.data[0].ProcedureExists === 0) {
+            throw new Error('Procedure oluşturuldu ama veritabanında bulunamadı');
+          }
+        } else {
+          console.log('⚠️ Procedure varlık kontrolü başarısız, devam ediliyor...');
+        }
+        
                  // Üçüncü sorgu: Stored procedure'ü parametrelerle çağır
          // Connection info'dan market_module kontrol et
          const testConnectionInfo = JSON.parse(localStorage.getItem('connectionInfo') || '{}');
@@ -601,7 +627,7 @@ END
            DECLARE @Wh dbo.IdList; 
            -- Tüm ambarlar için boş bırakıyoruz
 
-           EXEC dbo.sp_MalzemeDetayByItem
+           EXEC dbo.sp_MalzemeDetayByItem2
              @Firm=9,
              @Period=1,
              @ItemRef=31742,
@@ -651,6 +677,18 @@ END
              }
            }
            
+           // Eğer procedure bulunamadı hatası alıyorsak, cache'i temizle ve tekrar dene
+           if (errorText.includes('Could not find stored procedure') || 
+               errorText.includes('sp_MalzemeDetayByItem')) {
+             console.log('🔄 Procedure bulunamadı, cache temizleniyor ve tekrar deneniyor...');
+             const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
+             localStorage.removeItem(spCacheKey);
+             setSpCreated(false);
+             // Tekrar procedure oluşturmayı dene
+             await checkAndCreateStoredProcedure();
+             return;
+           }
+           
            throw new Error(errorMessage);
          }
 
@@ -660,7 +698,7 @@ END
         setSpCreated(true);
         
         // Cache'i güncelle
-        const spCacheKey = `sp_MalzemeDetayByItem_${localStorage.getItem('companyRef')}`;
+        const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
         localStorage.setItem(spCacheKey, 'true');
         
         // Stored procedure oluşturulduktan sonra detayları getir
@@ -705,7 +743,7 @@ END
          DECLARE @Wh dbo.IdList; 
          -- Tüm ambarlar için boş bırakıyoruz
 
-         EXEC dbo.sp_MalzemeDetayByItem
+         EXEC dbo.sp_MalzemeDetayByItem2
            @Firm=${firmaNo},
            @Period=${donemNo},
            @ItemRef=${itemRef},

@@ -473,7 +473,7 @@ export default function Settings() {
       const companyRef = localStorage.getItem('companyRef');
       
       // Stored procedure cache'lerini temizle
-      const spCacheKey = `sp_MalzemeDetayByItem_${companyRef}`;
+      const spCacheKey = `sp_MalzemeDetayByItem2_${companyRef}`;
       localStorage.removeItem(spCacheKey);
       
       // Connection info cache'ini temizle
