@@ -458,21 +458,74 @@ export default function EkstreKarsilastirPage() {
     }
   };
 
-  // Tutar bazlı çapraz karşılaştırma fonksiyonu - Her işlem kendi tutarıyla eşleşmeli
+  // Excel'den gelen sayıları TR formatına göre sağlam parse et
+  // Sağdan ilk nokta/virgül ondalık ayırıcı, geri kalanı binlik ayırıcı
+  const parseTurkishNumber = (value: any): number => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return isFinite(value) ? value : 0;
+
+    let str = String(value).trim();
+    if (!str) return 0;
+
+    // Para sembolleri ve boşlukları temizle
+    str = str.replace(/\s+/g, '')
+             .replace(/[₺₨$€£]/g, '')
+             .replace(/\u00A0/g, '');
+
+    // Negatiflik işaretini koru
+    const isNegative = /^-/.test(str);
+    str = str.replace(/^-/, '');
+
+    // Sağdan ilk nokta veya virgülü bul (ondalık ayırıcı)
+    let decimalSepIndex = -1;
+    let decimalSep = '';
+    
+    for (let i = str.length - 1; i >= 0; i--) {
+      if (str[i] === '.' || str[i] === ',') {
+        decimalSepIndex = i;
+        decimalSep = str[i];
+        break;
+      }
+    }
+
+    if (decimalSepIndex === -1) {
+      // Hiç ayırıcı yok, düz sayı
+      const num = parseFloat(str);
+      return isNaN(num) ? 0 : (isNegative ? -num : num);
+    }
+
+    // Ondalık kısmı al (sağdan ilk ayırıcıdan sonraki kısım)
+    const decimalPart = str.substring(decimalSepIndex + 1);
+    
+    // Tam kısmı al (sağdan ilk ayırıcıdan önceki kısım)
+    const integerPart = str.substring(0, decimalSepIndex);
+    
+    // Tam kısmındaki tüm nokta ve virgülleri kaldır (binlik ayırıcıları)
+    const cleanIntegerPart = integerPart.replace(/[.,]/g, '');
+    
+    // Ondalık kısmı 2 haneden fazlaysa, sadece ilk 2 hanesini al
+    const cleanDecimalPart = decimalPart.length > 2 ? decimalPart.substring(0, 2) : decimalPart;
+    
+    // Birleştir ve parse et
+    const normalized = cleanIntegerPart + '.' + cleanDecimalPart;
+    const num = parseFloat(normalized);
+    
+    return isNaN(num) ? 0 : (isNegative ? -num : num);
+  };
+
+  // Hareket bazlı çapraz karşılaştırma fonksiyonu - Tarih ve tutar eşleşmesi
   const performComparison = (excelData: any, systemData: any[], columnMapping: ColumnMapping): ExtraitComparisonResult => {
     const matches: any[] = [];
     const differences: any[] = [];
     
     // Debug için sistem verilerini logla
-    console.log('🔍 performComparison - Excel Data:', excelData);
-    console.log('🔍 performComparison - System Data:', systemData);
-    console.log('🔍 performComparison - System Data Length:', systemData.length);
-    console.log('🔍 performComparison - Column Mapping:', columnMapping);
+    console.log('🔍 performComparison - Excel Rows:', excelData.rows?.length || 0);
+    console.log('🔍 performComparison - System Records:', systemData.length);
     
     // Sistem verilerini kopyala ve eşleşen kayıtları işaretlemek için kullan
     const availableSystemRecords = [...systemData];
     
-    // Excel'deki her satırı tek tek işle
+    // Excel'deki her hareketi işle
     excelData.rows.forEach((excelRow: any[], index: number) => {
       const dateIndex = excelData.headers.indexOf(columnMapping.dateColumn);
       if (dateIndex === -1) {
@@ -481,14 +534,11 @@ export default function EkstreKarsilastirPage() {
       }
       
       const excelDate = excelRow[dateIndex];
-      console.log(`🔍 Excel Satır ${index}:`, excelRow);
-      console.log(`🔍 Excel Tarih Ham Değer:`, excelDate, 'Type:', typeof excelDate);
       
       // Excel tarih formatını normalize et - Basitleştirilmiş versiyon
       let dateKey;
       let formattedDate;
       try {
-        console.log(`🔍 Tarih parse ediliyor:`, excelDate, 'Type:', typeof excelDate);
         
         if (typeof excelDate === 'string' && excelDate.trim() !== '') {
           // String tarih formatları
@@ -553,7 +603,6 @@ export default function EkstreKarsilastirPage() {
           formattedDate = new Date().toLocaleDateString('tr-TR');
         }
         
-        console.log(`🔍 Final dateKey:`, dateKey, 'Formatted:', formattedDate);
         
         // Gelecekteki tarih kontrolü
         const parsedDate = new Date(dateKey);
@@ -572,41 +621,8 @@ export default function EkstreKarsilastirPage() {
       const debitIndex = excelData.headers.indexOf(columnMapping.debitColumn);
       const creditIndex = excelData.headers.indexOf(columnMapping.creditColumn);
       
-      console.log(`🔍 Excel Kolon İndeksleri - Borç: ${debitIndex}, Alacak: ${creditIndex}`);
-      console.log(`🔍 Excel Kolon Adları - Borç: ${columnMapping.debitColumn}, Alacak: ${columnMapping.creditColumn}`);
-      
-      // Excel'den gelen sayıları Türkçe formatına göre parse et
-      const parseTurkishNumber = (value: any): number => {
-        if (!value || value === '') return 0;
-        
-        // String'e çevir ve temizle
-        let cleanValue = String(value).trim();
-        
-        // Virgülü nokta ile değiştir (Türkçe ondalık ayırıcı)
-        cleanValue = cleanValue.replace(',', '.');
-        
-        // Binlik ayırıcıları kaldır (nokta varsa ve son 3 karakterden önceyse)
-        if (cleanValue.includes('.')) {
-          const parts = cleanValue.split('.');
-          if (parts.length === 2 && parts[1].length <= 2) {
-            // Bu ondalık ayırıcı, binlik değil
-            return parseFloat(cleanValue) || 0;
-          } else if (parts.length > 2) {
-            // Binlik ayırıcıları var, sadece son kısmı ondalık
-            const integerPart = parts.slice(0, -1).join('');
-            const decimalPart = parts[parts.length - 1];
-            return parseFloat(integerPart + '.' + decimalPart) || 0;
-          }
-        }
-        
-        return parseFloat(cleanValue) || 0;
-      };
-      
       const excelDebit = debitIndex !== -1 ? parseTurkishNumber(excelRow[debitIndex]) : 0;
       const excelCredit = creditIndex !== -1 ? parseTurkishNumber(excelRow[creditIndex]) : 0;
-      
-      console.log(`🔍 Excel Ham Değerler - Borç: "${excelRow[debitIndex]}", Alacak: "${excelRow[creditIndex]}"`);
-      console.log(`🔍 Excel Parse Edilmiş - Borç: ${excelDebit}, Alacak: ${excelCredit}`);
       
       // Belge numarası ve işlem türü bilgilerini al
       const docNoIndex = excelData.headers.findIndex((header: string) => 
@@ -624,52 +640,54 @@ export default function EkstreKarsilastirPage() {
       const excelTransactionType = transactionTypeIndex !== -1 ? excelRow[transactionTypeIndex] : '';
       
       // Tolerans değeri (0.05 TL) - Küçük yuvarlama farkları için
-      const tolerance = 1.00;
+      const tolerance = 0.05;
       
       // Sistem verilerinde tutar bazında eşleşme ara
       let matchedSystemRecord = null;
       let matchIndex = -1;
       
-      // Çapraz karşılaştırma: Logo alacak ↔ Excel borç, Excel alacak ↔ Logo borç
-      console.log(`🔍 Sistem kayıtları aranıyor (${availableSystemRecords.length} adet)...`);
-      
+      // Hareket bazında karşılaştırma: Aynı tarihte aynı tutar var mı?
       for (let i = 0; i < availableSystemRecords.length; i++) {
         const systemRecord = availableSystemRecords[i];
-        const systemDebit = parseFloat(systemRecord.Borç) || 0;
-        const systemCredit = parseFloat(systemRecord.Alacak) || 0;
+        const systemDebit = parseTurkishNumber(systemRecord.Borç);
+        const systemCredit = parseTurkishNumber(systemRecord.Alacak);
         
-        console.log(`🔍 Sistem Kayıt ${i}:`, {
-          Borç: systemDebit,
-          Alacak: systemCredit,
-          DATE_: systemRecord.DATE_
-        });
+        // Tarih eşleşmesi kontrolü
+        const systemDate = new Date(systemRecord.DATE_).toLocaleDateString('tr-TR');
+        const dateMatch = systemDate === formattedDate;
         
-        // Çapraz karşılaştırma kontrolü
+        if (!dateMatch) continue; // Tarih eşleşmiyorsa atla
+        
+        // Çapraz karşılaştırma kontrolü (Excel Borç ↔ Logo Alacak, Excel Alacak ↔ Logo Borç)
         const logoCreditVsExcelDebit = Math.abs(systemCredit - excelDebit);
         const excelCreditVsLogoDebit = Math.abs(excelCredit - systemDebit);
         
-        console.log(`🔍 Karşılaştırma ${i}:`, {
-          logoCreditVsExcelDebit: logoCreditVsExcelDebit.toFixed(2),
-          excelCreditVsLogoDebit: excelCreditVsLogoDebit.toFixed(2),
-          tolerance: tolerance.toFixed(2),
-          logoCreditMatch: logoCreditVsExcelDebit <= tolerance,
-          excelCreditMatch: excelCreditVsLogoDebit <= tolerance,
-          bothMatch: logoCreditVsExcelDebit <= tolerance && excelCreditVsLogoDebit <= tolerance
-        });
-        
         // Her iki karşılaştırma da tolerans içinde olmalı
         if (logoCreditVsExcelDebit <= tolerance && excelCreditVsLogoDebit <= tolerance) {
-          console.log(`✅ Eşleşme bulundu! Sistem kayıt ${i}`);
+          console.log(`✅ Hareket eşleşmesi bulundu! Tarih: ${formattedDate}, Excel: ${excelDebit}₺/${excelCredit}₺ ↔ Logo: ${systemDebit}₺/${systemCredit}₺`);
           matchedSystemRecord = systemRecord;
           matchIndex = i;
           break;
+        } else {
+          // Debug: Aynı tarihte neden eşleşmediğini göster
+          if (excelDebit > 0 || excelCredit > 0) {
+            console.log(`🔍 Aynı tarihte eşleşmedi:`, {
+              Tarih: formattedDate,
+              Excel: `${excelDebit}₺/${excelCredit}₺`,
+              Logo: `${systemDebit}₺/${systemCredit}₺`,
+              Farklar: `${logoCreditVsExcelDebit.toFixed(2)}/${excelCreditVsLogoDebit.toFixed(2)}`,
+              Tolerans: tolerance,
+              HamBorç: systemRecord.Borç,
+              HamAlacak: systemRecord.Alacak
+            });
+          }
         }
       }
       
       if (matchedSystemRecord) {
         // Eşleşen kayıt bulundu - sistem kaydını kullanıldı olarak işaretle
-        const systemDebit = parseFloat(matchedSystemRecord.Borç) || 0;
-        const systemCredit = parseFloat(matchedSystemRecord.Alacak) || 0;
+        const systemDebit = parseTurkishNumber(matchedSystemRecord.Borç);
+        const systemCredit = parseTurkishNumber(matchedSystemRecord.Alacak);
         
         // Kullanılan kaydı listeden çıkar (tekrar kullanılmasın)
         availableSystemRecords.splice(matchIndex, 1);
@@ -697,6 +715,7 @@ export default function EkstreKarsilastirPage() {
         });
       } else {
         // Eşleşen kayıt bulunamadı
+        console.log(`❌ Eşleşme bulunamadı! Excel: ${excelDebit}₺/${excelCredit}₺ (Tarih: ${formattedDate}) - Belge: ${excelDocNo || 'Yok'}`);
         differences.push({
           date: formattedDate,
           excelDocNo: excelDocNo,
@@ -719,8 +738,8 @@ export default function EkstreKarsilastirPage() {
     
     // Kullanılmayan sistem kayıtlarını da farklı kayıtlar olarak ekle
     availableSystemRecords.forEach(systemRecord => {
-      const systemDebit = parseFloat(systemRecord.Borç) || 0;
-      const systemCredit = parseFloat(systemRecord.Alacak) || 0;
+      const systemDebit = parseTurkishNumber(systemRecord.Borç);
+      const systemCredit = parseTurkishNumber(systemRecord.Alacak);
       
       // Sadece sıfır olmayan kayıtları ekle
       if (systemDebit > 0 || systemCredit > 0) {
