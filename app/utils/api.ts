@@ -3,7 +3,7 @@ export const getApiUrl = (endpoint: string): string => {
   if (process.env.NODE_ENV === 'development') {
     return `/api${endpoint}`;
   }
-  return `https://panel.btrapor.com/api${endpoint}`;
+  return `https://api.btrapor.com${endpoint}`;
 };
 
 // Şifreleme için utility fonksiyonlar

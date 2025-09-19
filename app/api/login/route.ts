@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     // PHP backend'e proxy request gönder
-    const phpResponse = await fetch('https://btrapor.boluteknoloji.tr/login', {
+    const phpResponse = await fetch('https://api.btrapor.com/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

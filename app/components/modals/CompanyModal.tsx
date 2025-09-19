@@ -147,14 +147,9 @@ export default function CompanyModal({ isOpen, onClose, onSave, company, title }
 
       if (!formData.admin_password.trim()) {
         newErrors.admin_password = 'Şifre gereklidir';
-      } else if (formData.admin_password.length < 6) {
-        newErrors.admin_password = 'Şifre en az 6 karakter olmalıdır';
       }
     } else if (step === 3) {
       // Lisans Bilgileri Validasyonu
-      if (!formData.license_key.trim()) {
-        newErrors.license_key = 'Lisans anahtarı gereklidir';
-      }
 
       if (!formData.license_end.trim()) {
         newErrors.license_end = 'Lisans bitiş tarihi gereklidir';
@@ -444,7 +439,7 @@ export default function CompanyModal({ isOpen, onClose, onSave, company, title }
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.admin_password ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="En az 6 karakter"
+                    placeholder="Şifre"
                   />
                   {errors.admin_password && (
                     <p className="mt-1 text-sm text-red-600">{errors.admin_password}</p>
@@ -464,7 +459,7 @@ export default function CompanyModal({ isOpen, onClose, onSave, company, title }
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Lisans Anahtarı *
+                      Lisans Anahtarı
                     </label>
                     <input
                       type="text"
@@ -502,15 +497,18 @@ export default function CompanyModal({ isOpen, onClose, onSave, company, title }
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Plan Referansı *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.plan_ref}
                     onChange={(e) => handleInputChange('plan_ref', e.target.value)}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.plan_ref ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="BASIC, PREMIUM, ENTERPRISE"
-                  />
+                  >
+                    <option value="">Plan seçiniz</option>
+                    <option value="temel">Temel Plan</option>
+                    <option value="standart">Standart Plan</option>
+                    <option value="premium">Premium Plan</option>
+                  </select>
                   {errors.plan_ref && (
                     <p className="mt-1 text-sm text-red-600">{errors.plan_ref}</p>
                   )}

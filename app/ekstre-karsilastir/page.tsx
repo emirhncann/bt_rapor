@@ -640,7 +640,7 @@ export default function EkstreKarsilastirPage() {
       const excelTransactionType = transactionTypeIndex !== -1 ? excelRow[transactionTypeIndex] : '';
       
       // Tolerans değeri (0.05 TL) - Küçük yuvarlama farkları için
-      const tolerance = 0.05;
+      const tolerance = 0.25;
       
       // Sistem verilerinde tutar bazında eşleşme ara
       let matchedSystemRecord = null;
