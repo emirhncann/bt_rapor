@@ -33,3 +33,4 @@ Gelecek Geliştirmeler
 - Şirket oluşturma sonrası otomatik yönetici kullanıcı upsert
 - Lisans ve modül upsert entegrasyonları
 
+
