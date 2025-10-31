@@ -125,8 +125,8 @@ export default function Settings() {
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
-      const role = localStorage.getItem('userRole');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
+      const role = sessionStorage.getItem('userRole');
       
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
@@ -153,10 +153,10 @@ export default function Settings() {
   // Akaryakıt modülü ayarlarını yükle (localStorage - şirket bazlı)
   const loadFuelSettings = () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) return;
       const key = `fuel_module_settings_${companyRef}`;
-      const raw = localStorage.getItem(key);
+      const raw = sessionStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as FuelSetting[];
         if (Array.isArray(parsed)) {
@@ -186,7 +186,7 @@ export default function Settings() {
   const loadCompanyReports = async () => {
     try {
       setLoadingReports(true);
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!companyRef) {
         return;
@@ -276,7 +276,7 @@ export default function Settings() {
   const fetchSubUsers = async () => {
     setIsLoadingUsers(true);
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!companyRef) {
         return;
@@ -306,7 +306,7 @@ export default function Settings() {
   // Database ayarlarını yükle
   const loadDatabaseSettings = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!companyRef) {
         console.log('Company ref bulunamadı');
@@ -358,7 +358,7 @@ export default function Settings() {
         
         // Market modülü değerini localStorage'a kaydet
         const marketModuleValue = connectionInfo.market_module === 1 || connectionInfo.market_module === true;
-        localStorage.setItem('market_module', marketModuleValue ? '1' : '0');
+        sessionStorage.setItem('market_module', marketModuleValue ? '1' : '0');
         console.log('💾 Market modülü localStorage\'a kaydedildi:', marketModuleValue ? '1' : '0');
 
         setFormData(prev => ({
@@ -418,10 +418,10 @@ export default function Settings() {
   // Market module parametrelerini yükle
   const loadMarketModuleSettings = () => {
     try {
-      const hasMarketModule = localStorage.getItem('hasMarketModule') === 'true';
-      const goDb = localStorage.getItem('goDb') || 'GO3';
-      const goSchema = localStorage.getItem('goSchema') || 'dbo';
-      const clientRef = localStorage.getItem('clientRef') || '3';
+      const hasMarketModule = sessionStorage.getItem('hasMarketModule') === 'true';
+      const goDb = sessionStorage.getItem('goDb') || 'GO3';
+      const goSchema = sessionStorage.getItem('goSchema') || 'dbo';
+      const clientRef = sessionStorage.getItem('clientRef') || '3';
       
       setHasMarketModule(hasMarketModule);
       setGoDb(goDb);
@@ -442,10 +442,10 @@ export default function Settings() {
   // Market module parametrelerini kaydet
   const saveMarketModuleSettings = () => {
     try {
-      localStorage.setItem('hasMarketModule', hasMarketModule.toString());
-      localStorage.setItem('goDb', goDb);
-      localStorage.setItem('goSchema', goSchema);
-      localStorage.setItem('clientRef', clientRef);
+      sessionStorage.setItem('hasMarketModule', hasMarketModule.toString());
+      sessionStorage.setItem('goDb', goDb);
+      sessionStorage.setItem('goSchema', goSchema);
+      sessionStorage.setItem('clientRef', clientRef);
       
       loadAnimation('success', 'Market module parametreleri başarıyla kaydedildi!');
       console.log('✅ Market module parametreleri kaydedildi:', {
@@ -470,22 +470,22 @@ export default function Settings() {
   // Tüm cache'i temizleme fonksiyonu
   const clearAllCache = () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       // Stored procedure cache'lerini temizle
       const spCacheKey = `sp_MalzemeDetayByItem2_${companyRef}`;
-      localStorage.removeItem(spCacheKey);
+      sessionStorage.removeItem(spCacheKey);
       
       // Connection info cache'ini temizle
-      localStorage.removeItem('connectionInfo');
+      sessionStorage.removeItem('connectionInfo');
       
       // User reports cache'ini temizle
-      localStorage.removeItem('userAuthorizedReports');
-      localStorage.removeItem('userReportsLastUpdate');
+      sessionStorage.removeItem('userAuthorizedReports');
+      sessionStorage.removeItem('userReportsLastUpdate');
       
       // Market module cache'ini temizle
-      localStorage.removeItem('market_module');
-      localStorage.removeItem('hasMarketModule');
+      sessionStorage.removeItem('market_module');
+      sessionStorage.removeItem('hasMarketModule');
       
       console.log('🗑️ Tüm cache temizlendi');
       loadAnimation('success', 'Tüm cache başarıyla temizlendi!');
@@ -641,7 +641,7 @@ export default function Settings() {
     }
 
     try {
-      const userId = localStorage.getItem('userId');
+      const userId = sessionStorage.getItem('userId');
       if (!userId) {
         loadAnimation('failed', 'Kullanıcı bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
         return;
@@ -692,7 +692,7 @@ export default function Settings() {
     
     try {
       // Company ref'i localStorage'dan al
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!companyRef) {
         loadAnimation('failed', 'Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
@@ -787,7 +787,7 @@ export default function Settings() {
           console.log('✅ Response JSON:', jsonResponse);
           
           // Market modülü değerini localStorage'a kaydet
-          localStorage.setItem('market_module', formData.hasMarketModule ? '1' : '0');
+          sessionStorage.setItem('market_module', formData.hasMarketModule ? '1' : '0');
           console.log('💾 Market modülü localStorage\'a kaydedildi:', formData.hasMarketModule ? '1' : '0');
           
           loadAnimation('success', 'Tüm veritabanı ayarları başarıyla kaydedildi!');
@@ -795,7 +795,7 @@ export default function Settings() {
           console.log('⚠️ Response JSON Parse Hatası:', e);
           
           // Market modülü değerini localStorage'a kaydet
-          localStorage.setItem('market_module', formData.hasMarketModule ? '1' : '0');
+          sessionStorage.setItem('market_module', formData.hasMarketModule ? '1' : '0');
           console.log('💾 Market modülü localStorage\'a kaydedildi:', formData.hasMarketModule ? '1' : '0');
           
           loadAnimation('success', 'Tüm veritabanı ayarları başarıyla kaydedildi!');
@@ -838,8 +838,8 @@ export default function Settings() {
     alert('Debug: handleSaveFuelSettings fonksiyonu başlatıldı!');
     
     try {
-      const companyRef = localStorage.getItem('companyRef');
-      const userId = localStorage.getItem('userId');
+      const companyRef = sessionStorage.getItem('companyRef');
+      const userId = sessionStorage.getItem('userId');
       
       console.log('🔍 localStorage Değerleri:', { companyRef, userId });
       alert(`Debug: localStorage - companyRef: ${companyRef}, userId: ${userId}`);
@@ -897,7 +897,7 @@ export default function Settings() {
 
       // Başarılı ise localStorage'a da kaydet
       const key = `fuel_module_settings_${companyRef}`;
-      localStorage.setItem(key, JSON.stringify(fuelSettings));
+      sessionStorage.setItem(key, JSON.stringify(fuelSettings));
       
       await loadAnimation('success', 'Tüm akaryakıt modülü ayarları başarıyla kaydedildi!');
       
@@ -920,9 +920,9 @@ export default function Settings() {
     }
 
     try {
-      const companyRef = localStorage.getItem('companyRef');
-      const parentRef = localStorage.getItem('userId');
-      const currentUserName = localStorage.getItem('userName');
+      const companyRef = sessionStorage.getItem('companyRef');
+      const parentRef = sessionStorage.getItem('userId');
+      const currentUserName = sessionStorage.getItem('userName');
       
       if (!companyRef || !parentRef) {
         loadAnimation('failed', 'Kullanıcı bilgileri eksik. Lütfen tekrar giriş yapın.');

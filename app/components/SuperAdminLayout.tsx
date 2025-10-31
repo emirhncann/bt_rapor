@@ -20,7 +20,7 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
         
@@ -34,8 +34,8 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
         }
 
         // Kullanıcı bilgilerini al
-        const name = localStorage.getItem('userName');
-        const email = localStorage.getItem('userEmail');
+        const name = sessionStorage.getItem('userName');
+        const email = sessionStorage.getItem('userEmail');
         if (name) setUserName(name);
         if (email) setUserEmail(email);
       } else {
@@ -48,7 +48,7 @@ export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.clear();
+    sessionStorage.clear();
     router.push('/login');
   };
 

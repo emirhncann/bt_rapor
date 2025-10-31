@@ -19,8 +19,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
   // Kullanıcı bilgilerini yükle
   useEffect(() => {
-    const name = localStorage.getItem('userName');
-    const email = localStorage.getItem('userEmail');
+    const name = sessionStorage.getItem('userName');
+    const email = sessionStorage.getItem('userEmail');
     if (name) setUserName(name);
     if (email) setUserEmail(email);
   }, []);
@@ -34,7 +34,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     try {
       setLoading(true);
       const currentUser = getCurrentUser();
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!companyRef) {
         console.warn('Company ref bulunamadı');

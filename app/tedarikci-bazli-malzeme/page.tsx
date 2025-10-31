@@ -97,7 +97,7 @@ export default function TedarikciMalzemeRaporu() {
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
       } else {
@@ -125,7 +125,7 @@ export default function TedarikciMalzemeRaporu() {
         }
 
         // API'den şirketin tüm raporlarını çek
-        const companyRef = localStorage.getItem('companyRef');
+        const companyRef = sessionStorage.getItem('companyRef');
         if (!companyRef) {
           console.log('❌ CompanyRef bulunamadı');
           setHasAccess(false);
@@ -199,7 +199,7 @@ export default function TedarikciMalzemeRaporu() {
       if (!isAuthenticated) return;
       
       // Önce localStorage'dan kontrol et
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       if (cachedConnectionInfo) {
         try {
           JSON.parse(cachedConnectionInfo);
@@ -211,7 +211,7 @@ export default function TedarikciMalzemeRaporu() {
       }
       
       // localStorage'da yoksa API'den al
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         console.log('⚠️ CompanyRef bulunamadı');
         return;
@@ -223,7 +223,7 @@ export default function TedarikciMalzemeRaporu() {
         const connectionData = await connectionResponse.json();
 
         if (connectionResponse.ok && connectionData.status === 'success' && connectionData.data) {
-          localStorage.setItem('connectionInfo', JSON.stringify(connectionData.data));
+          sessionStorage.setItem('connectionInfo', JSON.stringify(connectionData.data));
           console.log('💾 Connection bilgileri önceden yüklendi ve kaydedildi (Tedarikçi Bazlı Malzeme)');
         } else {
           console.log('⚠️ Connection bilgileri önceden yüklenirken hata:', connectionData);
@@ -245,7 +245,7 @@ export default function TedarikciMalzemeRaporu() {
       setLoadingCariHesaplar(true);
       
       try {
-        const companyRef = localStorage.getItem('companyRef');
+        const companyRef = sessionStorage.getItem('companyRef');
         if (!companyRef) {
           showErrorMessage('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
           return;
@@ -253,7 +253,7 @@ export default function TedarikciMalzemeRaporu() {
 
         // Connection bilgilerini al
         let connectionInfo;
-        const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+        const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
         if (cachedConnectionInfo) {
           try {
             connectionInfo = JSON.parse(cachedConnectionInfo);
@@ -393,7 +393,7 @@ export default function TedarikciMalzemeRaporu() {
     setShowError(false);
     
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         showErrorMessage('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
         return;
@@ -401,7 +401,7 @@ export default function TedarikciMalzemeRaporu() {
 
       // Connection bilgilerini al
       let connectionInfo;
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       if (cachedConnectionInfo) {
         try {
           connectionInfo = JSON.parse(cachedConnectionInfo);
@@ -529,10 +529,10 @@ export default function TedarikciMalzemeRaporu() {
   // Cache'i temizleme fonksiyonu
   const clearCacheAndReload = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       // Connection info cache'ini temizle
-      localStorage.removeItem('connectionInfo');
+      sessionStorage.removeItem('connectionInfo');
       
       console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
       await fetchReportData();

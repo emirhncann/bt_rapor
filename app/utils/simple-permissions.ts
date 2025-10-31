@@ -43,7 +43,7 @@ export async function fetchUserReports(companyRef: string, userId?: number): Pro
     }
 
     // Kullanıcı rolünü kontrol et
-    const userRole = localStorage.getItem('userRole');
+    const userRole = sessionStorage.getItem('userRole');
     let userPermissions: number[] = [];
     let reportsToShow: CompanyReport[] = [];
 
@@ -133,13 +133,13 @@ export function hasReportAccess(reports: ReportWithAccess[], reportId: number): 
   return report ? report.has_access : false;
 }
 
-// LocalStorage'dan kullanıcı bilgilerini al
+// SessionStorage'dan kullanıcı bilgilerini al
 export function getCurrentUser() {
   if (typeof window === 'undefined') return null;
   
-  const userId = localStorage.getItem('userId');
-  const userRole = localStorage.getItem('userRole');
-  const userName = localStorage.getItem('userName');
+  const userId = sessionStorage.getItem('userId');
+  const userRole = sessionStorage.getItem('userRole');
+  const userName = sessionStorage.getItem('userName');
   
   if (!userId) return null;
   

@@ -175,8 +175,8 @@ export default function AkaryakitModulu() {
       setIsSavingSettings(true);
       setSaveMessage('');
 
-      const companyRef = localStorage.getItem('companyRef');
-      const userId = localStorage.getItem('userId');
+      const companyRef = sessionStorage.getItem('companyRef');
+      const userId = sessionStorage.getItem('userId');
 
       console.log('🔍 localStorage Değerleri:', { companyRef, userId });
       alert(`Debug: localStorage - companyRef: ${companyRef}, userId: ${userId}`);
@@ -908,7 +908,7 @@ export default function AkaryakitModulu() {
       setIsReadingFile(true);
       setFileReadMessage('');
 
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         throw new Error('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
       }

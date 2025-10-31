@@ -46,7 +46,7 @@ export default function CBakiye() {
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
       } else {
@@ -74,7 +74,7 @@ export default function CBakiye() {
         }
 
         // API'den şirketin tüm raporlarını çek
-        const companyRef = localStorage.getItem('companyRef');
+        const companyRef = sessionStorage.getItem('companyRef');
         if (!companyRef) {
           console.log('❌ CompanyRef bulunamadı');
           setHasAccess(false);
@@ -138,7 +138,7 @@ export default function CBakiye() {
       if (!isAuthenticated) return;
       
       // Önce localStorage'dan kontrol et
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       if (cachedConnectionInfo) {
         try {
           JSON.parse(cachedConnectionInfo);
@@ -150,7 +150,7 @@ export default function CBakiye() {
       }
       
       // localStorage'da yoksa API'den al
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         console.log('⚠️ CompanyRef bulunamadı');
         return;
@@ -162,7 +162,7 @@ export default function CBakiye() {
         const connectionData = await connectionResponse.json();
 
         if (connectionResponse.ok && connectionData.status === 'success' && connectionData.data) {
-          localStorage.setItem('connectionInfo', JSON.stringify(connectionData.data));
+          sessionStorage.setItem('connectionInfo', JSON.stringify(connectionData.data));
           console.log('💾 Connection bilgileri önceden yüklendi ve kaydedildi (C-Bakiye)');
         } else {
           console.log('⚠️ Connection bilgileri önceden yüklenirken hata:', connectionData);
@@ -190,7 +190,7 @@ export default function CBakiye() {
       }
       
       // CompanyRef'i al
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         console.warn('⚠️ CompanyRef bulunamadı, hareket detayları yüklenemedi');
         return {};
@@ -464,7 +464,7 @@ export default function CBakiye() {
     try {
       // Connection bilgilerini al
       let connectionInfo = null;
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       
       if (cachedConnectionInfo) {
         try {
@@ -654,10 +654,10 @@ export default function CBakiye() {
   // Cache'i temizleme fonksiyonu
   const clearCacheAndReload = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       // Connection info cache'ini temizle
-      localStorage.removeItem('connectionInfo');
+      sessionStorage.removeItem('connectionInfo');
       
       console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
       await fetchSqlData();
@@ -678,7 +678,7 @@ export default function CBakiye() {
     }
     
     // Company ref'i önce al
-    const companyRef = localStorage.getItem('companyRef');
+    const companyRef = sessionStorage.getItem('companyRef');
     if (!companyRef) {
       console.error('Company ref bulunamadı');
       alert('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
@@ -696,15 +696,15 @@ export default function CBakiye() {
       
       // Önce localStorage'dan connection bilgilerini kontrol et
       let connectionInfo = null;
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       
       // Mobil localStorage kontrolü
       if (!cachedConnectionInfo) {
         console.log('⚠️ MOBIL DEBUG: localStorage\'da connectionInfo bulunamadı');
         // Mobil cihazlarda localStorage sorunları için alternatif kontrol
         try {
-          localStorage.setItem('test', 'test');
-          localStorage.removeItem('test');
+          sessionStorage.setItem('test', 'test');
+          sessionStorage.removeItem('test');
           console.log('✅ MOBIL DEBUG: localStorage çalışıyor');
         } catch (e) {
           console.error('❌ MOBIL DEBUG: localStorage erişim sorunu:', e);
@@ -761,7 +761,7 @@ export default function CBakiye() {
 
           connectionInfo = connectionData.data;
           // API'den alınan bilgileri localStorage'a kaydet
-          localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+          sessionStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
           console.log('💾 Connection bilgileri localStorage\'a kaydedildi');
                  } catch (error: any) {
            clearTimeout(timeoutId);

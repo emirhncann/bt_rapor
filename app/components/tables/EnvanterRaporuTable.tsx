@@ -74,7 +74,7 @@ export default function EnvanterRaporuTable({
     
     try {
       // Connection bilgilerini al
-      const connectionInfo = localStorage.getItem('connectionInfo');
+      const connectionInfo = sessionStorage.getItem('connectionInfo');
       if (!connectionInfo) {
         alert('Bağlantı bilgileri bulunamadı. Lütfen sayfayı yenileyin.');
         return;
@@ -83,14 +83,14 @@ export default function EnvanterRaporuTable({
       const connData = JSON.parse(connectionInfo);
       
       // CompanyRef'i al
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         alert('Şirket bilgisi bulunamadı. Lütfen sayfayı yenileyin.');
         return;
       }
       
       // Market modülü kontrolü - önce localStorage'dan, yoksa connection bilgilerinden
-      let marketModule = localStorage.getItem('market_module');
+      let marketModule = sessionStorage.getItem('market_module');
       let isMarketModule = false;
       
       if (marketModule !== null) {
@@ -101,7 +101,7 @@ export default function EnvanterRaporuTable({
         // localStorage'da yoksa connection bilgilerinden al
         isMarketModule = connData.market_module === 1 || connData.market_module === true;
         // localStorage'a kaydet
-        localStorage.setItem('market_module', isMarketModule ? '1' : '0');
+        sessionStorage.setItem('market_module', isMarketModule ? '1' : '0');
         console.log('🏪 Market modülü connection bilgilerinden alındı ve localStorage\'a kaydedildi:', { 
           connectionMarketModule: connData.market_module, 
           isMarketModule 
@@ -497,8 +497,8 @@ export default function EnvanterRaporuTable({
         const currentUser = getCurrentUser();
         const userName = currentUser ? (currentUser.name || 'Kullanıcı') : 'Bilinmeyen Kullanıcı';
         
-        const companyRef = localStorage.getItem('companyRef') || '';
-        const connectionInfoStr = localStorage.getItem('connectionInfo') || '{}';
+        const companyRef = sessionStorage.getItem('companyRef') || '';
+        const connectionInfoStr = sessionStorage.getItem('connectionInfo') || '{}';
         const connectionInfo = JSON.parse(connectionInfoStr);
         const firmaNo = connectionInfo.first_firma_no || '009';
         const donemNo = connectionInfo.first_donem_no || '01';

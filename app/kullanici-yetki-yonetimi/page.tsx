@@ -40,7 +40,7 @@ export default function KullaniciYetkiYonetimi() {
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
         
@@ -85,7 +85,7 @@ export default function KullaniciYetkiYonetimi() {
 
   const loadUsers = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         throw new Error('Company ref bulunamadı');
       }
@@ -110,7 +110,7 @@ export default function KullaniciYetkiYonetimi() {
 
   const loadReports = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         throw new Error('Company ref bulunamadı');
       }

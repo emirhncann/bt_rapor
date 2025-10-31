@@ -22,7 +22,7 @@ export default function TestApiPage() {
 
   // Authentication kontrolü (oturum yoksa login'e yönlendir)
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
     if (isLoggedIn !== 'true') {
       router.push('/login');
       return;
@@ -55,7 +55,7 @@ export default function TestApiPage() {
       return;
     }
 
-    const companyRef = localStorage.getItem('companyRef');
+    const companyRef = sessionStorage.getItem('companyRef');
     if (!companyRef) {
       alert('CompanyRef bulunamadı. Lütfen tekrar giriş yapın.');
       return;

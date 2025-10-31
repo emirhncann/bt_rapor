@@ -143,7 +143,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     
     try {
       // Connection bilgilerini al
-      const connectionInfo = localStorage.getItem('connectionInfo');
+      const connectionInfo = sessionStorage.getItem('connectionInfo');
       if (!connectionInfo) {
         alert('Bağlantı bilgileri bulunamadı. Lütfen sayfayı yenileyin.');
         return;
@@ -276,7 +276,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
       `;
 
       // CompanyRef'i al
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         alert('Şirket bilgisi bulunamadı. Lütfen sayfayı yenileyin.');
         return;

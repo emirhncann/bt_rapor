@@ -153,7 +153,7 @@ export default function AkaryakitPage() {
   // Sayfa yüklendiğinde localStorage'dan company ref'i al
   useEffect(() => {
     const initializeCompanyRef = async () => {
-      const storedCompanyRef = localStorage.getItem('companyRef');
+      const storedCompanyRef = sessionStorage.getItem('companyRef');
       if (storedCompanyRef) {
         console.log('📋 LocalStorage\'dan company ref alındı:', storedCompanyRef);
         setCompanyRef(storedCompanyRef);
@@ -181,7 +181,7 @@ export default function AkaryakitPage() {
   // API'den company ref alma fonksiyonu
   const fetchCompanyRefFromAPI = async () => {
     try {
-      const userId = localStorage.getItem('userId');
+      const userId = sessionStorage.getItem('userId');
       if (!userId) {
         console.log('❌ User ID bulunamadı, company ref alınamadı');
         return false;
@@ -194,13 +194,13 @@ export default function AkaryakitPage() {
         const data = await response.json();
         if (data.status === 'success' && data.user && data.user.company_ref) {
           console.log('✅ API\'den company ref alındı:', data.user.company_ref);
-          localStorage.setItem('companyRef', data.user.company_ref);
+          sessionStorage.setItem('companyRef', data.user.company_ref);
           setCompanyRef(data.user.company_ref);
           
           // Diğer kullanıcı bilgilerini de güncelle
-          if (data.user.name) localStorage.setItem('userName', data.user.name);
-          if (data.user.role) localStorage.setItem('userRole', data.user.role);
-          if (data.user.company_name) localStorage.setItem('companyName', data.user.company_name);
+          if (data.user.name) sessionStorage.setItem('userName', data.user.name);
+          if (data.user.role) sessionStorage.setItem('userRole', data.user.role);
+          if (data.user.company_name) sessionStorage.setItem('companyName', data.user.company_name);
           
           return true;
         } else {

@@ -43,7 +43,7 @@ export default function ExcelCompare() {
   // localStorage'dan connection bilgilerini oku
   useEffect(() => {
     const loadConnectionInfo = async () => {
-      const storedConnectionInfo = localStorage.getItem('connectionInfo');
+      const storedConnectionInfo = sessionStorage.getItem('connectionInfo');
       if (storedConnectionInfo) {
         try {
           const parsedInfo = JSON.parse(storedConnectionInfo);
@@ -61,14 +61,14 @@ export default function ExcelCompare() {
         console.log('⚠️ localStorage\'da connectionInfo bulunamadı, API\'den yükleniyor...');
         // Eğer localStorage'da yoksa API'den yüklemeyi dene
         try {
-          const companyRef = localStorage.getItem('companyRef');
+          const companyRef = sessionStorage.getItem('companyRef');
           if (companyRef) {
             const response = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
             const data = await response.json();
             
             if (response.ok && data.status === 'success' && data.data) {
               const connectionInfo = data.data;
-              localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+              sessionStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
               setConnectionInfo(connectionInfo);
               console.log('✅ Connection bilgileri API\'den yüklendi:', connectionInfo);
             } else {
@@ -273,7 +273,29 @@ export default function ExcelCompare() {
     }
   };
 
-  // Fatura karşılaştırma işlemi - artık tutarları da kontrol ediyor
+  // Yardımcı: tarihi YYYY-MM-DD formatına normalize eder
+  const normalizeDate = (value: any): string | null => {
+    if (value === null || value === undefined || value === '') return null;
+    // Excel seri numarası (sayısal) olabilir
+    if (typeof value === 'number') {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      const ms = value * 24 * 60 * 60 * 1000;
+      const d = new Date(excelEpoch.getTime() + ms);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    // Tarih string'i
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // Fatura karşılaştırma işlemi - tutar, KDV ve tarih kontrol eder
   const compareInvoices = (excelInvoices: any[], logoInvoices: any[]) => {
     const missingInvoices: any[] = [];
     const mismatchedInvoices: any[] = [];
@@ -307,6 +329,7 @@ export default function ExcelCompare() {
       const excelKdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
       const paraBirimi = invoice['Para Birimi'] || 'TRY';
       const isDovizli = paraBirimi !== 'TRY';
+      const excelFaturaTarihi = normalizeDate(invoice['Fatura Tarihi']);
 
       // LOGO'da bu fatura numarası var mı?
       const logoInvoice = logoInvoices.find(li => li.fatura_no === faturaNo);
@@ -334,6 +357,8 @@ export default function ExcelCompare() {
         let kdvUyumlu = true; // Dövizli işlemlerde KDV kontrol etmiyoruz
         let logoKarsilastirmaTutari = 0;
         let logoKdvTutari = 0;
+        const logoFaturaTarihi = normalizeDate(logoInvoice.tarih);
+        const tarihUyumlu = !!excelFaturaTarihi && !!logoFaturaTarihi && excelFaturaTarihi === logoFaturaTarihi;
 
         if (isDovizli) {
           // Dövizli işlem - TRNET ile karşılaştır
@@ -361,19 +386,21 @@ export default function ExcelCompare() {
         } else {
           console.log(`   Excel KDV: ${excelKdvToplami} | LOGO KDV: -`);
         }
+        console.log(`   Tarih (Excel vs LOGO): ${excelFaturaTarihi || '-'} ↔ ${logoFaturaTarihi || '-'} | Uyum: ${tarihUyumlu}`);
         console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu} (${isDovizli ? 'dövizli - KDV kontrol edilmiyor' : 'TRY'})`);
         
-        if (tutarUyumlu && kdvUyumlu) {
+        if (tutarUyumlu && kdvUyumlu && tarihUyumlu) {
           // Tam uyumlu
           exactMatches++;
-          console.log(`✅ Fatura ${faturaNo}: Tam uyumlu ${isDovizli ? '(dövizli - sadece tutar kontrol)' : '(TRY)'}`);
+          console.log(`✅ Fatura ${faturaNo}: Tam uyumlu ${isDovizli ? '(dövizli - sadece tutar kontrol)' : '(TRY)'} ve tarih uyumlu`);
         } else {
           // Tutarlar uyumsuz - hatalı fatura
-          console.log(`❌ Fatura ${faturaNo}: TUTARSIZ - Tutar farkı: ${tutarFarki}${isDovizli ? ' (dövizli fatura)' : `, KDV farkı: ${kdvFarki}`}`);
+          console.log(`❌ Fatura ${faturaNo}: TUTARSIZ - Tutar farkı: ${tutarFarki}${isDovizli ? ' (dövizli fatura)' : `, KDV farkı: ${kdvFarki}`} ${tarihUyumlu ? '' : ', Tarih farklı'}`);
           const mismatchedInvoice = {
             'Fatura No': faturaNo,
             'Tür': invoice['Tür'],
             'Fatura Tarihi': invoice['Fatura Tarihi'],
+            'LOGO Fatura Tarihi': logoFaturaTarihi,
             'Gönderici VKN': invoice['Gönderici VKN'],
             'Alıcı VKN': invoice['Alıcı VKN'],
             'Excel Toplam Tutar': excelToplamTutar,
@@ -383,6 +410,7 @@ export default function ExcelCompare() {
             'Para Birimi': paraBirimi,
             'Tutar Uyumlu': tutarUyumlu,
             'KDV Uyumlu': kdvUyumlu,
+            'Tarih Uyumlu': tarihUyumlu,
             'Vergi Hariç Tutar': parseFloat(invoice['Vergi Hariç Tutar'] || 0),
             'Oluşturma Tarihi': invoice['Oluşturma Tarihi'],
             'Gönderici Adı': invoice['Gönderici Adı']
@@ -564,7 +592,9 @@ export default function ExcelCompare() {
       'LOGO KDV Toplamı': invoice['LOGO KDV Toplamı'],
       'Tutar Uyumlu': invoice['Tutar Uyumlu'] ? 'Evet' : 'Hayır',
       'KDV Uyumlu': invoice['Para Birimi'] === 'TRY' ? (invoice['KDV Uyumlu'] ? 'Evet' : 'Hayır') : '-',
-      'Fatura Tarihi': invoice['Fatura Tarihi'],
+      'Tarih Uyumlu': invoice['Tarih Uyumlu'] ? 'Evet' : 'Hayır',
+      'Fatura Tarihi (Excel)': invoice['Fatura Tarihi'],
+      'Fatura Tarihi (LOGO)': invoice['LOGO Fatura Tarihi'],
       'Gönderici VKN': invoice['Gönderici VKN'],
       'Alıcı VKN': invoice['Alıcı VKN'],
       'Gönderici Adı': invoice['Gönderici Adı']
@@ -626,7 +656,7 @@ export default function ExcelCompare() {
 
       // Tutarsız faturalar HTML'ini oluştur
       const mismatchedInvoicesHTML = (result.mismatchedInvoicesDetails || []).length > 0 ? `
-      <h3 class="section-title">TUTARI UYUMSUZ FATURALAR</h3>
+      <h3 class="section-title">TUTARI/TARİHİ UYUMSUZ FATURALAR</h3>
       
       <table>
         <thead>
@@ -637,6 +667,8 @@ export default function ExcelCompare() {
             <th class="orange">LOGO Toplam Tutar</th>
             <th class="orange">Excel KDV Toplamı</th>
             <th class="orange">LOGO KDV Toplamı</th>
+            <th class="orange">Fatura Tarihi (Excel)</th>
+            <th class="orange">Fatura Tarihi (LOGO)</th>
             <th class="orange">Durum</th>
             <th class="orange">Gönderici Adı</th>
           </tr>
@@ -666,9 +698,12 @@ export default function ExcelCompare() {
               <td class="number currency">
                 ${invoice['LOGO KDV Toplamı'] === '-' ? '-' : formatCurrency(invoice['LOGO KDV Toplamı'], 'TRY')}
               </td>
+              <td class="center">${invoice['Fatura Tarihi'] || '-'}</td>
+              <td class="center">${invoice['LOGO Fatura Tarihi'] || '-'}</td>
               <td class="center">
                 ${!invoice['Tutar Uyumlu'] ? `<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fecaca; color: #991b1b;">${invoice['Para Birimi'] === 'TRY' ? 'Tutar Farklı' : 'TRNET Farklı'}</span>` : ''}
                 ${!invoice['KDV Uyumlu'] && invoice['Para Birimi'] === 'TRY' ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fed7aa; color: #ea580c;">KDV Farklı</span>' : ''}
+                ${!invoice['Tarih Uyumlu'] ? '<span style="padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold; background-color: #fde68a; color: #92400e;">Tarih Farklı</span>' : ''}
               </td>
               <td>${invoice['Gönderici Adı']}</td>
             </tr>
@@ -1180,7 +1215,7 @@ export default function ExcelCompare() {
                         <div>
                           <p className="text-sm font-medium text-green-800">Tam Uyumlu</p>
                           <p className="text-2xl font-bold text-green-900">{result.existingInvoices || 0}</p>
-                          <p className="text-xs text-green-600">Fatura no, tutar ve KDV uyumlu</p>
+                          <p className="text-xs text-green-600">Tarih, Fatura no, tutar ve KDV uyumlu</p>
                         </div>
                       </div>
                     </div>
@@ -1208,9 +1243,9 @@ export default function ExcelCompare() {
                           </svg>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-orange-800">Tutarı Uyumsuz</p>
+                          <p className="text-sm font-medium text-orange-800">Uyumsuz</p>
                           <p className="text-2xl font-bold text-orange-900">{result.mismatchedInvoices || 0}</p>
-                          <p className="text-xs text-orange-600">Tutar veya KDV farklı</p>
+                          <p className="text-xs text-orange-600">Tarih, Tutar veya KDV farklı</p>
                         </div>
                       </div>
                     </div>
@@ -1248,7 +1283,7 @@ export default function ExcelCompare() {
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                         </svg>
-                        <h3 className="text-sm font-medium text-orange-900">Tutarı Uyumsuz Faturalar</h3>
+                        <h3 className="text-sm font-medium text-orange-900">Uyumsuz Faturalar</h3>
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
                           {(result.mismatchedInvoicesDetails || []).length}
                         </span>
@@ -1367,6 +1402,11 @@ export default function ExcelCompare() {
                                   {!invoice['KDV Uyumlu'] && invoice['Para Birimi'] === 'TRY' && (
                                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
                                       KDV Farklı
+                                    </span>
+                                  )}
+                                  {!invoice['Tarih Uyumlu'] && (
+                                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                      Tarih Farklı
                                     </span>
                                   )}
                                 </div>

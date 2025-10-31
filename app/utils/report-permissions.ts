@@ -83,7 +83,7 @@ export async function fetchCompanyReportsWithPermissions(companyRef: string, use
       } catch (error) {
         console.log('Kullanıcı yetkileri alınamadı, varsayılan izinler kullanılıyor');
         // Geçici: Admin değilse sadece ilk rapora izin ver
-        const userRole = localStorage.getItem('userRole');
+        const userRole = sessionStorage.getItem('userRole');
         if (userRole === 'admin') {
           userPermissions = data.data.map((r: CompanyReport) => r.id);
         } else {
@@ -150,14 +150,14 @@ export function cacheUserReports(userId: number, reports: ReportWithAccess[]) {
     expires: Date.now() + (5 * 60 * 1000) // 5 dakika cache
   };
   
-  localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+  sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
 }
 
 export function getCachedUserReports(userId: number): ReportWithAccess[] | null {
   if (typeof window === 'undefined') return null;
   
   const cacheKey = `user_reports_${userId}`;
-  const cacheData = localStorage.getItem(cacheKey);
+  const cacheData = sessionStorage.getItem(cacheKey);
   
   if (!cacheData) return null;
   
@@ -166,13 +166,13 @@ export function getCachedUserReports(userId: number): ReportWithAccess[] | null 
     
     // Cache süresi dolmuş mu?
     if (Date.now() > parsed.expires) {
-      localStorage.removeItem(cacheKey);
+      sessionStorage.removeItem(cacheKey);
       return null;
     }
     
     return parsed.reports;
   } catch (error) {
-    localStorage.removeItem(cacheKey);
+    sessionStorage.removeItem(cacheKey);
     return null;
   }
 } 

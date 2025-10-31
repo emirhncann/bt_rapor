@@ -34,3 +34,4 @@ Gelecek Geliştirmeler
 - Lisans ve modül upsert entegrasyonları
 
 
+

@@ -18,9 +18,9 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
   const router = useRouter();
 
   useEffect(() => {
-    const email = localStorage.getItem('userEmail');
-    const fullName = localStorage.getItem('userName');
-    const role = localStorage.getItem('userRole');
+    const email = sessionStorage.getItem('userEmail');
+    const fullName = sessionStorage.getItem('userName');
+    const role = sessionStorage.getItem('userRole');
     
     if (email) {
       setUserEmail(email);
@@ -41,13 +41,8 @@ export default function Header({ sidebarOpen, setSidebarOpen, title }: HeaderPro
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('userPhone');
-    localStorage.removeItem('companyRef');
+    // SessionStorage'ı tamamen temizle (tarayıcı kapanınca zaten silinir ama manuel logout için)
+    sessionStorage.clear();
     router.push('/login');
   };
 

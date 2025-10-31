@@ -17,8 +17,8 @@ export interface AccessCheckResult {
 export async function checkReportAccess(reportName: string, reportId?: number): Promise<AccessCheckResult> {
   try {
     const currentUser = getCurrentUser();
-    const userRole = localStorage.getItem('userRole');
-    const companyRef = localStorage.getItem('companyRef');
+    const userRole = sessionStorage.getItem('userRole');
+    const companyRef = sessionStorage.getItem('companyRef');
 
     // Temel kontroller
     if (!currentUser) {

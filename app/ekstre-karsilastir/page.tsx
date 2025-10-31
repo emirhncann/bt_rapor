@@ -87,14 +87,14 @@ export default function EkstreKarsilastirPage() {
         return;
       }
       
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         throw new Error('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
       }
 
       // Connection bilgilerini al
       let connectionInfo;
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       if (cachedConnectionInfo) {
         try {
           connectionInfo = JSON.parse(cachedConnectionInfo);
@@ -314,14 +314,14 @@ export default function EkstreKarsilastirPage() {
         return;
       }
       
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         throw new Error('Şirket bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
       }
 
       // Connection bilgilerini al
       let connectionInfo;
-      const cachedConnectionInfo = localStorage.getItem('connectionInfo');
+      const cachedConnectionInfo = sessionStorage.getItem('connectionInfo');
       if (cachedConnectionInfo) {
         try {
           connectionInfo = JSON.parse(cachedConnectionInfo);
@@ -993,7 +993,7 @@ export default function EkstreKarsilastirPage() {
           </table>
           
           <div style="margin-top: 20px; padding: 10px; background-color: #f3f4f6; border-radius: 6px; font-size: 9px; color: #6b7280;">
-            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${localStorage.getItem('userName') || 'Bilinmeyen Kullanıcı'} tarafından BT Rapor sistemi üzerinden alınmıştır. 
+            <strong>Rapor Notu:</strong> Bu rapor ${new Date().toLocaleString('tr-TR')} tarihinde ${sessionStorage.getItem('userName') || 'Bilinmeyen Kullanıcı'} tarafından BT Rapor sistemi üzerinden alınmıştır. 
             Tüm tutarlar Türk Lirası (₺) cinsindendir. Çapraz karşılaştırma: Logo Alacak ↔ Excel Borç, Excel Alacak ↔ Logo Borç.
           </div>
           

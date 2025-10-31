@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import DashboardLayout from './components/DashboardLayout';
+import SessionManager from './components/SessionManager';
 import { fetchUserReports, getCurrentUser, getAuthorizedReports, groupReportsByCategory, isSuperAdmin } from './utils/simple-permissions';
 import type { ReportWithAccess } from './utils/simple-permissions';
 import { sendSecureProxyRequest } from './utils/api';
@@ -102,7 +103,7 @@ export default function Dashboard() {
   const loadPinnedReports = async () => {
     try {
       const currentUser = getCurrentUser();
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!currentUser || !companyRef) {
         console.warn('Kullanıcı bilgisi veya companyRef bulunamadı');
@@ -132,7 +133,7 @@ export default function Dashboard() {
         } else {
           console.warn('⚠️ api.btrapor.com\'dan veri alınamadı, localStorage kontrol ediliyor');
           // Fallback: localStorage'dan yükle
-          const savedPinned = localStorage.getItem('pinnedReports');
+          const savedPinned = sessionStorage.getItem('pinnedReports');
           if (savedPinned) {
             try {
               const pinned = JSON.parse(savedPinned);
@@ -149,7 +150,7 @@ export default function Dashboard() {
       } else {
         console.warn('⚠️ api.btrapor.com bağlantısı başarısız, localStorage kontrol ediliyor');
         // Fallback: localStorage'dan yükle
-        const savedPinned = localStorage.getItem('pinnedReports');
+        const savedPinned = sessionStorage.getItem('pinnedReports');
         if (savedPinned) {
           try {
             const pinned = JSON.parse(savedPinned);
@@ -167,7 +168,7 @@ export default function Dashboard() {
       console.error('❌ Favori raporlar yüklenirken hata:', error);
       // Fallback: localStorage'dan yükle
       try {
-        const savedPinned = localStorage.getItem('pinnedReports');
+        const savedPinned = sessionStorage.getItem('pinnedReports');
         if (savedPinned) {
           const pinned = JSON.parse(savedPinned);
           setPinnedReports(pinned);
@@ -193,11 +194,11 @@ export default function Dashboard() {
     setPinnedReports(newPinned);
     
     // Hem localStorage'a hem api.btrapor.com'a kaydet
-    localStorage.setItem('pinnedReports', JSON.stringify(newPinned));
+    sessionStorage.setItem('pinnedReports', JSON.stringify(newPinned));
     
     try {
       const currentUser = getCurrentUser();
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (currentUser && companyRef) {
         console.log('💾 api.btrapor.com\'a favori raporlar kaydediliyor...');
@@ -236,7 +237,7 @@ export default function Dashboard() {
     try {
       setLoadingReports(true);
       const currentUser = getCurrentUser();
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       
       if (!companyRef) {
         console.warn('Company ref bulunamadı');
@@ -258,8 +259,8 @@ export default function Dashboard() {
       
       // LocalStorage'a sadece yetkili raporları kaydet (diğer sayfalar için)
       const authorizedReports = getAuthorizedReports(allReports);
-      localStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
-      localStorage.setItem('userReportsLastUpdate', Date.now().toString());
+      sessionStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
+      sessionStorage.setItem('userReportsLastUpdate', Date.now().toString());
       
       console.log('💾 Dashboard - Raporlar yüklendi, yetkili raporlar localStorage\'a kaydedildi');
       
@@ -274,10 +275,10 @@ export default function Dashboard() {
   // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
-      const name = localStorage.getItem('userName');
-      const role = localStorage.getItem('userRole');
-      const company = localStorage.getItem('companyName');
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
+      const name = sessionStorage.getItem('userName');
+      const role = sessionStorage.getItem('userRole');
+      const company = sessionStorage.getItem('companyName');
       
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
@@ -302,7 +303,7 @@ export default function Dashboard() {
   // Aktif kullanıcı sayısını API'den çek
   const fetchActiveUsers = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         console.log('Company ref bulunamadı, kullanıcı sayısı çekilemedi');
         return { totalUsers: 0, userCount: 0 };
@@ -348,7 +349,7 @@ export default function Dashboard() {
   // Sistem durumu test fonksiyonu
   const testSystemStatus = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         console.log('Company ref bulunamadı, sistem durumu test edilemedi');
         return 'Pasif';
@@ -403,7 +404,7 @@ export default function Dashboard() {
   // Connection bilgilerini localStorage'a kaydet
   const loadConnectionInfoToStorage = async () => {
     try {
-      const companyRef = localStorage.getItem('companyRef');
+      const companyRef = sessionStorage.getItem('companyRef');
       if (!companyRef) {
         console.log('Company ref bulunamadı, connection bilgileri yüklenemedi');
         return;
@@ -416,7 +417,7 @@ export default function Dashboard() {
 
       if (response.ok && data.status === 'success' && data.data) {
         const connectionInfo = data.data;
-        localStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
+        sessionStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
         console.log('✅ Connection bilgileri localStorage\'a kaydedildi:', connectionInfo);
         
         // Connection bilgileri yüklendikten sonra sistem durumunu test et
@@ -487,6 +488,7 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout title="İş Zekası Dashboard">
+      <SessionManager />
       <div className="space-y-8">
         {/* Erişim Reddedildi Uyarısı */}
         {accessDeniedInfo?.show && (

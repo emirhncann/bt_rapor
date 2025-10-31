@@ -53,15 +53,15 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok && data.status === 'success') {
-        // Başarılı giriş
-        localStorage.setItem('isLoggedIn', 'true');
-        localStorage.setItem('userEmail', data.user.email);
-        localStorage.setItem('userName', data.user.name);
-        localStorage.setItem('userId', data.user.id.toString());
-        localStorage.setItem('userPhone', data.user.phone || '');
-        localStorage.setItem('userRole', data.user.role);
-        localStorage.setItem('companyRef', data.user.company_ref || '');
-        localStorage.setItem('companyName', data.user.company_name || '');
+        // Başarılı giriş - sessionStorage kullan (tarayıcı kapanınca otomatik silinir)
+        sessionStorage.setItem('isLoggedIn', 'true');
+        sessionStorage.setItem('userEmail', data.user.email);
+        sessionStorage.setItem('userName', data.user.name);
+        sessionStorage.setItem('userId', data.user.id.toString());
+        sessionStorage.setItem('userPhone', data.user.phone || '');
+        sessionStorage.setItem('userRole', data.user.role);
+        sessionStorage.setItem('companyRef', data.user.company_ref || '');
+        sessionStorage.setItem('companyName', data.user.company_name || '');
         
         // Başarılı login tracking
         
@@ -303,7 +303,7 @@ export default function Login() {
                 <svg className="w-3 h-3 text-gray-600 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a1.994 1.994 0 01-1.414.586H7a4 4 0 01-4-4V7a4 4 0 014-4z" />
                 </svg>
-                <span className="text-sm font-medium text-gray-700">v1709</span>
+                <span className="text-sm font-medium text-gray-700">v0.1.1</span>
               </div>
             </div>
           </div>

@@ -66,8 +66,8 @@ export default function MalzemeDetayModal({
 
   // Cache'i temizleme fonksiyonu
   const clearCacheAndReload = () => {
-    const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
-    localStorage.removeItem(spCacheKey);
+    const spCacheKey = `sp_MalzemeDetayByItem2_${sessionStorage.getItem('companyRef')}`;
+    sessionStorage.removeItem(spCacheKey);
     console.log('🗑️ Cache temizlendi, yeni veri getiriliyor...');
     setSpCreated(false);
     checkAndCreateStoredProcedure();
@@ -77,8 +77,8 @@ export default function MalzemeDetayModal({
   useEffect(() => {
     if (isOpen && itemRef) {
       // Stored procedure kontrolünü localStorage'da cache'le
-      const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
-      const spExists = localStorage.getItem(spCacheKey) === 'true';
+      const spCacheKey = `sp_MalzemeDetayByItem2_${sessionStorage.getItem('companyRef')}`;
+      const spExists = sessionStorage.getItem(spCacheKey) === 'true';
       
       if (spExists) {
         console.log('✅ Stored procedure cache\'den mevcut, direkt veri getiriliyor...');
@@ -101,7 +101,7 @@ export default function MalzemeDetayModal({
     setError(null);
 
     try {
-      const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
+      const companyRef = sessionStorage.getItem('companyRef') || 'btRapor_2024';
 
       // Önce stored procedure'ın mevcut olup olmadığını kontrol et
       const checkSpQuery = `
@@ -128,8 +128,8 @@ export default function MalzemeDetayModal({
           console.log('✅ Stored procedure zaten mevcut, direkt veri getiriliyor...');
           setSpCreated(true);
           // Cache'i güncelle
-          const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
-          localStorage.setItem(spCacheKey, 'true');
+          const spCacheKey = `sp_MalzemeDetayByItem2_${sessionStorage.getItem('companyRef')}`;
+          sessionStorage.setItem(spCacheKey, 'true');
           await fetchMalzemeDetay();
         } else {
           console.log('🔧 Stored procedure mevcut değil, oluşturuluyor...');
@@ -150,7 +150,7 @@ export default function MalzemeDetayModal({
       // Loading state zaten checkAndCreateStoredProcedure tarafından yönetiliyor
 
       try {
-        const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
+        const companyRef = sessionStorage.getItem('companyRef') || 'btRapor_2024';
 
                  // Önce IdList user-defined table type'ını oluştur (eğer yoksa)
          try {
@@ -606,7 +606,7 @@ END
         
                  // Üçüncü sorgu: Stored procedure'ü parametrelerle çağır
          // Connection info'dan market_module kontrol et
-         const testConnectionInfo = JSON.parse(localStorage.getItem('connectionInfo') || '{}');
+         const testConnectionInfo = JSON.parse(sessionStorage.getItem('connectionInfo') || '{}');
          const testConnectionMarketModule = testConnectionInfo.market_module;
          const testHasMarketModule = testConnectionMarketModule === 1 ? 1 : 0;
          console.log('🔍 createStoredProcedure - connectionInfo.market_module:', testConnectionMarketModule);
@@ -614,7 +614,7 @@ END
          console.log('🔍 createStoredProcedure - testHasMarketModule sonucu:', testHasMarketModule);
          
          // Connection bilgilerinden GO database bilgilerini al
-         const connectionInfo = JSON.parse(localStorage.getItem('connectionInfo') || '{}');
+         const connectionInfo = JSON.parse(sessionStorage.getItem('connectionInfo') || '{}');
          const testGoDb = connectionInfo.logo_kurulum_db_name || connectionInfo.logoKurulumDbName || 'GOWINGS';
          const testGoSchema = connectionInfo.go_schema || connectionInfo.goSchema || 'dbo';
          // Test için varsayılan bir cari ref kullan (gerçek kullanımda prop'tan gelecek)
@@ -681,8 +681,8 @@ END
            if (errorText.includes('Could not find stored procedure') || 
                errorText.includes('sp_MalzemeDetayByItem')) {
              console.log('🔄 Procedure bulunamadı, cache temizleniyor ve tekrar deneniyor...');
-             const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
-             localStorage.removeItem(spCacheKey);
+             const spCacheKey = `sp_MalzemeDetayByItem2_${sessionStorage.getItem('companyRef')}`;
+             sessionStorage.removeItem(spCacheKey);
              setSpCreated(false);
              // Tekrar procedure oluşturmayı dene
              await checkAndCreateStoredProcedure();
@@ -698,8 +698,8 @@ END
         setSpCreated(true);
         
         // Cache'i güncelle
-        const spCacheKey = `sp_MalzemeDetayByItem2_${localStorage.getItem('companyRef')}`;
-        localStorage.setItem(spCacheKey, 'true');
+        const spCacheKey = `sp_MalzemeDetayByItem2_${sessionStorage.getItem('companyRef')}`;
+        sessionStorage.setItem(spCacheKey, 'true');
         
         // Stored procedure oluşturulduktan sonra detayları getir
         await fetchMalzemeDetay();
@@ -716,10 +716,10 @@ END
 
      try {
        // Bağlantı bilgilerini al
-       const connectionInfo = JSON.parse(localStorage.getItem('connectionInfo') || '{}');
+       const connectionInfo = JSON.parse(sessionStorage.getItem('connectionInfo') || '{}');
        const firmaNo = connectionInfo.firmaNo || connectionInfo.first_firma_no || '9';
        const donemNo = connectionInfo.donemNo || connectionInfo.first_donem_no || '1';
-       const companyRef = localStorage.getItem('companyRef') || 'btRapor_2024';
+       const companyRef = sessionStorage.getItem('companyRef') || 'btRapor_2024';
        
        // Market module parametresini connectionInfo'dan al (localStorage'da yok)
        const connectionMarketModule = connectionInfo.market_module;
