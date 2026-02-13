@@ -27,17 +27,17 @@ export default function ExcelCompare() {
     fetch('/animations/loading.json')
       .then(res => res.json())
       .then(data => setAnimationData(data))
-      .catch(err => console.log('Loading animation yüklenemedi:', err));
+      .catch(() => {});
     
     fetch('/animations/success.json')
       .then(res => res.json())
       .then(data => setSuccessAnimationData(data))
-      .catch(err => console.log('Success animation yüklenemedi:', err));
+      .catch(() => {});
     
     fetch('/animations/failed.json')
       .then(res => res.json())
       .then(data => setFailedAnimationData(data))
-      .catch(err => console.log('Failed animation yüklenemedi:', err));
+      .catch(() => {});
   });
 
   // localStorage'dan connection bilgilerini oku
@@ -48,17 +48,10 @@ export default function ExcelCompare() {
         try {
           const parsedInfo = JSON.parse(storedConnectionInfo);
           setConnectionInfo(parsedInfo);
-          console.log('🔗 Mevcut connection bilgileri yüklendi:', {
-            company_ref: parsedInfo.company_ref,
-            first_firma_no: parsedInfo.first_firma_no,
-            first_donem_no: parsedInfo.first_donem_no,
-            first_db_name: parsedInfo.first_db_name
-          });
         } catch (error) {
-          console.error('❌ Connection bilgileri parse edilemedi:', error);
+          // Connection bilgileri parse edilemedi
         }
       } else {
-        console.log('⚠️ localStorage\'da connectionInfo bulunamadı, API\'den yükleniyor...');
         // Eğer localStorage'da yoksa API'den yüklemeyi dene
         try {
           const companyRef = sessionStorage.getItem('companyRef');
@@ -70,15 +63,10 @@ export default function ExcelCompare() {
               const connectionInfo = data.data;
               sessionStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
               setConnectionInfo(connectionInfo);
-              console.log('✅ Connection bilgileri API\'den yüklendi:', connectionInfo);
-            } else {
-              console.log('⚠️ API\'den connection bilgileri alınamadı:', data.message);
             }
-          } else {
-            console.log('⚠️ companyRef bulunamadı');
           }
         } catch (error) {
-          console.error('❌ API\'den connection bilgileri yüklenirken hata:', error);
+          // API'den connection bilgileri yüklenirken hata
         }
       }
     };
@@ -141,7 +129,6 @@ export default function ExcelCompare() {
                 const uygulamaYaniti = String(invoice[headers[apColumnIndex]] || '').toLowerCase().trim();
                 if (uygulamaYaniti === 'red') {
                   rejectedCount++;
-                  console.log(`🚫 Fatura ${invoice['Fatura No']} "red" olduğu için karşılaştırmaya dahil edilmiyor`);
                   return false;
                 }
               }
@@ -151,7 +138,6 @@ export default function ExcelCompare() {
                 const hariciIptalDurumu = String(invoice[headers[auColumnIndex]] || '').trim();
                 if (hariciIptalDurumu && hariciIptalDurumu !== '') {
                   rejectedCount++;
-                  console.log(`🚫 Fatura ${invoice['Fatura No']} harici iptal durumu "${hariciIptalDurumu}" olduğu için karşılaştırmaya dahil edilmiyor`);
                   return false;
                 }
               }
@@ -202,9 +188,6 @@ export default function ExcelCompare() {
           AND FICHENO IN (${faturaList})
       `;
 
-      console.log('🔍 SQL Sorgusu:', sqlQuery);
-      console.log('📊 Fatura sayısı:', faturaNumbers.length);
-
       // Güvenli proxy request gönder
       const response = await sendSecureProxyRequest(
         companyRef,
@@ -223,8 +206,6 @@ export default function ExcelCompare() {
 
       const data = await response.json();
       
-      console.log('📊 LOGO yanıtı:', data);
-      
       // Proxy'den gelen yanıtı işle
       let logoInvoices = [];
       if (Array.isArray(data)) {
@@ -236,11 +217,8 @@ export default function ExcelCompare() {
       } else if (data.status === 'success' && data.data) {
         logoInvoices = Array.isArray(data.data) ? data.data : [];
       } else {
-        console.warn('Beklenmeyen veri formatı:', data);
         logoInvoices = [];
       }
-
-      console.log('🔍 LOGO ham veriler (ilk 3 kayıt):', logoInvoices.slice(0, 3));
 
       // LOGO verilerini işle
       const processedInvoices = logoInvoices.map((row: any, index: number) => {
@@ -252,23 +230,11 @@ export default function ExcelCompare() {
           tarih: row.tarih || row.DATE_
         };
         
-        // İlk 3 kaydı detaylı log'la
-        if (index < 3) {
-          console.log(`🔍 LOGO ${index + 1}. kayıt:`, {
-            ham: row,
-            islenmis: processed,
-            tutar_ham: row.toplam_tutar || row.TOPLAM_TUTAR,
-            kdv_ham: row.kdv_toplami || row.KDV_TOPLAMI,
-            trnet_ham: row.tr_net || row.TRNET
-          });
-        }
-        
         return processed;
       });
 
       return processedInvoices;
     } catch (error) {
-      console.error('❌ LOGO veritabanı hatası:', error);
       throw error;
     }
   };
@@ -276,6 +242,7 @@ export default function ExcelCompare() {
   // Yardımcı: tarihi YYYY-MM-DD formatına normalize eder
   const normalizeDate = (value: any): string | null => {
     if (value === null || value === undefined || value === '') return null;
+    
     // Excel seri numarası (sayısal) olabilir
     if (typeof value === 'number') {
       const excelEpoch = new Date(Date.UTC(1899, 11, 30));
@@ -286,9 +253,46 @@ export default function ExcelCompare() {
       const day = String(d.getUTCDate()).padStart(2, '0');
       return `${y}-${m}-${day}`;
     }
-    // Tarih string'i
+    
+    // String ise önce farklı formatları kontrol et
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      
+      // Zaten YYYY-MM-DD formatında ise direkt dön
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return trimmed;
+      }
+      
+      // DD.MM.YYYY formatı (Türkçe tarih formatı)
+      const turkishDateMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+      if (turkishDateMatch) {
+        const [, day, month, year] = turkishDateMatch;
+        return `${year}-${month}-${day}`;
+      }
+      
+      // DD/MM/YYYY formatı
+      const slashDateMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+      if (slashDateMatch) {
+        const [, day, month, year] = slashDateMatch;
+        return `${year}-${month}-${day}`;
+      }
+      
+      // ISO formatı veya datetime string (2024-01-01T00:00:00 gibi)
+      if (trimmed.includes('T') || trimmed.includes(' ')) {
+        const datePart = trimmed.split(/[T ]/)[0];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+          return datePart;
+        }
+      }
+    }
+    
+    // Date objesi veya diğer formatlar için Date constructor kullan
     const d = new Date(value);
-    if (isNaN(d.getTime())) return null;
+    if (isNaN(d.getTime())) {
+      return null;
+    }
+    
+    // Yerel saat dilimini kullanarak normalize et
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -301,26 +305,6 @@ export default function ExcelCompare() {
     const mismatchedInvoices: any[] = [];
     let exactMatches = 0;
 
-    // Excel verilerinden örnekler log'la
-    console.log('🔍 Excel verilerinden örnekler (ilk 3 kayıt):');
-    excelInvoices.slice(0, 3).forEach((invoice, index) => {
-      const toplamTutar = parseFloat(invoice['Toplam Tutar'] || 0);
-      const kdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
-      const paraBirimi = invoice['Para Birimi'] || 'TRY';
-      
-      console.log(`   ${index + 1}. Excel kaydı:`, {
-        faturaNo: invoice['Fatura No'],
-        toplamTutar: toplamTutar,
-        kdvToplami: kdvToplami,
-        paraBirimi: paraBirimi,
-        isDovizli: paraBirimi !== 'TRY',
-        toplamTutar_ham: invoice['Toplam Tutar'],
-        kdvToplami_ham: invoice['KDV Toplamı'],
-        toplamTutar_tipi: typeof toplamTutar,
-        kdvToplami_tipi: typeof kdvToplami
-      });
-    });
-
     excelInvoices.forEach((invoice) => {
       const faturaNo = invoice['Fatura No']?.toString().trim();
       if (!faturaNo || faturaNo === '') return;
@@ -329,7 +313,10 @@ export default function ExcelCompare() {
       const excelKdvToplami = parseFloat(invoice['KDV Toplamı'] || 0);
       const paraBirimi = invoice['Para Birimi'] || 'TRY';
       const isDovizli = paraBirimi !== 'TRY';
-      const excelFaturaTarihi = normalizeDate(invoice['Fatura Tarihi']);
+      
+      // Tarih normalizasyonu - debug için ham değeri de log'la
+      const excelFaturaTarihiHam = invoice['Fatura Tarihi'];
+      const excelFaturaTarihi = normalizeDate(excelFaturaTarihiHam);
 
       // LOGO'da bu fatura numarası var mı?
       const logoInvoice = logoInvoices.find(li => li.fatura_no === faturaNo);
@@ -357,19 +344,29 @@ export default function ExcelCompare() {
         let kdvUyumlu = true; // Dövizli işlemlerde KDV kontrol etmiyoruz
         let logoKarsilastirmaTutari = 0;
         let logoKdvTutari = 0;
-        const logoFaturaTarihi = normalizeDate(logoInvoice.tarih);
+        
+        // Tarih normalizasyonu - debug için ham değeri de log'la
+        const logoFaturaTarihiHam = logoInvoice.tarih;
+        const logoFaturaTarihi = normalizeDate(logoFaturaTarihiHam);
         const tarihUyumlu = !!excelFaturaTarihi && !!logoFaturaTarihi && excelFaturaTarihi === logoFaturaTarihi;
+        
+        // Tarih uyumsuzluğu durumunda detaylı log
+        if (!tarihUyumlu && excelFaturaTarihi && logoFaturaTarihi) {
+          console.warn(`⚠️ Tarih uyumsuzluğu - Fatura ${faturaNo}:`);
+          console.warn(`   Excel ham: "${excelFaturaTarihiHam}" (tip: ${typeof excelFaturaTarihiHam}) → normalize: "${excelFaturaTarihi}"`);
+          console.warn(`   LOGO ham: "${logoFaturaTarihiHam}" (tip: ${typeof logoFaturaTarihiHam}) → normalize: "${logoFaturaTarihi}"`);
+        }
 
         if (isDovizli) {
           // Dövizli işlem - TRNET ile karşılaştır
           logoKarsilastirmaTutari = logoInvoice.tr_net;
-          tutarUyumlu = Math.abs(logoKarsilastirmaTutari - excelToplamTutar) < 0.001;
+          tutarUyumlu = Math.abs(logoKarsilastirmaTutari - excelToplamTutar) < 0.01;
           console.log(`💱 Dövizli fatura ${faturaNo} (${paraBirimi}): Excel ${excelToplamTutar} ↔ LOGO TRNET ${logoKarsilastirmaTutari}`);
         } else {
           // TRY işlem - NETTOTAL ve TOTALVAT ile karşılaştır
           logoKarsilastirmaTutari = logoInvoice.toplam_tutar;
           logoKdvTutari = logoInvoice.kdv_toplami;
-          tutarUyumlu = Math.abs(logoKarsilastirmaTutari - excelToplamTutar) < 0.001;
+          tutarUyumlu = Math.abs(logoKarsilastirmaTutari - excelToplamTutar) < 0.01;
           kdvUyumlu = Math.abs(logoKdvTutari - excelKdvToplami) < 0.001;
           console.log(`₺ TRY fatura ${faturaNo}: Excel Tutar ${excelToplamTutar} ↔ LOGO NETTOTAL ${logoKarsilastirmaTutari}, Excel KDV ${excelKdvToplami} ↔ LOGO TOTALVAT ${logoKdvTutari}`);
         }
@@ -381,14 +378,17 @@ export default function ExcelCompare() {
         console.log(`🔍 Fatura ${faturaNo} karşılaştırması:`);
         console.log(`   Para Birimi: ${paraBirimi} (Dövizli: ${isDovizli})`);
         console.log(`   Excel Tutar: ${excelToplamTutar} | LOGO ${isDovizli ? 'TRNET' : 'NETTOTAL'}: ${logoKarsilastirmaTutari} | Fark: ${tutarFarki}`);
-        if (!isDovizli) {
+       /* if (!isDovizli) {
           console.log(`   Excel KDV: ${excelKdvToplami} | LOGO TOTALVAT: ${logoKdvTutari} | Fark: ${kdvFarki}`);
         } else {
           console.log(`   Excel KDV: ${excelKdvToplami} | LOGO KDV: -`);
         }
         console.log(`   Tarih (Excel vs LOGO): ${excelFaturaTarihi || '-'} ↔ ${logoFaturaTarihi || '-'} | Uyum: ${tarihUyumlu}`);
+        if (excelFaturaTarihi && logoFaturaTarihi && !tarihUyumlu) {
+          console.log(`   ⚠️ Tarih farkı detayı: Excel ham="${excelFaturaTarihiHam}", LOGO ham="${logoFaturaTarihiHam}"`);
+        }
         console.log(`   Tutar Uyumlu: ${tutarUyumlu} | KDV Uyumlu: ${kdvUyumlu} (${isDovizli ? 'dövizli - KDV kontrol edilmiyor' : 'TRY'})`);
-        
+        */
         if (tutarUyumlu && kdvUyumlu && tarihUyumlu) {
           // Tam uyumlu
           exactMatches++;

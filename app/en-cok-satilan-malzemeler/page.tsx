@@ -37,8 +37,8 @@ export default function EnCokSatilanMalzemeler() {
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Akordiyon state'i
-  const [isParametersOpen, setIsParametersOpen] = useState(true);
+  // Modal state'i
+  const [isParametersOpen, setIsParametersOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(1); // 1:Tarih, 2:Analiz, 3:Özel Kodlar, 4:Görüntüleme
 
   const goNextStep = () => setCurrentStep(prev => Math.min(prev + 1, 4));
@@ -109,6 +109,18 @@ export default function EnCokSatilanMalzemeler() {
       }
       return { ...prev, [codeType]: [...currentArr, value] };
     });
+  };
+
+  // Özel kod dropdown arama ve aç/kapa durumları
+  const [openFilterDropdowns, setOpenFilterDropdowns] = useState<Record<string, boolean>>({});
+  const [filterSearchTerms, setFilterSearchTerms] = useState<Record<string, string>>({});
+
+  const toggleFilterDropdown = (codeType: string) => {
+    setOpenFilterDropdowns(prev => ({ ...prev, [codeType]: !prev[codeType] }));
+  };
+
+  const setFilterSearch = (codeType: string, value: string) => {
+    setFilterSearchTerms(prev => ({ ...prev, [codeType]: value }));
   };
 
   // Dropdown çoklu seçim değişimi
@@ -770,6 +782,26 @@ EXEC sp_executesql
     }
   }, [isAuthenticated, hasAccess, isCheckingAccess]);
 
+  // ESC tuşu ile modal kapatma
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isParametersOpen) {
+        setIsParametersOpen(false);
+      }
+    };
+
+    if (isParametersOpen) {
+      document.addEventListener('keydown', handleEscape);
+      // Modal açıkken body scroll'unu engelle
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isParametersOpen]);
+
   if (isCheckingAuth || isCheckingAccess) {
     return (
       <DashboardLayout title="En Çok / En Az Satılan Malzemeler">
@@ -817,271 +849,249 @@ EXEC sp_executesql
           </div>
         </div>
 
-        {/* Parametreler - Akordiyon */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden transition-all duration-300">
-          <button
-            onClick={() => setIsParametersOpen(!isParametersOpen)}
-            className="w-full p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-sm">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <h3 className="text-xl font-bold text-gray-900">Rapor Parametreleri</h3>
-                <p className="text-sm text-gray-500 mt-1">Tarih, analiz ve görüntüleme ayarları</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {hasFetched && (
-                <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                  Rapor Hazır
-                </span>
-              )}
-              <svg
-                className={`w-6 h-6 text-gray-500 transition-transform duration-300 ${
-                  isParametersOpen ? 'transform rotate-180' : ''
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+        {/* Parametreler Butonu */}
+        <button
+          onClick={() => setIsParametersOpen(true)}
+          className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg shadow-lg p-4 flex items-center justify-between transition-all duration-200"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
             </div>
-          </button>
-          
-          {isParametersOpen && (
-            <div className="border-t border-gray-200">
-              <div className="p-6 space-y-6 bg-gradient-to-b from-gray-50 to-white">
-                {/* Adım 1: Tarih Aralığı */}
-                {currentStep === 1 && (
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <h4 className="text-base font-semibold text-gray-900">1. Tarih Aralığı</h4>
+            <div className="text-left">
+              <h3 className="text-lg font-bold">Rapor Parametreleri</h3>
+              <p className="text-sm text-red-100">Filtreleri düzenlemek için tıklayın</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {hasFetched && (
+              <span className="px-3 py-1 bg-green-500 text-white text-xs font-medium rounded-full">
+                Rapor Hazır
+              </span>
+            )}
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </button>
+
+        {/* Modal Overlay */}
+        {isParametersOpen && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setIsParametersOpen(false);
+              }
+            }}
+          >
+            <div 
+              className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Başlangıç Tarihi</label>
-                      <DatePicker 
-                        value={startDate}
-                        onChange={(date) => {
-                          setStartDate(formatDateToYMD(date));
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Bitiş Tarihi</label>
-                      <DatePicker 
-                        value={endDate}
-                        onChange={(date) => setEndDate(formatDateToYMD(date))}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-6">
-                    <button type="button" onClick={goNextStep} className="px-6 py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700">Devam Et</button>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Rapor Parametreleri</h3>
+                    <p className="text-sm text-red-100">Tarih, analiz ve görüntüleme ayarları</p>
                   </div>
                 </div>
-                )}
+                <button
+                  onClick={() => setIsParametersOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/20 transition-colors"
+                >
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
 
-                {/* Adım 2: Analiz Seçenekleri */}
-                {currentStep === 2 && (
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
-                    <h4 className="text-base font-semibold text-gray-900">2. Analiz Seçenekleri</h4>
-                  </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-3">Analiz Kriteri</label>
-                      <div className="inline-flex bg-gray-50 rounded-lg p-1 shadow-sm border border-gray-200">
-                        <button
-                          type="button"
-                          onClick={() => setOlcu('MIKTAR')}
-                          className={`px-5 py-2.5 text-sm font-semibold rounded-md transition-all duration-200 ${
-                            olcu === 'MIKTAR'
-                              ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md'
-                              : 'text-gray-700 hover:text-gray-900 hover:bg-white'
-                          }`}
-                        >
-                          Miktar Bazlı
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setOlcu('TUTAR')}
-                          className={`px-5 py-2.5 text-sm font-semibold rounded-md transition-all duration-200 ${
-                            olcu === 'TUTAR'
-                              ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md'
-                              : 'text-gray-700 hover:text-gray-900 hover:bg-white'
-                          }`}
-                        >
-                          Tutar Bazlı
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-3">Sıralama Türü</label>
-                      <div className="inline-flex bg-gray-50 rounded-lg p-1 shadow-sm border border-gray-200">
-                        <button
-                          type="button"
-                          onClick={() => setSirala('DESC')}
-                          className={`px-5 py-2.5 text-sm font-semibold rounded-md transition-all duration-200 ${
-                            sirala === 'DESC'
-                              ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md'
-                              : 'text-gray-700 hover:text-gray-900 hover:bg-white'
-                          }`}
-                        >
-                          En Çok Satılan
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSirala('ASC')}
-                          className={`px-5 py-2.5 text-sm font-semibold rounded-md transition-all duration-200 ${
-                            sirala === 'ASC'
-                              ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md'
-                              : 'text-gray-700 hover:text-gray-900 hover:bg-white'
-                          }`}
-                        >
-                          En Az Satılan
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-3">Satış Türü</label>
-                      <div className="space-y-2">
-                        <label className="flex items-center bg-gray-50 rounded-lg p-3 border border-gray-200 hover:bg-white hover:shadow-sm transition-all cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={selectedTrCodes.includes('7')}
-                            onChange={() => toggleTrCode('7')}
-                            className="rounded border-gray-300 text-red-600 focus:ring-red-500 focus:ring-2 w-4 h-4"
-                          />
-                          <span className="ml-3 text-sm font-medium text-gray-700">Perakende Satış</span>
-                        </label>
-                        <label className="flex items-center bg-gray-50 rounded-lg p-3 border border-gray-200 hover:bg-white hover:shadow-sm transition-all cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={selectedTrCodes.includes('8')}
-                            onChange={() => toggleTrCode('8')}
-                            className="rounded border-gray-300 text-red-600 focus:ring-red-500 focus:ring-2 w-4 h-4"
-                          />
-                          <span className="ml-3 text-sm font-medium text-gray-700">Toptan Satış</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-between mt-6">
-                    <button type="button" onClick={goPrevStep} className="px-4 py-2.5 bg-gray-100 text-gray-800 rounded-lg font-medium hover:bg-gray-200">Geri</button>
-                    <button type="button" onClick={goNextStep} className="px-6 py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700">Devam Et</button>
-                  </div>
-                </div>
-                )}
-
-                {/* Adım 3: Özel Kodlar (Dropdown) */}
-                {currentStep === 3 && (
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
-                        <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h10M7 12h8m-8 5h6" />
-                        </svg>
-                      </div>
-                      <h4 className="text-base font-semibold text-gray-900">3. Özel Kodlar</h4>
-                    </div>
-                    <button type="button" onClick={() => setSelectedFilters({})} className="text-sm px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Tümünü Temizle</button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {codeTypes.map(ct => {
-                      const options = filterCodes.filter(fc => fc.ALAN === ct.key);
-                      const selected = selectedFilters[ct.key] || [];
-                      if (!options || options.length === 0) return null;
-                      return (
-                        <div key={ct.key}>
-                          <label className="block text-sm font-medium text-gray-800 mb-2">{ct.label}</label>
-                          <select
-                            multiple
-                            value={selected}
-                            onChange={(e) => {
-                              const vals = Array.from(e.target.selectedOptions).map(o => o.value);
-                              handleMultiSelectChange(ct.key, vals);
-                            }}
-                            className="w-full min-h-[3rem] px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
-                          >
-                            {options.map((opt: any) => (
-                              <option key={`${ct.key}-${opt.KOD}`} value={opt.KOD}>
-                                {opt.KOD}{opt.AÇIKLAMA ? ` - ${opt.AÇIKLAMA}` : ''}
-                              </option>
-                            ))}
-                          </select>
-                          {selected.length > 0 && (
-                            <div className="mt-2 text-xs text-gray-600">{selected.length} seçim yapıldı</div>
-                          )}
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                <div className="space-y-3">
+                  {/* Üst Satır: Tüm Temel Filtreler */}
+                  <div className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
+                      {/* Tarih Aralığı */}
+                      <div className="lg:col-span-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Tarih Aralığı</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-0.5">Başlangıç</label>
+                            <DatePicker value={startDate} onChange={(d) => setStartDate(formatDateToYMD(d))} />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-0.5">Bitiş</label>
+                            <DatePicker value={endDate} onChange={(d) => setEndDate(formatDateToYMD(d))} />
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between mt-6">
-                    <button type="button" onClick={goPrevStep} className="px-4 py-2.5 bg-gray-100 text-gray-800 rounded-lg font-medium hover:bg-gray-200">Geri</button>
-                    <button type="button" onClick={goNextStep} className="px-6 py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700">Devam Et</button>
-                  </div>
-                </div>
-                )}
+                      </div>
 
-                {/* Adım 4: Görüntüleme Seçenekleri */}
-                {currentStep === 4 && (
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                      </svg>
+                      {/* Analiz Kriteri */}
+                      <div className="lg:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Kriter</label>
+                        <div className="inline-flex bg-gray-50 rounded-md p-0.5 border border-gray-200 w-full">
+                          <button type="button" onClick={() => setOlcu('MIKTAR')} className={`flex-1 px-2 py-1.5 text-xs font-medium rounded ${olcu === 'MIKTAR' ? 'bg-red-600 text-white' : 'text-gray-700 hover:bg-white'}`}>Miktar</button>
+                          <button type="button" onClick={() => setOlcu('TUTAR')} className={`flex-1 px-2 py-1.5 text-xs font-medium rounded ${olcu === 'TUTAR' ? 'bg-red-600 text-white' : 'text-gray-700 hover:bg-white'}`}>Tutar</button>
+                        </div>
+                      </div>
+
+                      {/* Sıralama */}
+                      <div className="lg:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Sıralama</label>
+                        <div className="inline-flex bg-gray-50 rounded-md p-0.5 border border-gray-200 w-full">
+                          <button type="button" onClick={() => setSirala('DESC')} className={`flex-1 px-2 py-1.5 text-xs font-medium rounded ${sirala === 'DESC' ? 'bg-red-600 text-white' : 'text-gray-700 hover:bg-white'}`}>En Çok</button>
+                          <button type="button" onClick={() => setSirala('ASC')} className={`flex-1 px-2 py-1.5 text-xs font-medium rounded ${sirala === 'ASC' ? 'bg-red-600 text-white' : 'text-gray-700 hover:bg-white'}`}>En Az</button>
+                        </div>
+                      </div>
+
+                      {/* Satış Türü */}
+                      <div className="lg:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Satış Türü</label>
+                        <div className="flex gap-1.5">
+                          <label className="flex-1 flex items-center bg-gray-50 rounded-md p-1.5 border border-gray-200 cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" checked={selectedTrCodes.includes('7')} onChange={() => toggleTrCode('7')} className="rounded border-gray-300 text-red-600 focus:ring-red-500 w-3.5 h-3.5" />
+                            <span className="ml-1.5 text-xs font-medium text-gray-700">Perakende</span>
+                          </label>
+                          <label className="flex-1 flex items-center bg-gray-50 rounded-md p-1.5 border border-gray-200 cursor-pointer hover:bg-gray-100">
+                            <input type="checkbox" checked={selectedTrCodes.includes('8')} onChange={() => toggleTrCode('8')} className="rounded border-gray-300 text-red-600 focus:ring-red-500 w-3.5 h-3.5" />
+                            <span className="ml-1.5 text-xs font-medium text-gray-700">Toptan</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Kayıt Sayısı */}
+                      <div className="lg:col-span-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Kayıt</label>
+                        <select value={topCount} onChange={(e) => setTopCount(Number(e.target.value))} className="w-full px-2 py-1.5 bg-gray-50 border border-gray-300 rounded-md focus:ring-1 focus:ring-red-500 text-xs">
+                          <option value={20}>20</option>
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
+                          <option value={200}>200</option>
+                        </select>
+                      </div>
                     </div>
-                    <h4 className="text-base font-semibold text-gray-900">4. Görüntüleme Seçenekleri</h4>
                   </div>
-                  <div className="max-w-xs">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Gösterilecek Kayıt Sayısı</label>
-                    <select
-                      value={topCount}
-                      onChange={(e) => setTopCount(Number(e.target.value))}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm font-semibold shadow-sm transition-all duration-200 hover:border-gray-400"
-                    >
-                      <option value={20}>20 Kayıt</option>
-                      <option value={50}>50 Kayıt</option>
-                      <option value={100}>100 Kayıt</option>
-                      <option value={200}>200 Kayıt</option>
-                    </select>
-                  </div>
-                  <div className="flex justify-between mt-6">
-                    <button type="button" onClick={goPrevStep} className="px-4 py-2.5 bg-gray-100 text-gray-800 rounded-lg font-medium hover:bg-gray-200">Geri</button>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={async () => { await handleFetchReport(); setIsParametersOpen(false); }}
-                      className="px-8 py-2.5 bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold rounded-lg shadow-lg hover:from-red-700 hover:to-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Rapor Hazırlanıyor...' : 'Raporu Getir ve Kapat'}
-                    </button>
+
+                  {/* Alt Satır: Özel Kodlar */}
+                  <div className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-semibold text-gray-900">Özel Kodlar</h4>
+                      <button type="button" onClick={() => setSelectedFilters({})} className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors">Temizle</button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
+                      {codeTypes.map(ct => {
+                        const options = filterCodes.filter(fc => fc.ALAN === ct.key);
+                        const selected = selectedFilters[ct.key] || [];
+                        if (!options || options.length === 0) return null;
+                        const term = (filterSearchTerms[ct.key] || '').toLocaleLowerCase('tr-TR');
+                        const filtered = term
+                          ? options.filter((opt: any) =>
+                              (opt.KOD || '').toLocaleLowerCase('tr-TR').includes(term) ||
+                              (opt.AÇIKLAMA || '').toLocaleLowerCase('tr-TR').includes(term)
+                            )
+                          : options;
+                        const isOpen = !!openFilterDropdowns[ct.key];
+                        return (
+                          <div key={ct.key} className="relative">
+                            <label className="block text-[10px] font-medium text-gray-600 mb-1">{ct.label}</label>
+                            <button
+                              type="button"
+                              onClick={() => toggleFilterDropdown(ct.key)}
+                              className="w-full flex items-center justify-between px-2 py-1 bg-gray-50 border border-gray-300 rounded text-left text-xs hover:bg-white transition-colors"
+                            >
+                              <span className="truncate text-xs">
+                                {selected.length > 0 ? `${selected.length}` : '-'}
+                              </span>
+                              <svg className={`w-3 h-3 text-gray-500 transition-transform flex-shrink-0 ml-1 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+
+                            {isOpen && (
+                              <div className="absolute z-50 mt-0.5 w-full bg-white border border-gray-200 rounded shadow-lg">
+                                <div className="p-1 border-b border-gray-200">
+                                  <input
+                                    type="text"
+                                    value={filterSearchTerms[ct.key] || ''}
+                                    onChange={(e) => setFilterSearch(ct.key, e.target.value)}
+                                    placeholder="Ara..."
+                                    className="w-full px-2 py-1 bg-gray-50 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-red-500"
+                                  />
+                                </div>
+                                <div className="max-h-40 overflow-auto py-0.5">
+                                  {filtered.length === 0 && (
+                                    <div className="px-2 py-1 text-xs text-gray-500">Sonuç yok</div>
+                                  )}
+                                  {filtered.map((opt: any) => {
+                                    const checked = selected.includes(opt.KOD);
+                                    return (
+                                      <label key={`${ct.key}-${opt.KOD}`} className="flex items-center px-2 py-1 gap-1 hover:bg-gray-50 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => toggleFilterValue(ct.key, opt.KOD)}
+                                          className="w-3 h-3 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                        />
+                                        <span className="text-xs text-gray-800">
+                                          <span className="font-medium">{opt.KOD}</span>
+                                          {opt.AÇIKLAMA && <span className="text-gray-500 ml-1">- {opt.AÇIKLAMA}</span>}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex items-center justify-between px-2 py-1 border-t border-gray-200 bg-gray-50">
+                                  <button type="button" onClick={() => setSelectedFilters(prev => ({ ...prev, [ct.key]: [] }))} className="text-[10px] text-gray-600 hover:text-gray-800">Temizle</button>
+                                  <button type="button" onClick={() => toggleFilterDropdown(ct.key)} className="text-[10px] text-red-600 hover:text-red-700 font-semibold">Tamam</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setIsParametersOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={clearCacheAndReload}
+                  disabled={loading}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  Yeniden Yükle
+                </button>
+                <button
+                  onClick={async () => { 
+                    await handleFetchReport(); 
+                    setIsParametersOpen(false); 
+                  }}
+                  disabled={loading}
+                  className="px-6 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {loading ? 'Yükleniyor...' : 'Raporu Getir'}
+                </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Aktif Filtreler (Envanter raporundaki gibi) */}
         {hasFetched && Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (

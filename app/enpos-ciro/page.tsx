@@ -24,6 +24,12 @@ export default function EnposCiro() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   
+  // Kredi kartı detayları için state'ler
+  const [krediKartiDetaylari, setKrediKartiDetaylari] = useState<any[]>([]);
+  const [bankalar, setBankalar] = useState<{[key: string]: string}>({});
+  const [showKrediKartiDetaylari, setShowKrediKartiDetaylari] = useState(false);
+  const [selectedSubeNo, setSelectedSubeNo] = useState<number | null>(null);
+  
   const router = useRouter();
   
   // Animation data'ları yükleyelim
@@ -126,6 +132,51 @@ export default function EnposCiro() {
         .then(res => res.json())
         .then(data => setFailedAnimationData(data))
         .catch(err => console.log('Failed animation yüklenemedi:', err));
+    }
+  }, [isAuthenticated]);
+
+  // Banka listesini yükle
+  useEffect(() => {
+    const fetchBankalar = async () => {
+      try {
+        const response = await fetch('https://api.btrapor.com/bankalar');
+        const bankaData = await response.json();
+        
+        if (bankaData.status === 'success' && Array.isArray(bankaData.data)) {
+          const bankaMap: {[key: string]: string} = {};
+          bankaData.data.forEach((banka: any) => {
+            const bankaKodu = banka.banka_kodu;
+            const bankaAdi = banka.banka_adi;
+            
+            // Orijinal formatı ekle (örn: "064")
+            bankaMap[bankaKodu] = bankaAdi;
+            
+            // Eğer başında sıfır varsa, sıfırı kaldırarak da ekle (örn: "64")
+            if (bankaKodu.startsWith('0') && bankaKodu.length > 1) {
+              const trimmedKodu = bankaKodu.replace(/^0+/, '');
+              if (trimmedKodu !== bankaKodu) {
+                bankaMap[trimmedKodu] = bankaAdi;
+              }
+            }
+            
+            // Eğer başında sıfır yoksa, başına sıfır ekleyerek de ekle (örn: "064")
+            if (!bankaKodu.startsWith('0') && bankaKodu.length <= 2) {
+              const paddedKodu = bankaKodu.padStart(3, '0');
+              if (paddedKodu !== bankaKodu) {
+                bankaMap[paddedKodu] = bankaAdi;
+              }
+            }
+          });
+          setBankalar(bankaMap);
+          console.log('✅ Banka listesi yüklendi:', bankaData.data.length, 'banka,', Object.keys(bankaMap).length, 'eşleşme formatı');
+        }
+      } catch (error) {
+        console.error('❌ Banka listesi yüklenirken hata:', error);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchBankalar();
     }
   }, [isAuthenticated]);
 
@@ -667,6 +718,147 @@ GROUP BY B.Sube_No,D.NAME
       const totalAmount = finalData.reduce((sum: number, item: any) => 
         sum + (safeParseFloat(item['TOPLAM']) || 0), 0);
       
+      // İkinci sorgu: Kredi kartı detaylarını çek
+      console.log('🔄 Kredi kartı detayları sorgusu başlatılıyor...');
+      
+      const krediKartiDetaySQL = `
+        SELECT 
+          B.Sube_No,
+          D.NAME,
+          o.Tus_No,
+          K.Info,
+          o.AcquirerID,
+          SUM(o.TUTAR) AS Tutar
+        FROM odeme o
+        LEFT JOIN belge b ON o.Belge_ID = b.belge_ID
+        JOIN POS_KREDI K ON o.Tus_No = k.Tus_No
+        LEFT JOIN ${firstDbName}..LK_${firmaNo}_DIVDEFAULTS DD ON B.Sube_No = dd.SHOPNO
+        LEFT JOIN ${firstDbName}..LK_${firmaNo}_CAPIDIVPARAMS CD ON CD._VALUE = DD.OFFICECODE AND _INDEX = 1
+        LEFT JOIN ${logoKurulumDbName}..L_CAPIDIV D ON CD._VALUE = D.NR AND D.FIRMNR = ${firmaNo}
+        WHERE B.Belge_Tipi IN ('EAR', 'FIS', 'FAT', 'EFA') 
+          AND B.Iptal = 0 
+          AND B.BELGETARIH BETWEEN '${formatToSQLDate(startYYMMDD)} 00:00:00.000' 
+          AND '${formatToSQLDate(endYYMMDD)} 23:59:59.000'
+        GROUP BY B.Sube_No, D.NAME, o.Tus_No, K.Info, o.AcquirerID
+      `;
+
+      console.log('📝 Kredi Kartı Detay SQL Sorgusu:', krediKartiDetaySQL);
+
+      try {
+        let krediKartiResponse: Response | undefined;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            console.log(`🔄 Kredi kartı detay sorgusu deneme ${attempt}/${maxRetries}...`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), isMobile ? 20000 : 15000);
+            
+            krediKartiResponse = await sendSecureProxyRequest(
+              companyRef,
+              'enpos_db_key',
+              {
+                query: krediKartiDetaySQL
+              }
+            );
+            
+            clearTimeout(timeoutId);
+            
+            if (krediKartiResponse.ok) {
+              console.log(`✅ Kredi kartı detay sorgusu ${attempt}. denemede başarılı`);
+              break;
+            } else if (attempt === maxRetries) {
+              console.error(`❌ Kredi kartı detay sorgusu tüm denemeler başarısız - HTTP ${krediKartiResponse.status}`);
+            } else {
+              console.log(`⚠️ Kredi kartı detay sorgusu deneme ${attempt} başarısız, tekrar denenecek...`);
+              await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100));
+            }
+          } catch (error: any) {
+            if (error.name === 'AbortError') {
+              console.error(`❌ Kredi kartı detay sorgusu timeout (deneme ${attempt})`);
+              if (attempt === maxRetries) {
+                console.warn('⚠️ Kredi kartı detayları alınamadı, devam ediliyor...');
+                break;
+              }
+            } else if (attempt === maxRetries) {
+              console.error(`❌ Kredi kartı detay sorgusu tüm denemeler başarısız:`, error);
+              console.warn('⚠️ Kredi kartı detayları alınamadı, devam ediliyor...');
+              break;
+            } else {
+              console.log(`⚠️ Kredi kartı detay sorgusu deneme ${attempt} hata aldı, tekrar denenecek:`, error);
+              await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100));
+            }
+          }
+        }
+
+        if (krediKartiResponse && krediKartiResponse.ok) {
+          const krediKartiResponseText = await krediKartiResponse.text();
+          let krediKartiJsonData;
+          
+          try {
+            krediKartiJsonData = JSON.parse(krediKartiResponseText);
+            
+            let krediKartiFinalData: any[] = [];
+            if (Array.isArray(krediKartiJsonData)) {
+              krediKartiFinalData = krediKartiJsonData;
+            } else if (krediKartiJsonData && Array.isArray(krediKartiJsonData.data)) {
+              krediKartiFinalData = krediKartiJsonData.data;
+            } else if (krediKartiJsonData && Array.isArray(krediKartiJsonData.recordset)) {
+              krediKartiFinalData = krediKartiJsonData.recordset;
+            }
+            
+            // Banka adlarını eşleştir
+            const detaylarWithBanka = krediKartiFinalData.map((item: any) => {
+              const acquirerID = String(item.AcquirerID || '0');
+              
+              let bankaAdi = '';
+              
+              if (acquirerID === '0') {
+                // AcquirerID 0 ise özel kartlar (AVANTAJ KART gibi)
+                bankaAdi = item.Info || 'Diğer Kartlar';
+              } else {
+                // Önce direkt eşleşmeyi dene (örn: "64")
+                bankaAdi = bankalar[acquirerID];
+                
+                // Eğer bulunamadıysa, 3 haneli formatı dene (örn: "064")
+                if (!bankaAdi) {
+                  const paddedID = acquirerID.padStart(3, '0');
+                  bankaAdi = bankalar[paddedID];
+                }
+                
+                // Hala bulunamadıysa, başındaki sıfırları kaldırarak dene (örn: "064" -> "64")
+                if (!bankaAdi && acquirerID.startsWith('0')) {
+                  const trimmedID = acquirerID.replace(/^0+/, '');
+                  bankaAdi = bankalar[trimmedID];
+                }
+                
+                // Hiçbir eşleşme yoksa banka kodu göster
+                if (!bankaAdi) {
+                  bankaAdi = `Banka Kodu: ${acquirerID}`;
+                }
+              }
+              
+              return {
+                ...item,
+                Banka_Adi: bankaAdi,
+                Tutar: safeParseFloat(item.Tutar || item.TUTAR || 0)
+              };
+            });
+            
+            setKrediKartiDetaylari(detaylarWithBanka);
+            console.log(`✅ ${detaylarWithBanka.length} kredi kartı detay kaydı yüklendi`);
+          } catch (parseError) {
+            console.error('❌ Kredi kartı detay JSON parse hatası:', parseError);
+            setKrediKartiDetaylari([]);
+          }
+        } else {
+          setKrediKartiDetaylari([]);
+        }
+      } catch (error) {
+        console.error('❌ Kredi kartı detayları çekilirken hata:', error);
+        setKrediKartiDetaylari([]);
+      }
+      
     } catch (error) {
       console.error('Veri çekme hatası:', error);
       alert('Veri çekerken hata oluştu. Lütfen tekrar deneyiniz.');
@@ -849,6 +1041,243 @@ GROUP BY B.Sube_No,D.NAME
               >
                 Tamam
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kredi Kartı Detayları Modal */}
+      {showKrediKartiDetaylari && krediKartiDetaylari.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 md:p-4">
+          <div className="bg-white rounded-lg md:rounded-lg shadow-2xl w-full h-full md:h-auto md:max-w-6xl md:max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-4 md:p-6 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900">
+                  Kredi Kartı Detayları
+                  {selectedSubeNo && (
+                    <span className="ml-2 text-sm md:text-base font-normal text-gray-500">
+                      (Şube: {selectedSubeNo})
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs md:text-sm text-gray-500 mt-1">
+                  {selectedSubeNo 
+                    ? `Şube ${selectedSubeNo} için banka ve kart tipi detayları`
+                    : 'Şube bazında banka ve kart tipi detayları'}
+                </p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                {selectedSubeNo && (
+                  <button
+                    onClick={() => {
+                      setSelectedSubeNo(null);
+                    }}
+                    className="px-3 md:px-4 py-2 text-xs md:text-sm bg-gray-600 text-white font-medium rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+                    title="Tüm şubeleri göster"
+                  >
+                    Tümü
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowKrediKartiDetaylari(false);
+                    setSelectedSubeNo(null);
+                  }}
+                  className="px-3 md:px-4 py-2 text-xs md:text-sm bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-3 md:p-6">
+              {(() => {
+                // Seçili şubeye göre filtrele
+                const filteredDetaylar = selectedSubeNo 
+                  ? krediKartiDetaylari.filter(item => item.Sube_No === selectedSubeNo)
+                  : krediKartiDetaylari;
+                
+                const toplamTutar = filteredDetaylar.reduce((sum, item) => sum + item.Tutar, 0);
+                
+                // Banka bazında toplamları hesapla
+                const bankaToplamlari: {[key: string]: number} = {};
+                filteredDetaylar.forEach((item) => {
+                  const bankaAdi = item.Banka_Adi || 'Diğer';
+                  bankaToplamlari[bankaAdi] = (bankaToplamlari[bankaAdi] || 0) + item.Tutar;
+                });
+                
+                // Banka toplamlarını sırala (en yüksekten en düşüğe)
+                const sortedBankalar = Object.entries(bankaToplamlari)
+                  .sort(([, a], [, b]) => b - a);
+                
+                return (
+                  <div className="space-y-4 md:space-y-6">
+                    {/* Banka Bazında Toplam Kartları */}
+                    {sortedBankalar.length > 0 && (
+                      <div className="bg-gray-50 rounded-lg p-3 md:p-4">
+                        <h4 className="text-xs md:text-sm font-semibold text-gray-700 mb-2 md:mb-3">Banka Bazında Toplamlar</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
+                          {sortedBankalar.map(([bankaAdi, toplam], index) => (
+                            <div 
+                              key={index}
+                              className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium text-gray-500 truncate mb-1">
+                                    {bankaAdi}
+                                  </p>
+                                  <p className="text-lg font-bold text-gray-900">
+                                    {formatCurrency(toplam)}
+                                  </p>
+                                </div>
+                                <div className="flex-shrink-0 ml-2">
+                                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+                                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-2">
+                                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                  <div 
+                                    className="bg-blue-600 h-1.5 rounded-full transition-all"
+                                    style={{ width: `${(toplam / toplamTutar) * 100}%` }}
+                                  ></div>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  %{((toplam / toplamTutar) * 100).toFixed(1)}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Genel Toplam */}
+                        <div className="mt-4 pt-4 border-t border-gray-300">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-700">Genel Toplam:</span>
+                            <span className="text-xl font-bold text-blue-600">
+                              {formatCurrency(toplamTutar)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Detay Tablosu - Desktop */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Şube No
+                            </th>
+                            <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Şube Adı
+                            </th>
+                            <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Banka
+                            </th>
+                            <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Tutar
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredDetaylar.length > 0 ? (
+                            filteredDetaylar.map((item, index) => (
+                              <tr key={index} className="hover:bg-gray-50">
+                                <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                  {item.Sube_No}
+                                </td>
+                                <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm text-gray-900">
+                                  {item.NAME}
+                                </td>
+                                <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm text-gray-900">
+                                  <span className="inline-flex items-center px-2 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    {item.Banka_Adi}
+                                  </span>
+                                </td>
+                                <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-right">
+                                  {formatCurrency(item.Tutar)}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="px-4 md:px-6 py-4 text-center text-sm text-gray-500">
+                                {selectedSubeNo 
+                                  ? `Şube ${selectedSubeNo} için kredi kartı detayı bulunamadı.`
+                                  : 'Kredi kartı detayı bulunamadı.'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                        {filteredDetaylar.length > 0 && (
+                          <tfoot className="bg-gray-50 sticky bottom-0">
+                            <tr>
+                              <td colSpan={3} className="px-4 md:px-6 py-2 md:py-3 text-sm font-semibold text-gray-900 text-right">
+                                Toplam:
+                              </td>
+                              <td className="px-4 md:px-6 py-2 md:py-3 text-sm font-bold text-gray-900 text-right">
+                                {formatCurrency(toplamTutar)}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+
+                    {/* Mobil Kart Görünümü */}
+                    <div className="md:hidden space-y-3">
+                      {filteredDetaylar.length > 0 ? (
+                        filteredDetaylar.map((item, index) => (
+                          <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">Şube {item.Sube_No}</p>
+                                <p className="text-xs text-gray-600 mt-1">{item.NAME}</p>
+                              </div>
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {item.Banka_Adi}
+                              </span>
+                            </div>
+                            <div className="pt-3 border-t border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-gray-600">Tutar:</span>
+                                <span className="text-lg font-bold text-gray-900">
+                                  {formatCurrency(item.Tutar)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 text-center">
+                          <p className="text-sm text-gray-500">
+                            {selectedSubeNo 
+                              ? `Şube ${selectedSubeNo} için kredi kartı detayı bulunamadı.`
+                              : 'Kredi kartı detayı bulunamadı.'}
+                          </p>
+                        </div>
+                      )}
+                      {filteredDetaylar.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-700">Toplam:</span>
+                            <span className="text-lg font-bold text-blue-600">
+                              {formatCurrency(toplamTutar)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1051,7 +1480,16 @@ GROUP BY B.Sube_No,D.NAME
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div 
+            className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => {
+              if (krediKartiDetaylari.length > 0) {
+                setShowKrediKartiDetaylari(true);
+                setSelectedSubeNo(null); // Tüm şubeleri göster
+              }
+            }}
+            title={krediKartiDetaylari.length > 0 ? "Kredi kartı detaylarını görmek için tıklayın" : ""}
+          >
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
@@ -1061,7 +1499,14 @@ GROUP BY B.Sube_No,D.NAME
                 </div>
               </div>
               <div className="ml-4 flex-1">
-                <p className="text-sm font-medium text-gray-500">Kredi Kartı Satış</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-500">Kredi Kartı Satış</p>
+                  {krediKartiDetaylari.length > 0 && (
+                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </div>
                 <p className="text-2xl font-semibold text-gray-900 text-left">
                   {formatCurrency(totals.krediKartiSatis)}
                 </p>
@@ -1171,9 +1616,17 @@ GROUP BY B.Sube_No,D.NAME
 
         {/* Table Section */}
         {data.length > 0 ? (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <EnposCiroTable data={data} />
-          </div>
+          <>
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <EnposCiroTable 
+                data={data} 
+                onSubeInfoClick={(subeNo) => {
+                  setSelectedSubeNo(subeNo);
+                  setShowKrediKartiDetaylari(true);
+                }}
+              />
+            </div>
+          </>
         ) : (
           !loading && (
             <div className="bg-white rounded-lg shadow p-8 text-center">

@@ -17,11 +17,12 @@ interface CiroTableProps {
   data: any[];
   startDate?: string;
   endDate?: string;
+  onSubeInfoClick?: (subeNo: number) => void;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function EnposCiroTable({ data, startDate, endDate }: CiroTableProps) {
+export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoClick }: CiroTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>('Sube_No');
@@ -803,61 +804,105 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedData.map((row, index) => (
-              <tr key={index} className="hover:bg-gray-50">
-                {columns.map((column) => (
-                  <td
-                    key={column}
-                    className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${
-                      numericColumns.includes(column) ? 'text-right' : ''
-                    }`}
-                    style={{ width: `${getColumnWidth(column)}px`, minWidth: `${getColumnWidth(column)}px` }}
-                  >
-                    <div className="truncate">
-                      {column === 'Sube_No' 
-                        ? Math.round(safeParseFloat(row[column]))
-                        : column === 'NAME'
-                        ? (() => {
-                            const fullName = String(row[column] || '');
-                            const dashIndex = fullName.indexOf('-');
-                            return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
-                          })()
-                        : numericColumns.includes(column) 
-                        ? (() => {
-                            const value = safeParseFloat(row[column]);
-                            const isIade = column.includes('İADE');
-                            const colorClass = isIade ? 'text-red-600' : 'text-green-600';
-                            return <span className={colorClass}>{formatCurrency(value)}</span>;
-                          })()
-                        : String(row[column] || '')
-                      }
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {paginatedData.map((row, index) => {
+              const subeNo = Math.round(safeParseFloat(row['Sube_No']));
+              return (
+                <tr key={index} className="hover:bg-gray-50">
+                  {columns.map((column) => (
+                    <td
+                      key={column}
+                      className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${
+                        numericColumns.includes(column) ? 'text-right' : ''
+                      }`}
+                      style={{ width: `${getColumnWidth(column)}px`, minWidth: `${getColumnWidth(column)}px` }}
+                    >
+                      <div className={`truncate ${column === 'KREDİ KARTI İLE SATIŞ' ? 'flex items-center justify-end gap-2' : ''}`}>
+                        {column === 'Sube_No' 
+                          ? subeNo
+                          : column === 'NAME'
+                          ? (() => {
+                              const fullName = String(row[column] || '');
+                              const dashIndex = fullName.indexOf('-');
+                              return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
+                            })()
+                          : column === 'KREDİ KARTI İLE SATIŞ' && numericColumns.includes(column)
+                          ? (() => {
+                              const value = safeParseFloat(row[column]);
+                              return (
+                                <div className="flex items-center justify-end gap-2">
+                                  <span className="text-green-600">{formatCurrency(value)}</span>
+                                  {onSubeInfoClick && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSubeInfoClick(subeNo);
+                                      }}
+                                      className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
+                                      title="Kredi kartı detaylarını göster"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()
+                          : numericColumns.includes(column) 
+                          ? (() => {
+                              const value = safeParseFloat(row[column]);
+                              const isIade = column.includes('İADE');
+                              const colorClass = isIade ? 'text-red-600' : 'text-green-600';
+                              return <span className={colorClass}>{formatCurrency(value)}</span>;
+                            })()
+                          : String(row[column] || '')
+                        }
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {/* Mobil Card Görünümü */}
       <div className="md:hidden space-y-4 bg-gray-50 rounded-lg p-4">
-        {paginatedData.map((row, index) => (
-          <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-red-700 mb-1">
-                  Şube {Math.round(safeParseFloat(row['Sube_No']))}
-                </h3>
-                <p className="text-gray-700 text-sm">
-                  {(() => {
-                    const fullName = String(row['NAME'] || '');
-                    const dashIndex = fullName.indexOf('-');
-                    return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
-                  })()}
-                </p>
+        {paginatedData.map((row, index) => {
+          const subeNo = Math.round(safeParseFloat(row['Sube_No']));
+          return (
+            <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-lg font-semibold text-red-700">
+                      Şube {subeNo}
+                    </h3>
+                    {onSubeInfoClick && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSubeInfoClick(subeNo);
+                        }}
+                        className="text-blue-500 hover:text-blue-700 transition-colors"
+                        title="Kredi kartı detaylarını göster"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-gray-700 text-sm">
+                    {(() => {
+                      const fullName = String(row['NAME'] || '');
+                      const dashIndex = fullName.indexOf('-');
+                      return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
+                    })()}
+                  </p>
+                </div>
               </div>
-            </div>
             
             {/* Satış Bilgileri */}
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -922,7 +967,8 @@ export default function EnposCiroTable({ data, startDate, endDate }: CiroTablePr
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Sayfalama */}
