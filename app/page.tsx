@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Lottie from 'lottie-react';
 import DashboardLayout from './components/DashboardLayout';
 import SessionManager from './components/SessionManager';
-import { fetchUserReports, getCurrentUser, getAuthorizedReports, groupReportsByCategory, isSuperAdmin } from './utils/simple-permissions';
+import { fetchUserReports, getCurrentUser, getAuthorizedReports, isSuperAdmin } from './utils/simple-permissions';
 import type { ReportWithAccess } from './utils/simple-permissions';
 import { sendSecureProxyRequest } from './utils/api';
 
@@ -20,1259 +19,983 @@ export default function Dashboard() {
   const [userReports, setUserReports] = useState<ReportWithAccess[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
   const [planInfo, setPlanInfo] = useState<{planName: string, licenceEnd: string}>({planName: '', licenceEnd: ''});
-  const [pinnedReports, setPinnedReports] = useState<string[]>([]); // Sabitlenmiş rapor ID'leri
+  const [pinnedReports, setPinnedReports] = useState<string[]>([]);
   const [showPinnedSelector, setShowPinnedSelector] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('Tümü');
+  const [sliderIndex, setSliderIndex] = useState(0);
+  const [sliderPaused, setSliderPaused] = useState(false);
   const [stats, setStats] = useState({
     totalReports: 0,
     accessibleReports: 0,
     activeUsers: 0,
-    userCount: 0, // Sadece user tipindeki kullanıcılar
+    userCount: 0,
     monthlyQueries: 0,
     systemStatus: 'Kontrol ediliyor...'
   });
   const router = useRouter();
-  
-  // Animation data'yı yükleyelim
-  const [animationData, setAnimationData] = useState(null);
-  
-  // Saat güncellemesi - gerçek zamanlı olarak her saniye güncelle
-  useEffect(() => {
-    // İlk yüklenmede saati ayarla
-    setCurrentTime(new Date());
-    
-    // Her saniye saati güncelle
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
 
-    // Component unmount olduğunda timer'ı temizle
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Stats güncellemesi - sadece dashboard yüklendiğinde
   useEffect(() => {
     if (isAuthenticated && !loadingReports) {
       const updateStats = async () => {
         const accessibleReports = userReports.filter(r => r.has_access).length;
-        const userData = await fetchActiveUsers(); // Gerçek kullanıcı sayısını çek
-        const systemStatus = await testSystemStatus(); // Sistem durumunu kontrol et
-        
-        setStats({
-          totalReports: userReports.length,
-          accessibleReports: accessibleReports,
-          activeUsers: userData.totalUsers,
-          userCount: userData.userCount,
-          monthlyQueries: 0, // Artık kullanılmıyor ama state'te var
-          systemStatus: systemStatus
-        });
+        const userData = await fetchActiveUsers();
+        const systemStatus = await testSystemStatus();
+        setStats({ totalReports: userReports.length, accessibleReports, activeUsers: userData.totalUsers, userCount: userData.userCount, monthlyQueries: 0, systemStatus });
       };
-      
       setTimeout(updateStats, 500);
     }
   }, [isAuthenticated, loadingReports, userReports.length]);
-  
-  // URL parametrelerini kontrol et (erişim reddedildi mesajı için)
+
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const error = searchParams.get('error');
     const report = searchParams.get('report');
-    
     if (error === 'access_denied' && report) {
-      const reportNames: {[key: string]: string} = {
-        'enpos-ciro': 'Enpos Ciro Raporu',
-        'c-bakiye': 'Cari Bakiye Raporu',
-        'hareket-gormeyen-cariler': 'Hareket Görmeyen Cariler'
-      };
-      
-      setAccessDeniedInfo({
-        show: true,
-        report: reportNames[report] || report
-      });
-      
-      // URL'den parametreleri temizle
+      const reportNames: {[key: string]: string} = { 'enpos-ciro': 'Enpos Ciro Raporu', 'c-bakiye': 'Cari Bakiye Raporu', 'hareket-gormeyen-cariler': 'Hareket Görmeyen Cariler' };
+      setAccessDeniedInfo({ show: true, report: reportNames[report] || report });
       window.history.replaceState({}, '', '/');
-      
-      // 10 saniye sonra mesajı gizle
-      setTimeout(() => {
-        setAccessDeniedInfo(null);
-      }, 10000);
+      setTimeout(() => setAccessDeniedInfo(null), 10000);
     }
   }, []);
 
-  // Favori raporları api.btrapor.com'dan yükle
   const loadPinnedReports = async () => {
     try {
       const currentUser = getCurrentUser();
       const companyRef = sessionStorage.getItem('companyRef');
-      
-      if (!currentUser || !companyRef) {
-        console.warn('Kullanıcı bilgisi veya companyRef bulunamadı');
-        return;
-      }
-
-      console.log('🔄 api.btrapor.com\'dan favori raporlar yükleniyor...');
-      
-      const response = await fetch(`https://api.btrapor.com/get-favorite-reports?user_ref=${currentUser.id}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
+      if (!currentUser || !companyRef) return;
+      const response = await fetch(`https://api.btrapor.com/get-favorite-reports?user_ref=${currentUser.id}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
       if (response.ok) {
         const data = await response.json();
-        console.log('📡 API Response:', data);
-        
         if (data.status === 'success' && data.data) {
-          // API'den gelen string array'ini işle
-          const pinnedReports = data.data.flatMap((item: string) => 
-            item.split('-').filter((id: string) => id.trim() !== '')
-          );
-          setPinnedReports(pinnedReports);
-          console.log('📌 api.btrapor.com\'dan favori raporlar yüklendi:', pinnedReports);
+          setPinnedReports(data.data.flatMap((item: string) => item.split('-').filter((id: string) => id.trim() !== '')));
         } else {
-          console.warn('⚠️ api.btrapor.com\'dan veri alınamadı, localStorage kontrol ediliyor');
-          // Fallback: localStorage'dan yükle
           const savedPinned = sessionStorage.getItem('pinnedReports');
-          if (savedPinned) {
-            try {
-              const pinned = JSON.parse(savedPinned);
-              setPinnedReports(pinned);
-              console.log('📌 LocalStorage\'dan favori raporlar yüklendi:', pinned);
-            } catch (e) {
-              console.error('❌ LocalStorage parse hatası:', e);
-              setPinnedReports([]);
-            }
-          } else {
-            setPinnedReports([]);
-          }
+          if (savedPinned) setPinnedReports(JSON.parse(savedPinned));
         }
       } else {
-        console.warn('⚠️ api.btrapor.com bağlantısı başarısız, localStorage kontrol ediliyor');
-        // Fallback: localStorage'dan yükle
         const savedPinned = sessionStorage.getItem('pinnedReports');
-        if (savedPinned) {
-          try {
-            const pinned = JSON.parse(savedPinned);
-            setPinnedReports(pinned);
-            console.log('📌 LocalStorage\'dan favori raporlar yüklendi:', pinned);
-          } catch (e) {
-            console.error('❌ LocalStorage parse hatası:', e);
-            setPinnedReports([]);
-          }
-        } else {
-          setPinnedReports([]);
-        }
+        if (savedPinned) setPinnedReports(JSON.parse(savedPinned));
       }
-    } catch (error) {
-      console.error('❌ Favori raporlar yüklenirken hata:', error);
-      // Fallback: localStorage'dan yükle
-      try {
-        const savedPinned = sessionStorage.getItem('pinnedReports');
-        if (savedPinned) {
-          const pinned = JSON.parse(savedPinned);
-          setPinnedReports(pinned);
-          console.log('📌 LocalStorage\'dan favori raporlar yüklendi:', pinned);
-        } else {
-          setPinnedReports([]);
-        }
-      } catch (localError) {
-        console.error('❌ LocalStorage\'dan da yüklenemedi:', localError);
-        setPinnedReports([]);
-      }
+    } catch {
+      const savedPinned = sessionStorage.getItem('pinnedReports');
+      if (savedPinned) { try { setPinnedReports(JSON.parse(savedPinned)); } catch { setPinnedReports([]); } }
     }
   };
 
-  // Favori raporu ekle/çıkar
   const togglePinnedReport = async (reportId: string) => {
-    const newPinned = pinnedReports.includes(reportId) 
+    const newPinned = pinnedReports.includes(reportId)
       ? pinnedReports.filter(id => id !== reportId)
-      : pinnedReports.length < 6 
-        ? [...pinnedReports, reportId]
-        : pinnedReports;
-    
+      : pinnedReports.length < 6 ? [...pinnedReports, reportId] : pinnedReports;
     setPinnedReports(newPinned);
-    
-    // Hem localStorage'a hem api.btrapor.com'a kaydet
     sessionStorage.setItem('pinnedReports', JSON.stringify(newPinned));
-    
     try {
       const currentUser = getCurrentUser();
       const companyRef = sessionStorage.getItem('companyRef');
-      
       if (currentUser && companyRef) {
-        console.log('💾 api.btrapor.com\'a favori raporlar kaydediliyor...');
-        
-        const response = await fetch('https://api.btrapor.com/save-favorite-report', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            user_ref: currentUser.id,
-            report_id: newPinned.join('-')
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === 'success') {
-            console.log('✅ api.btrapor.com\'a favori raporlar kaydedildi');
-          } else {
-            console.warn('⚠️ api.btrapor.com\'a kaydedilemedi:', data.message);
-          }
-        } else {
-          console.warn('⚠️ api.btrapor.com bağlantısı başarısız, sadece localStorage kullanılıyor');
-        }
+        await fetch('https://api.btrapor.com/save-favorite-report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_ref: currentUser.id, report_id: newPinned.join('-') }) });
       }
-    } catch (error) {
-      console.error('❌ api.btrapor.com\'a kaydedilirken hata:', error);
-    }
-    
-    console.log('📌 Favori raporlar güncellendi:', newPinned);
+    } catch { /* silent */ }
   };
 
-  // Kullanıcı raporlarını yükle ve localStorage'a kaydet
   const loadUserReports = async () => {
     try {
       setLoadingReports(true);
       const currentUser = getCurrentUser();
       const companyRef = sessionStorage.getItem('companyRef');
-      
-      if (!companyRef) {
-        console.warn('Company ref bulunamadı');
-        setLoadingReports(false);
-        return;
-      }
-
-      console.log('🔄 Dashboard - Kullanıcı raporları yükleniyor...');
-      
-      // fetchUserReports fonksiyonunu kullan (rol bazlı yetki kontrolü ile)
+      if (!companyRef) { setLoadingReports(false); return; }
       const {reports: allReports, planInfo: planData} = await fetchUserReports(companyRef, currentUser?.id);
-      
-      console.log('📊 Dashboard - Çekilen raporlar:', allReports);
-      console.log('📋 Dashboard - Plan bilgileri:', planData);
-      
-      // State'e raporları kaydet
       setUserReports(allReports);
       setPlanInfo(planData);
-      
-      // LocalStorage'a sadece yetkili raporları kaydet (diğer sayfalar için)
       const authorizedReports = getAuthorizedReports(allReports);
       sessionStorage.setItem('userAuthorizedReports', JSON.stringify(authorizedReports));
       sessionStorage.setItem('userReportsLastUpdate', Date.now().toString());
-      
-      console.log('💾 Dashboard - Raporlar yüklendi, yetkili raporlar localStorage\'a kaydedildi');
-      
-    } catch (error) {
-      console.error('❌ Dashboard - Raporlar yüklenirken hata:', error);
-      setUserReports([]);
-    } finally {
-      setLoadingReports(false);
-    }
+    } catch { setUserReports([]); } finally { setLoadingReports(false); }
   };
 
-  // Authentication kontrolü
   useEffect(() => {
     const checkAuth = () => {
       const isLoggedIn = sessionStorage.getItem('isLoggedIn');
       const name = sessionStorage.getItem('userName');
       const role = sessionStorage.getItem('userRole');
       const company = sessionStorage.getItem('companyName');
-      
       if (isLoggedIn === 'true') {
         setIsAuthenticated(true);
         setUserName(name || '');
         setUserRole(role || '');
         setCompanyName(company || '');
         loadConnectionInfoToStorage();
-        loadUserReports(); // Kullanıcı raporlarını yükle
-        loadPinnedReports(); // Sabitlenmiş raporları yükle
-        
-        // Dashboard görüntüleme tracking
-        
-      } else {
-        router.push('/login');
-      }
+        loadUserReports();
+        loadPinnedReports();
+      } else { router.push('/login'); }
       setIsCheckingAuth(false);
     };
-
     checkAuth();
   }, [router]);
 
-  // Aktif kullanıcı sayısını API'den çek
   const fetchActiveUsers = async () => {
     try {
       const companyRef = sessionStorage.getItem('companyRef');
-      if (!companyRef) {
-        console.log('Company ref bulunamadı, kullanıcı sayısı çekilemedi');
-        return { totalUsers: 0, userCount: 0 };
-      }
-
-      console.log('👥 Aktif kullanıcı sayısı çekiliyor...');
-      
-      const response = await fetch('https://api.btrapor.com/user-count', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          company_ref: companyRef
-        })
-      });
-
+      if (!companyRef) return { totalUsers: 0, userCount: 0 };
+      const response = await fetch('https://api.btrapor.com/user-count', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company_ref: companyRef }) });
       if (response.ok) {
         const result = await response.json();
-        console.log('👥 Kullanıcı sayısı API response:', result);
-        
         if (result.status === 'success' && result.data) {
           const adminCount = Number(result.data.admin) || 0;
           const userCount = Number(result.data.user) || 0;
-          const totalUsers = adminCount + userCount;
-          console.log(`✅ Toplam aktif kullanıcı: ${totalUsers} (Admin: ${adminCount}, User: ${userCount})`);
-          return { totalUsers, userCount };
-        } else {
-          console.log('⚠️ Kullanıcı sayısı API hatası:', result.message);
-          return { totalUsers: 0, userCount: 0 };
+          return { totalUsers: adminCount + userCount, userCount };
         }
-      } else {
-        const errorText = await response.text();
-        console.log('❌ Kullanıcı sayısı HTTP hatası:', response.status, errorText);
-        return { totalUsers: 0, userCount: 0 };
       }
-    } catch (error) {
-      console.error('❌ Kullanıcı sayısı çekilirken hata:', error);
       return { totalUsers: 0, userCount: 0 };
-    }
+    } catch { return { totalUsers: 0, userCount: 0 }; }
   };
 
-  // Sistem durumu test fonksiyonu
   const testSystemStatus = async () => {
     try {
       const companyRef = sessionStorage.getItem('companyRef');
-      if (!companyRef) {
-        console.log('Company ref bulunamadı, sistem durumu test edilemedi');
-        return 'Pasif';
-      }
-
-      console.log('🔍 Sistem durumu test ediliyor...');
-      
-      // Basit bir test sorgusu - sadece bağlantıyı kontrol et
-      const testQuery = 'SELECT 1 AS test_result';
-      
-      // sendSecureProxyRequest kullanarak şifreli proxy üzerinden test et
-      const response = await sendSecureProxyRequest(
-        companyRef,
-        'first_db_key', // Ana veritabanı
-        {
-          query: testQuery
-        }
-      );
-
+      if (!companyRef) return 'Pasif';
+      const response = await sendSecureProxyRequest(companyRef, 'first_db_key', { query: 'SELECT 1 AS test_result' });
       if (response.ok) {
         const result = await response.json();
-        console.log('🔍 Test sorgusu sonucu:', result);
-        
-        // Farklı response formatlarını kontrol et
         let testResult = null;
-        if (Array.isArray(result) && result.length > 0) {
-          testResult = result[0];
-        } else if (result && Array.isArray(result.data) && result.data.length > 0) {
-          testResult = result.data[0];
-        } else if (result && Array.isArray(result.recordset) && result.recordset.length > 0) {
-          testResult = result.recordset[0];
-        }
-        
-        if (testResult && testResult.test_result === 1) {
-          console.log('✅ Sistem durumu: Aktif');
-          return 'Aktif';
-        } else {
-          console.log('⚠️ Sistem durumu: Pasif (test sorgusu başarısız)');
-          return 'Pasif';
-        }
-      } else {
-        const errorText = await response.text();
-        console.log('❌ Sistem durumu: Pasif (HTTP hatası)', response.status, errorText);
-        return 'Pasif';
+        if (Array.isArray(result) && result.length > 0) testResult = result[0];
+        else if (result?.data && Array.isArray(result.data) && result.data.length > 0) testResult = result.data[0];
+        else if (result?.recordset && Array.isArray(result.recordset) && result.recordset.length > 0) testResult = result.recordset[0];
+        return testResult?.test_result === 1 ? 'Aktif' : 'Pasif';
       }
-    } catch (error) {
-      console.error('❌ Sistem durumu test edilirken hata:', error);
       return 'Pasif';
-    }
+    } catch { return 'Pasif'; }
   };
 
-  // Connection bilgilerini localStorage'a kaydet
   const loadConnectionInfoToStorage = async () => {
     try {
       const companyRef = sessionStorage.getItem('companyRef');
-      if (!companyRef) {
-        console.log('Company ref bulunamadı, connection bilgileri yüklenemedi');
-        return;
-      }
-
-      console.log('🔄 Ana sayfada connection bilgileri localStorage\'a kaydediliyor...');
-      
+      if (!companyRef) return;
       const response = await fetch(`https://api.btrapor.com/connection-info/${companyRef}`);
       const data = await response.json();
-
       if (response.ok && data.status === 'success' && data.data) {
-        const connectionInfo = data.data;
-        sessionStorage.setItem('connectionInfo', JSON.stringify(connectionInfo));
-        console.log('✅ Connection bilgileri localStorage\'a kaydedildi:', connectionInfo);
-        
-        // Connection bilgileri yüklendikten sonra sistem durumunu test et
+        sessionStorage.setItem('connectionInfo', JSON.stringify(data.data));
         const systemStatus = await testSystemStatus();
-        
-        // Aktif kullanıcı sayısını çek
         const userData = await fetchActiveUsers();
-        
-        setStats(prev => ({ 
-          ...prev, 
-          systemStatus,
-          activeUsers: userData.totalUsers,
-          userCount: userData.userCount
-        }));
+        setStats(prev => ({ ...prev, systemStatus, activeUsers: userData.totalUsers, userCount: userData.userCount }));
       } else {
-        console.log('⚠️ Connection bilgileri alınamadı:', data.message);
         setStats(prev => ({ ...prev, systemStatus: 'Pasif' }));
       }
-    } catch (error) {
-      console.error('❌ Connection bilgileri yüklenirken hata:', error);
-      setStats(prev => ({ ...prev, systemStatus: 'Pasif' }));
-    }
+    } catch { setStats(prev => ({ ...prev, systemStatus: 'Pasif' })); }
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetch('/animations/rapor.json')
-        .then(res => res.json())
-        .then(data => setAnimationData(data))
-        .catch(err => console.log('Animation yüklenemedi:', err));
-    }
-  }, [isAuthenticated]);
-
-  // Super admin kontrolü - super admin ise sistem yönetimine yönlendir
-  useEffect(() => {
-    if (isAuthenticated && isSuperAdmin()) {
-      router.push('/super-admin');
-      return;
-    }
+    if (isAuthenticated && isSuperAdmin()) router.push('/super-admin');
   }, [isAuthenticated, router]);
 
-  // Authentication kontrolü devam ediyorsa loading göster
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(userReports.map(r => r.category || 'Diğer')));
+    return ['Tümü', ...cats];
+  }, [userReports]);
+
+  const filteredReports = useMemo(() => {
+    return userReports.filter(r => {
+      const matchSearch = !searchQuery ||
+        r.report_name.toLocaleLowerCase('tr-TR').includes(searchQuery.toLocaleLowerCase('tr-TR')) ||
+        (r.report_description || '').toLocaleLowerCase('tr-TR').includes(searchQuery.toLocaleLowerCase('tr-TR'));
+      const matchCat = activeCategory === 'Tümü' || (r.category || 'Diğer') === activeCategory;
+      return matchSearch && matchCat;
+    });
+  }, [userReports, searchQuery, activeCategory]);
+
+  const groupedFilteredReports = useMemo(() => {
+    return filteredReports.reduce((groups: {[key: string]: ReportWithAccess[]}, report) => {
+      const category = report.category || 'Diğer';
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(report);
+      return groups;
+    }, {});
+  }, [filteredReports]);
+
+  const pinnedReportObjects = useMemo(() => {
+    return pinnedReports.map(id => userReports.find(r => r.id.toString() === id)).filter(Boolean) as ReportWithAccess[];
+  }, [pinnedReports, userReports]);
+
+  // Slider için erişilebilir raporlar
+  const sliderReports = useMemo(() => {
+    return userReports.filter(r => r.has_access);
+  }, [userReports]);
+
+  // Otomatik slider
+  useEffect(() => {
+    if (sliderPaused || sliderReports.length <= 1) return;
+    const timer = setInterval(() => {
+      setSliderIndex(prev => (prev + 1) % sliderReports.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [sliderPaused, sliderReports.length]);
+
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 border border-white/20">
-          <div className="flex flex-col items-center justify-center">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-white/30 rounded-full animate-spin border-l-white"></div>
-              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent rounded-full animate-ping border-l-white/50"></div>
-            </div>
-            <p className="text-white font-medium text-lg mt-6">Sistem Başlatılıyor...</p>
-            <p className="text-white/70 text-sm mt-2">Lütfen bekleyiniz</p>
-          </div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 border-4 border-red-500/30 border-t-red-500 rounded-full animate-spin"></div>
+          <p className="text-slate-400 text-sm font-medium">Yükleniyor...</p>
         </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return null;
-  }
+  if (!isAuthenticated || isSuperAdmin()) return null;
 
-  // Super admin ise bu sayfayı gösterme
-  if (isSuperAdmin()) {
-    return null;
-  }
+  const isSearching = searchQuery.trim().length > 0;
 
   return (
-    <DashboardLayout title="İş Zekası Dashboard">
+    <DashboardLayout title="Dashboard">
       <SessionManager />
-      <div className="space-y-8">
-        {/* Erişim Reddedildi Uyarısı */}
-        {accessDeniedInfo?.show && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <div className="ml-3 flex-1">
-                <h3 className="text-sm font-medium text-red-800">
-                  Rapor Erişimi Reddedildi
-                </h3>
-                <div className="mt-1 text-sm text-red-700">
-                  <p>
-                    <strong>{accessDeniedInfo.report}</strong>'na erişim yetkiniz bulunmamaktadır.
-                  </p>
-                  <p className="mt-1">
-                    Rapor yetkisi almak için lütfen yöneticiniz ile iletişime geçin veya{' '}
-                    <button
-                      onClick={() => router.push('/ayarlar')}
-                      className="underline hover:no-underline font-medium"
-                    >
-                      buradan yetki talebi oluşturun
-                    </button>
-                    .
-                  </p>
-                </div>
-              </div>
-              <div className="ml-3 flex-shrink-0">
-                <button
-                  onClick={() => setAccessDeniedInfo(null)}
-                  className="inline-flex text-red-400 hover:text-red-600 focus:outline-none"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+
+      {/* Full-bleed wrapper — negatif margin ile DashboardLayout padding'ini aşıyoruz */}
+      <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6">
+
+        {/* ═══════════════════════════════════════════════════════
+            KOYU HERO BÖLÜMÜ
+        ═══════════════════════════════════════════════════════ */}
+        <div className="relative bg-slate-900 overflow-hidden">
+          {/* Arka plan efektleri */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-red-700/20 rounded-full blur-3xl"></div>
+            <div className="absolute top-0 left-1/3 w-64 h-64 bg-red-900/10 rounded-full blur-2xl"></div>
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-slate-700/30 rounded-full blur-2xl"></div>
+            {/* Grid desen */}
+            <div className="absolute inset-0"
+              style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
             </div>
           </div>
-        )}
-        {/* Modern Hero Section */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-red-900 via-red-800 to-red-900 rounded-2xl shadow-2xl">
-          <div className="absolute inset-0 bg-gradient-to-r from-red-800/20 to-red-600/20"></div>
-          <div className="absolute inset-0">
-            <div className="absolute top-0 left-0 w-40 h-40 bg-gradient-to-br from-red-400/20 to-red-600/20 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-0 right-0 w-60 h-60 bg-gradient-to-tl from-red-400/20 to-red-500/20 rounded-full blur-3xl"></div>
-          </div>
-          
-          <div className="relative px-8 py-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
-                <div className="flex flex-col items-start w-full">
-                  <div className="bg-white rounded-xl sm:rounded-2xl shadow-md p-2 mb-2 max-w-[120px] sm:max-w-[160px] w-full flex items-center justify-center">
-                    <img
-                      src="/img/btRapor.png"
-                      alt="btRapor Logo"
-                      className="w-full h-auto rounded-lg sm:rounded-xl"
-                    />
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
-                        Merhaba, {userName}! 👋
-                      </h1>
+
+          <div className="relative px-4 lg:px-6 pt-6 pb-7">
+            {/* Üst satır: Logo + Kullanıcı + Saat */}
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-white rounded-xl p-2 shadow-lg shadow-black/30 flex-shrink-0">
+                  <img src="/img/btRapor.png" alt="btRapor" className="h-9 w-auto rounded-lg" />
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">İş Zekası Platformu</p>
+                  <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight mt-0.5">
+                    Merhaba, <span className="text-red-400">{userName}</span>
+                  </h1>
+                  {companyName && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
+                      <span className="text-slate-400 text-xs">{companyName}</span>
                     </div>
-                    <p className="text-base sm:text-lg lg:text-xl text-red-100 font-medium mb-2">
-                      İş Dünyasına Dair Tüm Raporlar
-                    </p>
-                    {companyName && (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                        <p className="text-red-200 text-sm sm:text-base lg:text-lg">
-                          🏢 {companyName}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="hidden lg:block">
-                <div className="text-right space-y-2">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                   
-                    <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">
-                      {currentTime.toLocaleTimeString('tr-TR', { 
-                        hour: '2-digit', 
-                        minute: '2-digit'
-                      })}
-                    </p>
-                    <p className="text-red-300 text-xs sm:text-sm">
-                      {currentTime.toLocaleDateString('tr-TR', { 
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric'
-                      })}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Modern Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          {/* Toplam Rapor */}
-          <div className="group">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100 text-xs sm:text-sm font-medium"> Erişilebilir Rapor</p>
-                  <p className="text-2xl sm:text-3xl font-bold mt-1 sm:mt-2">{stats.accessibleReports}</p>
-                  <div className="flex flex-col mt-1 sm:mt-2 space-y-1">
-                    
-                    <div className="flex items-center space-x-1">
-                      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <span className="text-blue-200 text-xs sm:text-sm">{stats.totalReports} Toplam Rapor</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Aktif Kullanıcılar */}
-          <div className="group">
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-emerald-100 text-xs sm:text-sm font-medium">Aktif Kullanıcı</p>
-                  <p className="text-2xl sm:text-3xl font-bold mt-1 sm:mt-2">{stats.activeUsers}</p>
-                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
-                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span className="text-green-200 text-xs sm:text-sm">{stats.userCount} Alt Kullanıcı</span>
-                  </div>
-                </div>
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Plan Bilgileri */}
-          <div className="group">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-orange-100 text-xs sm:text-sm font-medium">Aktif Plan</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold mt-1 sm:mt-2">
-                    {planInfo.planName ? `${planInfo.planName}` : 'Plan Yükleniyor...'}
-                  </p>
-                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
-                    <svg className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-orange-200 text-xs sm:text-sm">
-                      {planInfo.licenceEnd ? formatLicenseDate(planInfo.licenceEnd) : 'Lisans bilgisi yükleniyor...'}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sistem Durumu */}
-          <div className="group">
-            <div className={`bg-gradient-to-br ${
-              stats.systemStatus === 'Aktif' ? 'from-green-600 to-green-700' : 
-              stats.systemStatus === 'Kontrol ediliyor...' ? 'from-yellow-600 to-yellow-700' : 
-              'from-red-600 to-red-700'
-            } rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white/80 text-xs sm:text-sm font-medium">Sistem Durumu</p>
-                  <p className="text-lg sm:text-xl lg:text-2xl font-bold mt-1 sm:mt-2 text-white">{stats.systemStatus}</p>
-                  <div className="flex items-center mt-1 sm:mt-2 space-x-1">
-                    <div className={`w-2 h-2 ${
-                      stats.systemStatus === 'Aktif' ? 'bg-green-400' : 
-                      stats.systemStatus === 'Kontrol ediliyor...' ? 'bg-yellow-400' : 
-                      'bg-red-400'
-                    } rounded-full ${
-                      stats.systemStatus === 'Aktif' || stats.systemStatus === 'Kontrol ediliyor...' ? 'animate-pulse' : ''
-                    }`}></div>
-                    <span className="text-white/90 text-xs sm:text-sm">
-                      {stats.systemStatus === 'Aktif' ? 'Tüm servisler çalışıyor' : 
-                       stats.systemStatus === 'Kontrol ediliyor...' ? 'Bağlantı test ediliyor' : 
-                       'Bağlantı Sorunu'}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-xl sm:rounded-2xl flex items-center justify-center">
-                  {stats.systemStatus === 'Aktif' ? (
-                    <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 12l5 5L20 7" />
-                    </svg>
-                  ) : stats.systemStatus === 'Kontrol ediliyor...' ? (
-                    <svg className="w-6 h-6 sm:w-8 sm:h-8 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  ) : (
-                    <svg className="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
                   )}
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Quick Access Toolbar */}
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <div className="flex items-center space-x-4">
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Favori Raporlar</h3>
-              <button
-                onClick={() => setShowPinnedSelector(!showPinnedSelector)}
-                className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-                <span>Özelleştir</span>
-              </button>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs sm:text-sm text-gray-500">
-                {pinnedReports.length > 0 ? `${pinnedReports.length}/6 favori` : 'Tüm servisler hazır'}
-              </span>
-            </div>
-          </div>
-          
-          {/* Rapor Seçici Modal */}
-          {showPinnedSelector && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-bold text-gray-900">Favori Raporlar Özelleştir</h3>
-                  <button
-                    onClick={() => setShowPinnedSelector(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <p className="text-gray-600 mb-4">En fazla 6 rapor seçebilirsiniz. Sık kullandığınız raporları favorilere ekleyin.</p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                  {userReports.map((report) => (
-                    <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                      <div className="flex items-center space-x-3">
-                                                 <input
-                           type="checkbox"
-                           checked={pinnedReports.includes(report.id.toString())}
-                           onChange={() => togglePinnedReport(report.id.toString())}
-                           disabled={!pinnedReports.includes(report.id.toString()) && pinnedReports.length >= 6}
-                           className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                         />
-                        <div>
-                          <p className="font-medium text-gray-900">{report.report_name}</p>
-                          <p className="text-sm text-gray-500">{report.report_description}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                                                 {pinnedReports.includes(report.id.toString()) && (
-                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                          </svg>
-                        )}
-                        {!report.has_access && (
-                          <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">
-                            Kilitli
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => setPinnedReports([])}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                  >
-                    Tümünü Kaldır
-                  </button>
-                  <button
-                    onClick={() => setShowPinnedSelector(false)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Tamam
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 items-stretch">
-            {/* Dinamik Rapor Kartları */}
-            {loadingReports ? (
-              // Loading kartları
-              Array.from({length: 6}).map((_, index) => (
-                <div key={index} className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-200 animate-pulse h-full flex flex-col">
-                  <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-xl"></div>
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-gray-300 rounded"></div>
-                  </div>
-                  <div className="h-4 sm:h-5 bg-gray-300 rounded mb-2"></div>
-                  <div className="h-3 sm:h-4 bg-gray-300 rounded mb-3 sm:mb-4"></div>
-                  <div className="flex items-center space-x-2 mt-auto">
-                    <div className="w-10 h-4 sm:w-12 sm:h-5 bg-gray-300 rounded-full"></div>
-                    <div className="w-16 h-3 sm:w-20 sm:h-3 bg-gray-300 rounded"></div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              // Sabitlenmiş raporlar varsa onları göster, yoksa ilk 3 raporu göster
-              (() => {
-                const reportsToShow = pinnedReports.length > 0 
-                  ? pinnedReports.map(pinnedId => 
-                      userReports.find(report => report.id.toString() === pinnedId)
-                    ).filter(Boolean).slice(0, 6)
-                  : userReports.slice(0, 6);
-                
-                return reportsToShow.map((report, idx) => {
-                  if (!report) return null;
-                  
-                  const colors = getReportCardColors(report, idx);
-                  const isPinned = pinnedReports.includes(report.id.toString());
-                  
-                  return (
-                    <div key={report.id} className="group cursor-pointer" 
-                         onClick={() => handleReportClick(report, router)}>
-                      <div className={`bg-gradient-to-br ${colors.bgGradient} rounded-xl p-4 sm:p-6 border ${colors.border} hover:${colors.hoverBorder} transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${colors.opacity} relative h-full flex flex-col`}>
-                        {/* Sabitlenmiş rapor işareti */}
-                        {isPinned && (
-                          <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
-                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                              <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                              </svg>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Kilitli rapor overlay'i */}
-                        {!report.has_access && !isPinned && (
-                          <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
-                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-600 rounded-lg flex items-center justify-center">
-                              <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                              </svg>
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center justify-between mb-3 sm:mb-4">
-                          <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${colors.iconBg} rounded-xl flex items-center justify-center text-white`}>
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={getReportIcon(report.report_name)} />
-                            </svg>
-                          </div>
-                          {report.has_access ? (
-                            <svg className={`w-4 h-4 sm:w-5 sm:h-5 ${colors.arrowColor} group-hover:${colors.arrowHover} transition-colors`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                            </svg>
-                          ) : (
-                            <div className="text-gray-400 text-xs font-medium bg-gray-200 px-2 py-1 rounded-full">
-                              Kilitli
-                            </div>
-                          )}
-                        </div>
-                        <h4 className={`text-base sm:text-lg font-semibold ${colors.textColor} mb-1 sm:mb-2`}>{report.report_name}</h4>
-                        <p className={`${colors.textColor} text-xs sm:text-sm mb-3 sm:mb-4`}>{report.report_description}</p>
-                        <div className="flex items-center space-x-2 mt-auto">
-                                                  <span className={`${colors.badgeBg} text-white text-xs px-2 py-1 rounded-full`}>
-                          {report.has_access ? (isPinned ? 'Favori' : 'Hazır') : 'Premium'}
-                        </span>
-                          <span className="text-xs text-gray-500">
-                            {report.has_access ? 'Son güncelleme: Bugün' : 'Paket gerekli'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                });
-              })()
-            )}
-
-            {/* Eğer 6'dan az rapor varsa boş kartları doldur */}
-            {!loadingReports && (() => {
-              const reportsToShow = pinnedReports.length > 0 
-                ? pinnedReports.map(pinnedId => 
-                    userReports.find(report => report.id.toString() === pinnedId)
-                  ).filter(Boolean).slice(0, 6)
-                : userReports.slice(0, 6);
-              
-              return reportsToShow.length < 6 && (
-                Array.from({length: 6 - reportsToShow.length}).map((_, index) => (
-                  <div key={`empty-${index}`} className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-200 opacity-50 h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-3 sm:mb-4">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-xl flex items-center justify-center">
-                        <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                      </div>
-                    </div>
-                    <h4 className="text-base sm:text-lg font-semibold text-gray-500 mb-1 sm:mb-2">
-                      Favori Rapor Ekleyin
-                    </h4>
-                    <p className="text-gray-400 text-xs sm:text-sm mb-3 sm:mb-4">
-                      Özelleştir butonuna tıklayarak buraya favori raporlarınızı ekleyebilirsiniz
-                    </p>
-                    <div className="flex items-center space-x-2 mt-auto">
-                      <span className="bg-gray-300 text-gray-600 text-xs px-2 py-1 rounded-full">
-                        Özelleştir
-                      </span>
-                    </div>
-                  </div>
-                ))
-              );
-            })()}
-
-            {/* Eğer hiç rapor yoksa */}
-            {!loadingReports && (() => {
-              const reportsToShow = pinnedReports.length > 0 
-                ? pinnedReports.map(pinnedId => 
-                    userReports.find(report => report.id.toString() === pinnedId)
-                  ).filter(Boolean).slice(0, 6)
-                : userReports.slice(0, 6);
-              
-              return reportsToShow.length === 0 && (
-                <div className="md:col-span-3 lg:col-span-3 xl:col-span-6 text-center py-8 sm:py-12">
-                  <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                    <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-gray-500 text-base sm:text-lg">
-                    {pinnedReports.length > 0 ? 'Favori rapor bulunmuyor' : 'Henüz erişilebilir rapor bulunmuyor'}
-                  </p>
-                  <p className="text-gray-400 text-xs sm:text-sm mt-2">
-                    {pinnedReports.length > 0 
-                      ? 'Özelleştir butonuna tıklayarak rapor seçin veya favorileri kaldırın'
-                      : 'Yöneticinizle iletişime geçerek rapor erişimi talep edebilirsiniz'
-                    }
-                  </p>
-                </div>
-              );
-            })()}
-
-
-          </div>
-        </div>
-
-        {/* Tanımlı Raporlar Bölümü */}
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl border border-gray-100">
-          <div className="p-4 sm:p-6 border-b border-gray-100">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Tanımlı Raporlar</h3>
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-xs sm:text-sm text-gray-500">
-                  {loadingReports ? 'Yükleniyor...' : `${userReports.length} rapor mevcut`}
+              {/* Saat */}
+              <div className="hidden sm:flex flex-col items-end gap-0.5 flex-shrink-0">
+                <span className="text-3xl font-bold text-white tabular-nums tracking-tight">
+                  {currentTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className="text-slate-500 text-xs">
+                  {currentTime.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
               </div>
             </div>
-          </div>
-          <div className="p-4 sm:p-6">
-            {loadingReports ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="ml-2 text-sm text-gray-500">Raporlar yükleniyor...</span>
-              </div>
-            ) : userReports.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-lg">
-                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <p className="text-gray-500 text-lg">Henüz erişilebilir rapor bulunmuyor</p>
-                <p className="text-gray-400 text-sm mt-2">Yöneticinizle iletişime geçerek rapor erişimi talep edebilirsiniz</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {(() => {
-                  // Raporları kategoriye göre grupla
-                  const groupedReports = userReports.reduce((groups: {[key: string]: ReportWithAccess[]}, report) => {
-                    const category = report.category || 'Diğer Raporlar';
-                    if (!groups[category]) {
-                      groups[category] = [];
-                    }
-                    groups[category].push(report);
-                    return groups;
-                  }, {});
 
-                  return Object.entries(groupedReports).map(([categoryName, reports]) => (
-                    <div key={categoryName} className="border border-gray-200 rounded-lg">
-                      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                              </svg>
+            {/* İstatistik Chipsleri */}
+            <div className="flex flex-wrap gap-2 mb-5">
+              <div className="flex items-center gap-2 bg-white/8 backdrop-blur-sm border border-white/10 rounded-full px-3.5 py-1.5">
+                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                <span className="text-slate-200 text-xs font-semibold">
+                  {loadingReports ? '—' : stats.accessibleReports} Rapor
+                </span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/8 backdrop-blur-sm border border-white/10 rounded-full px-3.5 py-1.5">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span className="text-slate-200 text-xs font-semibold">{stats.activeUsers} Kullanıcı</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/8 backdrop-blur-sm border border-white/10 rounded-full px-3.5 py-1.5">
+                <div className={`w-2 h-2 rounded-full ${
+                  stats.systemStatus === 'Aktif' ? 'bg-emerald-400 animate-pulse' :
+                  stats.systemStatus === 'Kontrol ediliyor...' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
+                }`}></div>
+                <span className="text-slate-200 text-xs font-semibold">Sistem {stats.systemStatus}</span>
+              </div>
+              {planInfo.planName && (
+                <div className="flex items-center gap-2 bg-white/8 backdrop-blur-sm border border-white/10 rounded-full px-3.5 py-1.5">
+                  <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
+                  <span className="text-slate-200 text-xs font-semibold">{planInfo.planName}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Arama Çubuğu */}
+            <div className="relative max-w-2xl">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Rapor ara... (örn: cari bakiye, ciro, envanter)"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-white/10 backdrop-blur-sm border border-white/15 text-white placeholder-slate-500 rounded-2xl pl-11 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500/40 transition-all"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors">
+                  <svg className="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════
+            SAYFA İÇERİĞİ
+        ═══════════════════════════════════════════════════════ */}
+        <div className="px-4 lg:px-6 py-5 space-y-5 bg-gray-50 min-h-screen">
+
+          {/* Erişim Reddedildi Uyarısı */}
+          {accessDeniedInfo?.show && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+              <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-800">Rapor Erişimi Reddedildi</p>
+                <p className="text-sm text-red-700 mt-0.5">
+                  <strong>{accessDeniedInfo.report}</strong> raporuna erişim yetkiniz yok.{' '}
+                  <button onClick={() => router.push('/ayarlar')} className="underline font-medium">Yetki talep et</button>
+                </p>
+              </div>
+              <button onClick={() => setAccessDeniedInfo(null)} className="text-red-400 hover:text-red-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* ─── ARAMA SONUÇLARI ──────────────────────────────────── */}
+          {isSearching ? (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Arama Sonuçları</p>
+                  <h2 className="text-base font-bold text-gray-900 mt-0.5">
+                    &ldquo;{searchQuery}&rdquo; için {filteredReports.length} sonuç
+                  </h2>
+                </div>
+                <button onClick={() => setSearchQuery('')}
+                  className="text-xs text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors font-medium">
+                  Temizle
+                </button>
+              </div>
+              <div className="p-5">
+                {filteredReports.length === 0 ? (
+                  <div className="text-center py-10">
+                    <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-500 font-medium">Sonuç bulunamadı</p>
+                    <p className="text-gray-400 text-sm mt-1">Farklı bir arama terimi deneyin</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filteredReports.map(report => (
+                      <ReportCard key={report.id} report={report} pinnedReports={pinnedReports} router={router} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* ─── RAPOR BİLGİ SLİDER ──────────────────────────────── */}
+              {!loadingReports && sliderReports.length > 0 && (
+                <section
+                  onMouseEnter={() => setSliderPaused(true)}
+                  onMouseLeave={() => setSliderPaused(false)}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Raporlarınız Hakkında</h2>
+                    </div>
+                    {/* Dot göstergeleri */}
+                    <div className="flex items-center gap-1.5">
+                      {sliderReports.map((_, i) => (
+                        <button key={i} onClick={() => setSliderIndex(i)}
+                          className={`rounded-full transition-all duration-300 ${
+                            i === sliderIndex ? 'w-5 h-2 bg-slate-700' : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'
+                          }`} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Slider çerçevesi */}
+                  <div className="relative overflow-hidden rounded-2xl">
+                    {/* Kart */}
+                    {sliderReports.map((report, i) => {
+                      const info = getReportShowcaseInfo(report);
+                      return (
+                        <div key={report.id}
+                          className={`transition-all duration-500 ${i === sliderIndex ? 'block' : 'hidden'}`}>
+                          <div className={`relative overflow-hidden bg-gradient-to-br ${info.gradient} rounded-2xl`}>
+                            {/* Arka plan deseni */}
+                            <div className="absolute inset-0 pointer-events-none">
+                              <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/5 rounded-full blur-2xl"></div>
+                              <div className="absolute bottom-0 left-1/4 w-32 h-32 bg-white/5 rounded-full blur-xl"></div>
+                              <div className="absolute inset-0"
+                                style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(255,255,255,0.05) 0%, transparent 60%)' }}>
+                              </div>
                             </div>
-                            <div>
-                              <h4 className="text-lg font-medium text-gray-900">{categoryName}</h4>
-                              <p className="text-sm text-gray-500">{reports.length} rapor</p>
+
+                            <div className="relative p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
+                              {/* Sol: İkon + Rozet */}
+                              <div className="flex-shrink-0">
+                                <div className="w-16 h-16 bg-white/15 rounded-2xl flex items-center justify-center shadow-lg shadow-black/20 backdrop-blur-sm">
+                                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d={getReportIcon(report.report_name)} />
+                                  </svg>
+                                </div>
+                                <span className="mt-2 block text-center text-xs font-bold text-white/70 uppercase tracking-wider">
+                                  {info.badge}
+                                </span>
+                              </div>
+
+                              {/* Orta: İçerik */}
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-xl font-bold text-white leading-tight mb-1">
+                                  {report.report_name}
+                                </h3>
+                                <p className="text-white/80 text-sm leading-relaxed mb-4">
+                                  {info.description || report.report_description || 'Bu rapor ile işletmenizin verilerini anlık olarak takip edebilirsiniz.'}
+                                </p>
+                                {/* Özellikler */}
+                                <div className="flex flex-wrap gap-2">
+                                  {info.features.map((feat, fi) => (
+                                    <span key={fi}
+                                      className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm border border-white/20 rounded-full text-xs font-semibold text-white px-3 py-1.5">
+                                      <svg className="w-3 h-3 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                      </svg>
+                                      {feat}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Sağ: CTA */}
+                              <div className="flex-shrink-0 flex flex-col items-center gap-3">
+                                <button
+                                  onClick={() => handleReportClick(report, router)}
+                                  className="group flex items-center gap-2 bg-white text-slate-800 font-bold text-sm px-5 py-2.5 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+                                >
+                                  Rapora Git
+                                  <svg className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </button>
+                                {/* İlerleme çubuğu */}
+                                {!sliderPaused && (
+                                  <div className="w-20 h-1 bg-white/20 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-white/60 rounded-full"
+                                      style={{ animation: 'sliderProgress 5s linear infinite', animationPlayState: sliderPaused ? 'paused' : 'running' }}
+                                    ></div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Alt: Prev / Next okları */}
+                            <div className="absolute top-1/2 -translate-y-1/2 left-2 right-2 flex items-center justify-between pointer-events-none">
+                              <button
+                                onClick={() => setSliderIndex(prev => (prev - 1 + sliderReports.length) % sliderReports.length)}
+                                className="pointer-events-auto w-8 h-8 bg-black/20 hover:bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center transition-all text-white"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setSliderIndex(prev => (prev + 1) % sliderReports.length)}
+                                className="pointer-events-auto w-8 h-8 bg-black/20 hover:bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center transition-all text-white"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
                             </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {reports.map((report) => (
-                            <div
-                              key={report.id}
-                              className={`group cursor-pointer p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
-                                report.has_access 
-                                  ? 'border-gray-200 hover:border-red-300 hover:bg-red-50' 
-                                  : 'border-gray-200 bg-gray-50 opacity-60'
-                              }`}
-                              onClick={() => handleReportClick(report, router)}
-                            >
-                              <div className="flex items-start justify-between mb-3">
-                                <div className="flex-1">
-                                  <h5 className="text-sm font-medium text-gray-900 mb-1">
-                                    {report.report_name}
-                                  </h5>
-                                  <p className="text-xs text-gray-500 line-clamp-2">
-                                    {report.report_description}
-                                  </p>
-                                </div>
-                                <div className="ml-3 flex-shrink-0">
-                                  {report.has_access ? (
-                                    <svg className="w-4 h-4 text-red-400 group-hover:text-red-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                    </svg>
-                                  ) : (
-                                    <div className="w-6 h-6 bg-gray-400 rounded flex items-center justify-center">
-                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                      </svg>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                  report.has_access 
-                                    ? 'bg-green-100 text-green-700' 
-                                    : 'bg-gray-200 text-gray-600'
-                                }`}>
-                                  {report.has_access ? 'Erişilebilir' : 'Kilitli'}
-                                </span>
-                                <span className="text-xs text-gray-400">
-                                  #{report.id}
-                                </span>
-                              </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* ─── FAVORİ RAPORLAR ──────────────────────────────────── */}
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                    <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Favori Raporlar</h2>
+                    <span className="text-xs text-gray-400 font-normal">{pinnedReports.length}/6</span>
+                  </div>
+                  <button onClick={() => setShowPinnedSelector(true)}
+                    className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors shadow-sm">
+                    Düzenle
+                  </button>
+                </div>
+
+                {loadingReports ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    {Array.from({length: 6}).map((_, i) => (
+                      <div key={i} className="h-36 bg-gray-200 rounded-2xl animate-pulse"></div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    {pinnedReportObjects.map((report, idx) => {
+                      const pal = CARD_PALETTE[idx % CARD_PALETTE.length];
+                      return (
+                        <button key={report.id} onClick={() => handleReportClick(report, router)}
+                          className={`group relative text-left h-36 rounded-2xl p-4 shadow-sm flex flex-col justify-between overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${pal.card}`}>
+                          {/* Dekoratif daire */}
+                          <div className={`absolute -bottom-5 -right-5 w-20 h-20 rounded-full opacity-20 ${pal.circle}`}></div>
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${pal.icon}`}>
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={getReportIcon(report.report_name)} />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className={`text-sm font-bold leading-tight line-clamp-2 ${pal.text}`}>{report.report_name}</p>
+                            {!report.has_access && (
+                              <span className="text-xs opacity-70 mt-0.5 block">Kilitli</span>
+                            )}
+                          </div>
+                          {report.has_access && (
+                            <svg className={`absolute top-3 right-3 w-4 h-4 opacity-0 group-hover:opacity-60 transition-opacity ${pal.text}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                          )}
+                          {!report.has_access && (
+                            <div className="absolute top-3 right-3 w-5 h-5 bg-black/20 rounded-md flex items-center justify-center">
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
                             </div>
-                          ))}
+                          )}
+                        </button>
+                      );
+                    })}
+                    {/* Boş slotlar */}
+                    {pinnedReportObjects.length < 6 && Array.from({length: 6 - pinnedReportObjects.length}).map((_, i) => (
+                      <button key={`empty-${i}`} onClick={() => setShowPinnedSelector(true)}
+                        className="h-36 rounded-2xl border-2 border-dashed border-gray-200 hover:border-red-300 hover:bg-red-50/30 flex flex-col items-center justify-center gap-2 text-gray-300 hover:text-red-400 transition-all group">
+                        <div className="w-9 h-9 rounded-xl border-2 border-current flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
                         </div>
-                      </div>
+                        <span className="text-xs font-semibold">Favori Ekle</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* ─── TÜM RAPORLAR ────────────────────────────────────── */}
+              <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                {/* Başlık + Kategori Tabs */}
+                <div className="px-5 pt-4 pb-0 border-b border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                      </svg>
+                      <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Tüm Raporlar</h2>
+                      {!loadingReports && (
+                        <span className="text-xs text-gray-400">{userReports.length} rapor</span>
+                      )}
                     </div>
-                  ));
-                })()}
-              </div>
-            )}
-          </div>
+                  </div>
+
+                  {/* Kategori Tabs - horizontal scroll */}
+                  {!loadingReports && categories.length > 1 && (
+                    <div className="flex gap-1 overflow-x-auto pb-0 scrollbar-hide" style={{scrollbarWidth:'none'}}>
+                      {categories.map(cat => (
+                        <button key={cat} onClick={() => setActiveCategory(cat)}
+                          className={`flex-shrink-0 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all ${
+                            activeCategory === cat
+                              ? 'border-red-600 text-red-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-800'
+                          }`}>
+                          {cat}
+                          {cat !== 'Tümü' && (
+                            <span className={`ml-1.5 text-xs ${activeCategory === cat ? 'text-red-400' : 'text-gray-300'}`}>
+                              {userReports.filter(r => (r.category || 'Diğer') === cat).length}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Rapor Listesi */}
+                <div className="p-5">
+                  {loadingReports ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {Array.from({length: 8}).map((_, i) => (
+                        <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse"></div>
+                      ))}
+                    </div>
+                  ) : filteredReports.length === 0 ? (
+                    <div className="text-center py-10">
+                      <p className="text-gray-400 font-medium">Bu kategoride rapor yok</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      {Object.entries(groupedFilteredReports).map(([categoryName, reports]) => (
+                        <div key={categoryName}>
+                          {activeCategory === 'Tümü' && Object.keys(groupedFilteredReports).length > 1 && (
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{categoryName}</span>
+                              <div className="flex-1 h-px bg-gray-100"></div>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                            {reports.map(report => (
+                              <ReportCard key={report.id} report={report} pinnedReports={pinnedReports} router={router} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </>
+          )}
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          FAVORİ DÜZENLEME MODAL
+      ═══════════════════════════════════════════════════════ */}
+      {showPinnedSelector && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Favori Raporlar</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{pinnedReports.length}/6 seçili · En fazla 6 rapor</p>
+              </div>
+              <button onClick={() => setShowPinnedSelector(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Seçili etiketler */}
+            {pinnedReports.length > 0 && (
+              <div className="px-5 py-3 border-b border-gray-100 bg-blue-50/50">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-blue-700">Seçili Favoriler</p>
+                  <button onClick={() => setPinnedReports([])} className="text-xs text-red-500 hover:text-red-700 font-medium">Temizle</button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {pinnedReportObjects.map(report => (
+                    <span key={report.id} className="flex items-center gap-1 bg-blue-100 border border-blue-200 rounded-full text-xs font-medium text-blue-700 pl-2.5 pr-1 py-1">
+                      {report.report_name}
+                      <button onClick={() => togglePinnedReport(report.id.toString())}
+                        className="w-4 h-4 bg-blue-200 hover:bg-blue-300 rounded-full flex items-center justify-center transition-colors">
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Rapor Listesi */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-1.5">
+              {userReports.map(report => {
+                const isSelected = pinnedReports.includes(report.id.toString());
+                const isDisabled = !isSelected && pinnedReports.length >= 6;
+                return (
+                  <label key={report.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer select-none transition-all ${
+                      isDisabled ? 'opacity-40 cursor-not-allowed bg-gray-50 border-gray-100' :
+                      isSelected ? 'bg-blue-50 border-blue-200 shadow-sm' :
+                      'bg-white border-gray-150 hover:border-gray-300 hover:bg-gray-50'
+                    }`}>
+                    <input type="checkbox" checked={isSelected}
+                      onChange={() => !isDisabled && togglePinnedReport(report.id.toString())}
+                      disabled={isDisabled}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{report.report_name}</p>
+                      {report.report_description && (
+                        <p className="text-xs text-gray-400 truncate">{report.report_description}</p>
+                      )}
+                    </div>
+                    {!report.has_access && (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full flex-shrink-0">Kilitli</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400">{6 - pinnedReports.length} slot boş</p>
+              <button onClick={() => setShowPinnedSelector(false)}
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition-colors">
+                Tamam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
 
-// Helper fonksiyonlar
-const formatLicenseDate = (dateString: string) => {
-  if (!dateString) return 'Tarih bilgisi yok';
-  
-  const targetDate = new Date(dateString);
-  const currentDate = new Date();
-  
-  // Türkçe ay isimleri (kısa)
-  const months = [
-    'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
-    'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'
-  ];
-  
-  // Formatlanmış tarih (gg ay yyyy)
-  const day = targetDate.getDate();
-  const month = months[targetDate.getMonth()];
-  const year = targetDate.getFullYear();
-  
-  // Kalan gün hesaplama
-  const timeDiff = targetDate.getTime() - currentDate.getTime();
-  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-  
-  if (daysDiff < 0) {
-    return `${day} ${month} ${year} (Dolmuş)`;
-  } else if (daysDiff === 0) {
-    return `${day} ${month} ${year} (Bugün)`;
-  } else if (daysDiff <= 30) {
-    return `${day} ${month} ${year} (${daysDiff} gün)`;
-  } else {
-    const months = Math.floor(daysDiff / 30);
-    return `${day} ${month} ${year} (${months} ay)`;
-  }
-};
+// ─── RAPOR KARTI BİLEŞENİ ──────────────────────────────────────────────────
 
-const colorPalette = [
-  {
-    bgGradient: 'from-blue-50 to-blue-100',
-    border: 'border-blue-200',
-    hoverBorder: 'border-blue-300',
-    iconBg: 'from-blue-500 to-blue-600',
-    arrowColor: 'text-blue-400',
-    arrowHover: 'text-blue-600',
-    badgeBg: 'bg-blue-500',
-    textColor: 'text-gray-900',
-    opacity: 'opacity-100'
-  },
-  {
-    bgGradient: 'from-red-50 to-red-100',
-    border: 'border-red-200',
-    hoverBorder: 'border-red-300',
-    iconBg: 'from-red-500 to-red-600',
-    arrowColor: 'text-red-400',
-    arrowHover: 'text-red-600',
-    badgeBg: 'bg-red-500',
-    textColor: 'text-gray-900',
-    opacity: 'opacity-100'
-  },
-  {
-    bgGradient: 'from-emerald-50 to-emerald-100',
-    border: 'border-emerald-200',
-    hoverBorder: 'border-emerald-300',
-    iconBg: 'from-emerald-500 to-emerald-600',
-    arrowColor: 'text-emerald-400',
-    arrowHover: 'text-emerald-600',
-    badgeBg: 'bg-emerald-500',
-    textColor: 'text-gray-900',
-    opacity: 'opacity-100'
-  },
-  {
-    bgGradient: 'from-orange-50 to-orange-100',
-    border: 'border-orange-200',
-    hoverBorder: 'border-orange-300',
-    iconBg: 'from-orange-500 to-orange-600',
-    arrowColor: 'text-orange-400',
-    arrowHover: 'text-orange-600',
-    badgeBg: 'bg-orange-500',
-    textColor: 'text-gray-900',
-    opacity: 'opacity-100'
-  },
-  {
-    bgGradient: 'from-purple-50 to-purple-100',
-    border: 'border-purple-200',
-    hoverBorder: 'border-purple-300',
-    iconBg: 'from-purple-500 to-purple-600',
-    arrowColor: 'text-purple-400',
-    arrowHover: 'text-purple-600',
-    badgeBg: 'bg-purple-500',
-    textColor: 'text-gray-900',
-    opacity: 'opacity-100'
-  },
-  {
-    bgGradient: 'from-pink-50 to-pink-100',
-    border: 'border-pink-200',
-    hoverBorder: 'border-pink-300',
-    iconBg: 'from-pink-500 to-pink-600',
-    arrowColor: 'text-pink-400',
-    arrowHover: 'text-pink-600',
-    badgeBg: 'bg-pink-500',
-    textColor: 'text-gray-900',
-    opacity: 'opacity-100'
-  }
+function ReportCard({ report, pinnedReports, router }: { report: ReportWithAccess; pinnedReports: string[]; router: ReturnType<typeof useRouter> }) {
+  const isPinned = pinnedReports.includes(report.id.toString());
+  return (
+    <button
+      onClick={() => handleReportClick(report, router)}
+      className={`group w-full text-left rounded-xl border px-4 py-3 transition-all duration-150 ${
+        report.has_access
+          ? 'bg-white border-gray-200 hover:border-red-200 hover:bg-red-50/40 hover:shadow-sm'
+          : 'bg-gray-50 border-gray-100 opacity-55 cursor-not-allowed'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+          report.has_access ? 'bg-red-100 group-hover:bg-red-200' : 'bg-gray-200'
+        }`}>
+          <svg className={`w-4 h-4 ${report.has_access ? 'text-red-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={getReportIcon(report.report_name)} />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 truncate">{report.report_name}</p>
+          {report.report_description && (
+            <p className="text-xs text-gray-400 truncate">{report.report_description}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {isPinned && (
+            <svg className="w-3.5 h-3.5 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+          )}
+          {!report.has_access ? (
+            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-gray-200 group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── HELPER FONKSİYONLAR ───────────────────────────────────────────────────
+
+const CARD_PALETTE = [
+  { card: 'bg-gradient-to-br from-blue-500 to-blue-700 text-white', icon: 'bg-white/20', circle: 'bg-white', text: 'text-white' },
+  { card: 'bg-gradient-to-br from-red-500 to-rose-700 text-white', icon: 'bg-white/20', circle: 'bg-white', text: 'text-white' },
+  { card: 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white', icon: 'bg-white/20', circle: 'bg-white', text: 'text-white' },
+  { card: 'bg-gradient-to-br from-orange-500 to-amber-600 text-white', icon: 'bg-white/20', circle: 'bg-white', text: 'text-white' },
+  { card: 'bg-gradient-to-br from-violet-500 to-purple-700 text-white', icon: 'bg-white/20', circle: 'bg-white', text: 'text-white' },
+  { card: 'bg-gradient-to-br from-pink-500 to-fuchsia-700 text-white', icon: 'bg-white/20', circle: 'bg-white', text: 'text-white' },
 ];
 
-const getReportCardColors = (report: ReportWithAccess, idx?: number) => {
-  if (!report.has_access) {
-    return {
-      bgGradient: 'from-gray-50 to-gray-100',
-      border: 'border-gray-200',
-      hoverBorder: 'border-gray-300',
-      iconBg: 'from-gray-400 to-gray-500',
-      arrowColor: 'text-gray-400',
-      arrowHover: 'text-gray-500',
-      badgeBg: 'bg-gray-400',
-      textColor: 'text-gray-600',
-      opacity: 'opacity-60'
-    };
-  }
-  // Favorilerde index verilirse sıraya göre renk
-  if (typeof idx === 'number') {
-    return colorPalette[idx % colorPalette.length];
-  }
-  // Diğer kartlar için id'ye göre renk
-  const idIdx = report.id % colorPalette.length;
-  return colorPalette[idIdx];
+const getReportIcon = (reportName: string) => {
+  const name = reportName.toLocaleLowerCase('tr-TR');
+  if (name.includes('cari') || name.includes('bakiye'))
+    return "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z";
+  if (name.includes('ciro') || name.includes('satış') || name.includes('satis'))
+    return "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6";
+  if (name.includes('stok') || name.includes('envanter') || name.includes('malzeme'))
+    return "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4";
+  if (name.includes('fatura'))
+    return "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2";
+  if (name.includes('çek') || name.includes('senet') || name.includes('cek'))
+    return "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z";
+  if (name.includes('hareket'))
+    return "M13 10V3L4 14h7v7l9-11h-7z";
+  if (name.includes('akaryakıt') || name.includes('akaryakit'))
+    return "M12 3v1m0 16v1m8.66-13l-.87.5M4.21 15.5l-.87.5M20.66 15.5l-.87-.5M4.21 8.5l-.87-.5M21 12h-1M4 12H3";
+  return "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z";
 };
 
 const getReportRoute = (report: ReportWithAccess) => {
-  // Önce API'den gelen route bilgisini kullan
-  if (report.route_path) {
-    return report.route_path;
-  } else if (report.route) {
-    return `/${report.route}`;
-  }
-  
-  // API'de route bilgisi yoksa fallback olarak isim bazlı eşleştirme yap
-  const reportName = report.report_name;
-  if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
-    return '/c-bakiye';
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('enpos') && reportName.toLocaleLowerCase('tr-TR').includes('ciro')) {
-    return '/enpos-ciro';
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('stok') || reportName.toLocaleLowerCase('tr-TR').includes('envanter')) {
-    return '/envanter-raporu';
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('fatura') && reportName.toLocaleLowerCase('tr-TR').includes('kontrol')) {
-    return '/fatura-kontrol';
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('hareket') && reportName.toLocaleLowerCase('tr-TR').includes('görmeyen')) {
-    return '/hareket-gormeyen-cariler';
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('satılan') || reportName.toLocaleLowerCase('tr-TR').includes('malzeme')) {
-    return '/en-cok-satilan-malzemeler';
-  }
-  
-  return null; // Henüz route'u olmayan raporlar
+  if (report.route_path) return report.route_path;
+  if (report.route) return `/${report.route}`;
+  const name = report.report_name.toLocaleLowerCase('tr-TR');
+  if (name.includes('cari') || name.includes('bakiye')) return '/c-bakiye';
+  if (name.includes('enpos') && name.includes('ciro')) return '/enpos-ciro';
+  if (name.includes('stok') || name.includes('envanter')) return '/envanter-raporu';
+  if (name.includes('fatura') && name.includes('kontrol')) return '/fatura-kontrol';
+  if (name.includes('hareket') && name.includes('görmeyen')) return '/hareket-gormeyen-cariler';
+  if (name.includes('satılan') || name.includes('malzeme')) return '/en-cok-satilan-malzemeler';
+  return null;
 };
 
-const getReportIcon = (reportName: string) => {
-  if (reportName.toLocaleLowerCase('tr-TR').includes('cari') || reportName.toLocaleLowerCase('tr-TR').includes('bakiye')) {
-    return "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z";
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('ciro') || reportName.toLocaleLowerCase('tr-TR').includes('satış')) {
-    return "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1";
-  } else if (reportName.toLocaleLowerCase('tr-TR').includes('stok') || reportName.toLocaleLowerCase('tr-TR').includes('envanter')) {
-    return "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4";
-  } else {
-    return "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z";
-  }
-};
-
-const handleReportClick = (report: ReportWithAccess, router: any) => {
-  console.log(`🔍 handleReportClick - Rapor: ${report.report_name}, has_access: ${report.has_access}`);
-  
-  // Erişim yetkisi kontrolü
+const handleReportClick = (report: ReportWithAccess, router: ReturnType<typeof useRouter>) => {
   if (!report.has_access) {
-    console.log(`❌ Erişim reddedildi - ${report.report_name} için yetki yok`);
-    alert(`🔒 ${report.report_name} rapora erişim yetkiniz bulunmamaktadır.\n\nBu raporu kullanabilmek için paket yükseltmesi yapmanız gerekmektedir.\n\nPaket bilgileri için Ayarlar > Plan Yönetimi bölümünü ziyaret edebilirsiniz.`);
+    alert(`🔒 ${report.report_name} raporuna erişim yetkiniz bulunmamaktadır.\n\nPaket yükseltmesi için Ayarlar > Plan Yönetimi bölümünü ziyaret edin.`);
     return;
   }
-  
-  // Route'u belirle (API'den gelen bilgi öncelikli)
   const route = getReportRoute(report);
-  
   if (!route) {
     alert(`${report.report_name} henüz hazır değil. Yakında erişilebilir olacak.`);
     return;
   }
-  
-  console.log(`✅ Erişim onaylandı - ${report.report_name} raporu açılıyor: ${route}`);
   router.push(route);
-}; 
+};
+
+// ─── RAPOR SHOWCASE BİLGİLERİ ──────────────────────────────────────────────
+
+interface ShowcaseInfo {
+  badge: string;
+  description: string;
+  features: string[];
+  gradient: string;
+}
+
+const getReportShowcaseInfo = (report: ReportWithAccess): ShowcaseInfo => {
+  const name = report.report_name.toLocaleLowerCase('tr-TR');
+  const desc = report.report_description || '';
+
+  if (name.includes('cari') || name.includes('bakiye')) {
+    return {
+      badge: 'Finans',
+      description: 'Tüm cari hesaplarınızın anlık borç ve alacak durumunu tek ekranda görüntüleyin. Vadesi geçen bakiyeleri tespit edin, cari bazlı ekstre alın ve finansal riskleri önceden yönetin.',
+      features: ['Anlık Bakiye Takibi', 'Borç / Alacak Dengesi', 'Vadesi Geçen Kayıtlar', 'Cari Ekstre'],
+      gradient: 'from-blue-600 via-blue-700 to-indigo-800',
+    };
+  }
+  if (name.includes('ciro') || name.includes('satış') || name.includes('satis') || name.includes('enpos')) {
+    return {
+      badge: 'Satış',
+      description: 'Günlük, haftalık ve aylık satış cirolarınızı anlık izleyin. Dönemsel karşılaştırma yapın, trend analizi ile satış performansınızı optimize edin.',
+      features: ['Günlük Ciro Takibi', 'Dönem Karşılaştırma', 'Trend Analizi', 'Kasiyer Bazlı Rapor'],
+      gradient: 'from-emerald-600 via-teal-600 to-cyan-700',
+    };
+  }
+  if (name.includes('envanter') || name.includes('stok')) {
+    return {
+      badge: 'Stok',
+      description: 'Depo ve stok durumunuzu gerçek zamanlı takip edin. Kritik stok seviyelerini, yavaş hareket eden ürünleri ve stok maliyetlerini kolayca analiz edin.',
+      features: ['Anlık Stok Durumu', 'Kritik Seviye Uyarısı', 'Maliyet Analizi', 'Depo Bazlı Görünüm'],
+      gradient: 'from-orange-500 via-orange-600 to-amber-700',
+    };
+  }
+  if (name.includes('fatura')) {
+    return {
+      badge: 'Muhasebe',
+      description: 'Kesilen ve gelen faturaları karşılaştırın, tutarsızlıkları anında tespit edin. Fatura onay süreçlerinizi hızlandırın ve muhasebe hatalarını minimize edin.',
+      features: ['Fatura Doğrulama', 'Çift Kayıt Tespiti', 'KDV Kontrolü', 'Otomatik Eşleştirme'],
+      gradient: 'from-violet-600 via-purple-600 to-purple-800',
+    };
+  }
+  if (name.includes('hareket') || name.includes('görmeyen') || name.includes('gormeyen')) {
+    return {
+      badge: 'CRM',
+      description: 'Belirli bir süre içinde işlem yapmayan müşteri ve tedarikçileri listeleyin. Pasif cari hesapları reaktive edin, kayıp müşterilerinizi geri kazanın.',
+      features: ['Pasif Cari Listesi', 'Süre Bazlı Filtreleme', 'Son İşlem Tarihi', 'Müşteri Segmentasyon'],
+      gradient: 'from-rose-600 via-pink-600 to-fuchsia-700',
+    };
+  }
+  if (name.includes('satılan') || name.includes('malzeme') || name.includes('ürün')) {
+    return {
+      badge: 'Analiz',
+      description: 'En yüksek satış hacmine sahip ürünlerinizi ve malzemelerinizi keşfedin. Pareto analiziyle en çok gelir getiren ürünlere odaklanın ve stok planlamanızı optimize edin.',
+      features: ['Satış Sıralaması', 'Pareto Analizi', 'Kategori Karşılaştırma', 'Dönemsel Trend'],
+      gradient: 'from-cyan-600 via-sky-600 to-blue-700',
+    };
+  }
+  if (name.includes('çek') || name.includes('senet') || name.includes('cek')) {
+    return {
+      badge: 'Finans',
+      description: 'Tüm çek ve senet portföyünüzü tek ekranda yönetin. Vade takibi yapın, tahsilat planlamanızı optimize edin ve nakit akışınızı öngörün.',
+      features: ['Vade Takibi', 'Tahsilat Planı', 'Risk Analizi', 'Banka Bazlı Grupla'],
+      gradient: 'from-slate-600 via-slate-700 to-gray-800',
+    };
+  }
+  if (name.includes('akaryakıt') || name.includes('akaryakit')) {
+    return {
+      badge: 'Operasyon',
+      description: 'Araç yakıt tüketimlerini takip edin, yakıt maliyetlerini analiz edin ve anormal tüketimleri tespit edin. Filonuzu daha verimli yönetin.',
+      features: ['Yakıt Tüketim Takibi', 'Araç Bazlı Analiz', 'Maliyet Raporu', 'Anormallik Tespiti'],
+      gradient: 'from-yellow-600 via-amber-600 to-orange-700',
+    };
+  }
+  if (name.includes('yemek') || name.includes('kart')) {
+    return {
+      badge: 'İnsan Kaynakları',
+      description: 'Personel yemek kartı harcamalarını takip edin, departman bazlı analizler yapın ve yemek yardımı maliyetlerini şeffaf biçimde raporlayın.',
+      features: ['Personel Bazlı Harcama', 'Departman Analizi', 'Aylık Özet', 'Limit Takibi'],
+      gradient: 'from-lime-600 via-green-600 to-emerald-700',
+    };
+  }
+
+  // Genel fallback
+  return {
+    badge: 'Rapor',
+    description: desc || 'Bu rapor ile işletmenizin kritik verilerini anlık olarak takip edebilir, veri odaklı kararlar alabilirsiniz.',
+    features: ['Anlık Veri', 'Kolay Filtreleme', 'Excel Export', 'Detaylı Görünüm'],
+    gradient: 'from-slate-700 via-slate-700 to-slate-800',
+  };
+};
+
+const formatLicenseDate = (dateString: string) => {
+  if (!dateString) return 'Tarih yok';
+  const targetDate = new Date(dateString);
+  const currentDate = new Date();
+  const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+  const day = targetDate.getDate();
+  const month = months[targetDate.getMonth()];
+  const year = targetDate.getFullYear();
+  const timeDiff = targetDate.getTime() - currentDate.getTime();
+  const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+  if (daysDiff < 0) return `${day} ${month} ${year} (Dolmuş)`;
+  if (daysDiff === 0) return `${day} ${month} ${year} (Bugün)`;
+  if (daysDiff <= 30) return `${day} ${month} ${year} (${daysDiff} gün kaldı)`;
+  return `${day} ${month} ${year} (${Math.floor(daysDiff / 30)} ay kaldı)`;
+};

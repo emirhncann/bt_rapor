@@ -4,6 +4,20 @@ import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { useColumnPreferences } from '../../hooks/useColumnPreferences';
+import ColumnManager from '../ColumnManager';
+
+const COLUMN_DEFS = [
+  { key: 'Portföy No',        label: 'Portföy No',        defaultVisible: true },
+  { key: 'Seri No',           label: 'Seri No',           defaultVisible: true },
+  { key: 'Tur',               label: 'Tür',               defaultVisible: true },
+  { key: 'Statu',             label: 'Statü',             defaultVisible: true },
+  { key: 'Modul',             label: 'Modül',             defaultVisible: true },
+  { key: 'Devir',             label: 'Devir',             defaultVisible: true },
+  { key: 'Düzenlenme Tarihi', label: 'Düzenlenme Tarihi', defaultVisible: true },
+  { key: 'Hareket Tarihi',    label: 'Hareket Tarihi',    defaultVisible: true },
+  { key: 'Vade Tarihi',       label: 'Vade Tarihi',       defaultVisible: true },
+];
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -38,18 +52,18 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   const [filterModul, setFilterModul] = useState<string>('');
   const [filterDevir, setFilterDevir] = useState<string>('');
 
-  // Tablo kolonları
-  const columns = [
-    { key: 'Portföy No', label: 'Portföy No', sortable: true },
-    { key: 'Seri No', label: 'Seri No', sortable: true },
-    { key: 'Tur', label: 'Tür', sortable: true },
-    { key: 'Statu', label: 'Statü', sortable: true },
-    { key: 'Modul', label: 'Modül', sortable: true },
-    { key: 'Devir', label: 'Devir', sortable: true },
-    { key: 'Düzenlenme Tarihi', label: 'Düzenlenme Tarihi', sortable: true },
-    { key: 'Hareket Tarihi', label: 'Hareket Tarihi', sortable: true },
-    { key: 'Vade Tarihi', label: 'Vade Tarihi', sortable: true }
-  ];
+  const { orderedColumns, toggle, reorder, showAll, hideAll } = useColumnPreferences(
+    'cek-senet-raporu',
+    COLUMN_DEFS
+  );
+
+  // Görünür kolonlar (sıralı) — export/print için de kullanılır
+  const columns = orderedColumns
+    .filter(c => c.visible)
+    .map(c => {
+      const def = COLUMN_DEFS.find(d => d.key === c.key)!;
+      return { key: c.key, label: def.label, sortable: true };
+    });
 
   // Benzersiz değerleri al (filtre seçenekleri için)
   const uniqueTurler = [...new Set(data.map(item => item.Tur).filter(Boolean))];
@@ -522,6 +536,15 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
                 </svg>
                 PDF
               </button>
+
+              <ColumnManager
+                orderedColumns={orderedColumns}
+                columnDefs={COLUMN_DEFS}
+                onToggle={toggle}
+                onReorder={reorder}
+                onShowAll={showAll}
+                onHideAll={hideAll}
+              />
             </div>
           </div>
 
@@ -619,43 +642,45 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedData.map((item, index) => (
                 <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {item['Portföy No']}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item['Seri No']}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`text-xs px-2 py-1 rounded-full ${getTurColor(item.Tur)}`}>
-                      {item.Tur}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`text-xs px-2 py-1 rounded-full ${getStatuColor(item.Statu)}`}>
-                      {item.Statu}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    {item.Modul}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
-                    {item.Devir === 'D' ? (
-                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 font-medium">
-                        D
-                      </span>
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    {formatDate(item['Düzenlenme Tarihi'])}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    {formatDate(item['Hareket Tarihi'])}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {formatDate(item['Vade Tarihi'])}
-                  </td>
+                  {columns.map(col => (
+                    <td key={col.key} className="px-6 py-4 whitespace-nowrap">
+                      {col.key === 'Portföy No' && (
+                        <span className="text-sm font-medium text-gray-900">{item['Portföy No']}</span>
+                      )}
+                      {col.key === 'Seri No' && (
+                        <span className="text-sm text-gray-900">{item['Seri No']}</span>
+                      )}
+                      {col.key === 'Tur' && (
+                        <span className={`text-xs px-2 py-1 rounded-full ${getTurColor(item.Tur)}`}>
+                          {item.Tur}
+                        </span>
+                      )}
+                      {col.key === 'Statu' && (
+                        <span className={`text-xs px-2 py-1 rounded-full ${getStatuColor(item.Statu)}`}>
+                          {item.Statu}
+                        </span>
+                      )}
+                      {col.key === 'Modul' && (
+                        <span className="text-sm text-gray-700">{item.Modul}</span>
+                      )}
+                      {col.key === 'Devir' && (
+                        item.Devir === 'D' ? (
+                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 font-medium">D</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )
+                      )}
+                      {col.key === 'Düzenlenme Tarihi' && (
+                        <span className="text-sm text-gray-700">{formatDate(item['Düzenlenme Tarihi'])}</span>
+                      )}
+                      {col.key === 'Hareket Tarihi' && (
+                        <span className="text-sm text-gray-700">{formatDate(item['Hareket Tarihi'])}</span>
+                      )}
+                      {col.key === 'Vade Tarihi' && (
+                        <span className="text-sm font-medium text-gray-900">{formatDate(item['Vade Tarihi'])}</span>
+                      )}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>

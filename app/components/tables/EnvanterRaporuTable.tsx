@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import Lottie from 'lottie-react';
 import { getCurrentUser } from '../../utils/simple-permissions';
+import { useColumnPreferences } from '../../hooks/useColumnPreferences';
+import ColumnManager from '../ColumnManager';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -250,6 +252,18 @@ export default function EnvanterRaporuTable({
   const fixedColumns = ['Malzeme Ref', 'Malzeme Kodu', 'Malzeme Adı', 'Grup Kodu', 'Grup Kodu Açıklaması', 'Özel Kod Açıklaması', 'Özel Kod2 Açıklaması', 'Özel Kod3 Açıklaması', 'Özel Kod4 Açıklaması', 'Özel Kod5 Açıklaması'];
   // Tüm kolonlar (sabit + dinamik)
   const allColumns = [...fixedColumns, ...dynamicColumns, totalColumn];
+
+  // Kolon yönetimi
+  const envColDefs = useMemo(
+    () => allColumns.map(k => ({ key: k, label: k, defaultVisible: true })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allColumns.join('|')]
+  );
+  const { orderedColumns, toggle, reorder, showAll, hideAll } = useColumnPreferences(
+    'envanter-raporu',
+    envColDefs
+  );
+  const visibleEnvColumns = orderedColumns.filter(c => c.visible).map(c => c.key);
 
   // Sayısal sütunlar (dinamik kolonlar)
   const numericColumns = [...dynamicColumns, totalColumn];
@@ -723,6 +737,17 @@ export default function EnvanterRaporuTable({
               <span>📄</span>
               PDF
             </button>
+
+            {envColDefs.length > 0 && (
+              <ColumnManager
+                orderedColumns={orderedColumns}
+                columnDefs={envColDefs}
+                onToggle={toggle}
+                onReorder={reorder}
+                onShowAll={showAll}
+                onHideAll={hideAll}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -912,13 +937,13 @@ export default function EnvanterRaporuTable({
               <th className="px-6 py-4 text-left text-xs font-medium text-gray-700 uppercase tracking-wider w-16">
                 <span className="font-semibold">Detay</span>
               </th>
-              {allColumns.map(column => (
+              {(visibleEnvColumns.length > 0 ? visibleEnvColumns : allColumns).map(column => (
                 <th
                   key={column}
                   onClick={() => handleSort(column)}
                   className="px-6 py-4 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer select-none relative group hover:bg-gray-200 transition-colors duration-200"
                   style={{ 
-                    width: `${100 / allColumns.length}%`,
+                    width: `${100 / (visibleEnvColumns.length || allColumns.length)}%`,
                     minWidth: column === 'Malzeme Adı' ? '250px' : '100px'
                   }}
                 >
@@ -970,12 +995,12 @@ export default function EnvanterRaporuTable({
                     </button>
                   </div>
                 </td>
-                {allColumns.map(column => (
+                {(visibleEnvColumns.length > 0 ? visibleEnvColumns : allColumns).map(column => (
                   <td 
                     key={column} 
                     className="px-6 py-4 whitespace-nowrap text-sm"
                     style={{ 
-                      width: `${100 / allColumns.length}%`,
+                      width: `${100 / (visibleEnvColumns.length || allColumns.length)}%`,
                       minWidth: column === 'Malzeme Adı' ? '250px' : '100px'
                     }}
                   >

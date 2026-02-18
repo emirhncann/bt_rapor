@@ -867,25 +867,17 @@ GROUP BY B.Sube_No,D.NAME
     }
   };
 
-  // Authentication kontrolü devam ediyorsa loading göster
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
-          <div className="flex flex-col items-center justify-center">
-            <svg className="animate-spin h-12 w-12 text-red-800 mb-4" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p className="text-gray-700 font-medium text-lg mt-4">Yükleniyor...</p>
-            <p className="text-gray-500 text-sm mt-2">Lütfen bekleyiniz</p>
-          </div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+          <p className="text-slate-400 text-sm font-medium">Yükleniyor...</p>
         </div>
       </div>
     );
   }
 
-  // Eğer kullanıcı authenticated değilse, login sayfasına yönlendirme zaten yapıldı
   if (!isAuthenticated) {
     return null;
   }
@@ -932,21 +924,14 @@ GROUP BY B.Sube_No,D.NAME
     }).format(value);
   };
 
-  // Loading ve erişim kontrolleri
   if (isCheckingAuth || isCheckingAccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 border border-white/20">
-          <div className="flex flex-col items-center justify-center">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-white/30 rounded-full animate-spin border-l-white"></div>
-              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent rounded-full animate-ping border-l-white/50"></div>
-            </div>
-            <p className="text-white font-medium text-lg mt-6">
-              {isCheckingAuth ? 'Giriş kontrolü yapılıyor...' : 'Rapor yetkileri kontrol ediliyor...'}
-            </p>
-            <p className="text-white/70 text-sm mt-2">Lütfen bekleyiniz</p>
-          </div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+          <p className="text-slate-400 text-sm font-medium">
+            {isCheckingAuth ? 'Giriş kontrolü yapılıyor...' : 'Rapor yetkileri kontrol ediliyor...'}
+          </p>
         </div>
       </div>
     );
@@ -954,33 +939,26 @@ GROUP BY B.Sube_No,D.NAME
 
   if (!hasAccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 flex items-center justify-center">
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-white/20">
-          <div className="flex flex-col items-center justify-center">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-white mb-2">Erişim Reddedildi</h2>
-            <p className="text-white/80 mb-6 text-center">
-              <strong>Enpos Ciro Raporu</strong>'na erişim yetkiniz bulunmamaktadır. 
-              <br />Lütfen yöneticiniz ile iletişime geçin.
-            </p>
-            <div className="space-y-3 w-full">
-              <button
-                onClick={() => router.push('/')}
-                className="w-full bg-white/20 backdrop-blur-sm text-white px-4 py-3 rounded-lg hover:bg-white/30 transition-colors border border-white/30"
-              >
-                Anasayfaya Dön
-              </button>
-              <button
-                onClick={() => router.push('/ayarlar')}
-                className="w-full bg-white/20 backdrop-blur-sm text-white px-4 py-3 rounded-lg hover:bg-white/30 transition-colors border border-white/30"
-              >
-                Yetki Talebi
-              </button>
-            </div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Erişim Reddedildi</h2>
+          <p className="text-slate-400 text-sm mb-6">
+            <strong className="text-slate-200">Enpos Ciro Raporu</strong>&apos;na erişim yetkiniz bulunmamaktadır.
+          </p>
+          <div className="space-y-2">
+            <button onClick={() => router.push('/')}
+              className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium">
+              Anasayfaya Dön
+            </button>
+            <button onClick={() => router.push('/ayarlar')}
+              className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl transition-colors text-sm font-medium">
+              Yetki Talebi Oluştur
+            </button>
           </div>
         </div>
       </div>
@@ -991,57 +969,38 @@ GROUP BY B.Sube_No,D.NAME
     <DashboardLayout title="Enpos Ciro Raporu">
       {/* Loading Overlay */}
       {loading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
-            <div className="flex flex-col items-center justify-center">
-              {animationData ? (
-                <Lottie 
-                  animationData={animationData}
-                  style={{ height: 150, width: 150 }}
-                  loop={true}
-                  autoplay={true}
-                />
-              ) : (
-                <svg className="animate-spin h-12 w-12 text-red-800 mb-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              )}
-              <p className="text-gray-700 font-medium text-lg mt-4">Rapor hazırlanıyor...</p>
-              <p className="text-gray-500 text-sm mt-2">Lütfen bekleyiniz</p>
-            </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xs w-full mx-4 text-center">
+            {animationData ? (
+              <Lottie animationData={animationData} style={{ height: 120, width: 120 }} loop autoplay className="mx-auto" />
+            ) : (
+              <div className="w-14 h-14 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin mx-auto"></div>
+            )}
+            <p className="text-gray-800 font-bold text-base mt-4">Rapor Hazırlanıyor</p>
+            <p className="text-gray-400 text-sm mt-1">Veriler çekiliyor, lütfen bekleyin...</p>
           </div>
         </div>
       )}
-      
+
       {/* Error Overlay */}
       {showError && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
-            <div className="flex flex-col items-center justify-center">
-              {failedAnimationData ? (
-                <Lottie 
-                  animationData={failedAnimationData}
-                  style={{ height: 150, width: 150 }}
-                  loop={false}
-                  autoplay={true}
-                />
-              ) : (
-                <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-              )}
-              <p className="text-red-700 font-medium text-lg mt-4 text-center">Hata!</p>
-              <p className="text-gray-600 text-sm mt-2 text-center">{errorMessage}</p>
-              <button
-                onClick={() => setShowError(false)}
-                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-              >
-                Tamam
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xs w-full mx-4 text-center">
+            {failedAnimationData ? (
+              <Lottie animationData={failedAnimationData} style={{ height: 120, width: 120 }} loop={false} autoplay className="mx-auto" />
+            ) : (
+              <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center mx-auto">
+                <svg className="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            )}
+            <p className="text-red-600 font-bold text-base mt-4">Hata Oluştu</p>
+            <p className="text-gray-500 text-sm mt-1">{errorMessage}</p>
+            <button onClick={() => setShowError(false)}
+              className="mt-5 px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors">
+              Tamam
+            </button>
           </div>
         </div>
       )}
@@ -1283,363 +1242,304 @@ GROUP BY B.Sube_No,D.NAME
         </div>
       )}
       
-      <div className="space-y-6">
-        {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-4 lg:p-8 text-white">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col lg:flex-row lg:items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2">Enpos Ciro Raporu</h2>
-                <p className="text-red-100 text-base lg:text-lg">BT Rapor - Şube Bazlı Enpos Ciro Analiz Sistemi</p>
+      {/* ─── FULL-BLEED WRAPPER ───────────────────────────────────── */}
+      <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6">
+
+        {/* KOYU HERO */}
+        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-16 -right-16 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-emerald-700/10 rounded-full blur-2xl"></div>
+            <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+          </div>
+
+          <div className="relative px-4 lg:px-6 py-5">
+            <div className="flex items-center justify-between gap-4">
+              {/* Sol: Geri + İkon + Başlık */}
+              <div className="flex items-center gap-4">
+                <button onClick={() => router.push('/')}
+                  className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="w-11 h-11 bg-emerald-500/20 border border-emerald-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg sm:text-xl font-bold text-white">Enpos Ciro Raporu</h1>
+                    <span className="hidden sm:inline text-xs font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full">Satış</span>
+                  </div>
+                  <p className="text-slate-400 text-xs mt-0.5">Şube bazlı Enpos ciro analizi</p>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 lg:mt-0 lg:hidden xl:block">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-lg lg:text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+
+              {/* Sağ: Oto yenileme + Tarih */}
+              <div className="hidden md:flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-white/8 border border-white/10 rounded-xl px-3 py-2">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-slate-300 text-xs font-medium">Oto Yenile</span>
+                  <button
+                    type="button"
+                    onClick={() => setAutoRefresh(!autoRefresh)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${autoRefresh ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition duration-200 ${autoRefresh ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                  {autoRefresh && <span className="text-xs text-emerald-400 font-medium">30s</span>}
+                </div>
+                <div className="text-right">
+                  <p className="text-slate-500 text-xs">Bugün</p>
+                  <p className="text-slate-200 text-sm font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Date Filter Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Tarih Filtresi</h3>
-          
-          {/* Quick Date Presets */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-            <button
-              onClick={() => setDatePresetRange('today')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                datePreset === 'today'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Bugün
-            </button>
-            <button
-              onClick={() => setDatePresetRange('yesterday')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                datePreset === 'yesterday'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Dün
-            </button>
-            <button
-              onClick={() => setDatePresetRange('thisWeek')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                datePreset === 'thisWeek'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Bu Hafta
-            </button>
-            <button
-              onClick={() => setDatePresetRange('thisMonth')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                datePreset === 'thisMonth'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Bu Ay
-            </button>
-            <button
-              onClick={() => setDatePresetRange('lastMonth')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                datePreset === 'lastMonth'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Geçen Ay
-            </button>
-          </div>
+        {/* SAYFA İÇERİĞİ */}
+        <div className="px-4 lg:px-6 py-5 bg-gray-50 min-h-screen space-y-5">
 
-          {/* Auto Refresh Switch */}
-          <div className="flex items-center justify-between mb-4 p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <div className="flex-shrink-0">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-900">Otomatik Yenileme</h4>
-                <p className="text-xs text-gray-500">30 saniyede bir rapor otomatik olarak yenilenir</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 ${
-                autoRefresh ? 'bg-red-600' : 'bg-gray-200'
-              }`}
-              role="switch"
-              aria-checked={autoRefresh}
-              onClick={() => setAutoRefresh(!autoRefresh)}
-            >
-              <span className="sr-only">Otomatik yenileme</span>
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition duration-200 ease-in-out ${
-                  autoRefresh ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Custom Date Range */}
-          <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1">
-              <DatePicker
-                label="Başlangıç Tarihi"
-                placeholder="DD/MM/YYYY (örn: 21/01/2025)"
-                value={startDate}
-                onChange={(date) => {
-                  setStartDate(date);
-                  setDatePreset('');
-                }}
-              />
-            </div>
-            <div className="flex-1">
-              <DatePicker
-                label="Bitiş Tarihi"
-                placeholder="DD/MM/YYYY (örn: 21/01/2025)"
-                value={endDate}
-                onChange={(date) => {
-                  setEndDate(date);
-                  setDatePreset('');
-                }}
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={clearCacheAndReload}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Cache'i temizle ve yeni veri getir"
-              >
-                <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Yeniden Yükle
-              </button>
-              <button
-                onClick={fetchCiroData}
-                disabled={loading}
-                className="px-6 py-2 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Yükleniyor...' : 'Raporu Getir'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* ── ÖZET STAT KARTLARI ─────────────────────────────── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Toplam Şube */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Şube</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">{Array.isArray(data) ? data.length : 0}</p>
+                  <p className="text-xs text-gray-400 mt-1">Toplam şube sayısı</p>
+                </div>
+                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Toplam Şube</p>
-                <p className="text-2xl font-semibold text-gray-900">{Array.isArray(data) ? data.length : 0}</p>
-              </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+            {/* Nakit Satış */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Nakit Satış</p>
+                  <p className="text-xl font-bold text-emerald-600 mt-1 truncate">{formatCurrency(totals.nakitSatis)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Nakit tahsilat</p>
+                </div>
+                <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center flex-shrink-0 ml-2">
+                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-4 flex-1">
-                <p className="text-sm font-medium text-gray-500">Nakit Satış</p>
-                <p className="text-2xl font-semibold text-gray-900 text-left">
-                  {formatCurrency(totals.nakitSatis)}
-                </p>
-              </div>
             </div>
-          </div>
 
-          <div 
-            className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => {
-              if (krediKartiDetaylari.length > 0) {
-                setShowKrediKartiDetaylari(true);
-                setSelectedSubeNo(null); // Tüm şubeleri göster
-              }
-            }}
-            title={krediKartiDetaylari.length > 0 ? "Kredi kartı detaylarını görmek için tıklayın" : ""}
-          >
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+            {/* Kredi Kartı */}
+            <div
+              className={`bg-white rounded-2xl border shadow-sm p-4 transition-all ${krediKartiDetaylari.length > 0 ? 'border-blue-100 hover:border-blue-200 hover:shadow-md cursor-pointer' : 'border-gray-100 hover:shadow-md'}`}
+              onClick={() => { if (krediKartiDetaylari.length > 0) { setShowKrediKartiDetaylari(true); setSelectedSubeNo(null); } }}
+            >
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Kredi Kartı</p>
+                    {krediKartiDetaylari.length > 0 && (
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">Detay</span>
+                    )}
+                  </div>
+                  <p className="text-xl font-bold text-blue-600 mt-1 truncate">{formatCurrency(totals.krediKartiSatis)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Kart tahsilat</p>
+                </div>
+                <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0 ml-2">
                   <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-4 flex-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-500">Kredi Kartı Satış</p>
-                  {krediKartiDetaylari.length > 0 && (
-                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  )}
-                </div>
-                <p className="text-2xl font-semibold text-gray-900 text-left">
-                  {formatCurrency(totals.krediKartiSatis)}
-                </p>
-              </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-purple-100 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            {/* Net Ciro */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Net Ciro</p>
+                  <p className={`text-xl font-bold mt-1 truncate ${totals.toplam < 0 ? 'text-red-600' : totals.toplam > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {formatCurrency(totals.toplam)}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Toplam gelir</p>
+                </div>
+                <div className="w-10 h-10 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0 ml-2">
+                  <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-4 flex-1">
-                <p className="text-sm font-medium text-gray-500">Net Ciro</p>
-                <p className={`text-2xl font-semibold text-left ${
-                  totals.toplam < 0 ? 'text-red-600' : totals.toplam > 0 ? 'text-green-600' : 'text-gray-900'
-                }`}>
-                  {formatCurrency(totals.toplam)}
-                </p>
-              </div>
             </div>
           </div>
-        </div>
 
-        {/* Detailed Stats Cards - Only show when data exists */}
-        {data.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Yemek Kartı Satış</p>
-                  <p className="text-2xl font-semibold text-orange-600">
-                    {formatCurrency(totals.yemekKarti)}
-                  </p>
-                </div>
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-orange-100 rounded-md flex items-center justify-center">
-                    <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Detay kartlar - veri varsa */}
+          {data.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Yemek Kartı</p>
+                    <p className="text-2xl font-bold text-orange-500 mt-1">{formatCurrency(totals.yemekKarti)}</p>
+                    <p className="text-xs text-gray-400 mt-1">Yemek kartı satışları</p>
+                  </div>
+                  <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
+                    <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                     </svg>
                   </div>
                 </div>
               </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm text-gray-500">
-                  <span>Yemek kartı ile yapılan satışlar</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Toplam İade</p>
-                  <p className="text-2xl font-semibold text-red-600">
-                    {formatCurrency(totals.nakitIade + totals.krediKartiIade)}
-                  </p>
-                </div>
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-red-100 rounded-md flex items-center justify-center">
-                    <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Toplam İade</p>
+                    <p className="text-2xl font-bold text-red-500 mt-1">{formatCurrency(totals.nakitIade + totals.krediKartiIade)}</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-gray-400">Nakit: {formatCurrency(totals.nakitIade)}</span>
+                      <span className="text-xs text-gray-400">KK: {formatCurrency(totals.krediKartiIade)}</span>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center ml-2">
+                    <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
                     </svg>
                   </div>
                 </div>
               </div>
-              <div className="mt-4 space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Nakit İade:</span>
-                  <span className="text-gray-900 text-right">{formatCurrency(totals.nakitIade)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">KK İade:</span>
-                  <span className="text-gray-900 text-right">{formatCurrency(totals.krediKartiIade)}</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Ortalama Şube Cirosu</p>
-                  <p className="text-2xl font-semibold text-blue-600">
-                    {formatCurrency(data.length > 0 ? totals.toplam / data.length : 0)}
-                  </p>
-                </div>
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Ort. Şube Cirosu</p>
+                    <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(data.length > 0 ? totals.toplam / data.length : 0)}</p>
+                    <p className="text-xs text-gray-400 mt-1">Şube başına ortalama</p>
+                  </div>
+                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
                     <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
                 </div>
               </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm text-gray-500">
-                  <span>Şube başına ortalama performans</span>
+            </div>
+          )}
+
+          {/* ── TARİH FİLTRESİ ─────────────────────────────────── */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Tarih Filtresi</h3>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Hızlı seçim */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'today', label: 'Bugün' },
+                  { key: 'yesterday', label: 'Dün' },
+                  { key: 'thisWeek', label: 'Bu Hafta' },
+                  { key: 'thisMonth', label: 'Bu Ay' },
+                  { key: 'lastMonth', label: 'Geçen Ay' },
+                ].map(({ key, label }) => (
+                  <button key={key} onClick={() => setDatePresetRange(key)}
+                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                      datePreset === key
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Özel tarih + Butonlar */}
+              <div className="flex flex-col md:flex-row gap-3 items-end">
+                <div className="flex-1">
+                  <DatePicker label="Başlangıç Tarihi" placeholder="DD/MM/YYYY"
+                    value={startDate} onChange={(date) => { setStartDate(date); setDatePreset(''); }} />
                 </div>
+                <div className="flex-1">
+                  <DatePicker label="Bitiş Tarihi" placeholder="DD/MM/YYYY"
+                    value={endDate} onChange={(date) => { setEndDate(date); setDatePreset(''); }} />
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button onClick={clearCacheAndReload} disabled={loading}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition-colors disabled:opacity-50">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Yenile
+                  </button>
+                  <button onClick={fetchCiroData} disabled={loading}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50 shadow-sm">
+                    {loading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Yükleniyor...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        Raporu Getir
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Mobil oto yenileme */}
+              <div className="md:hidden flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Otomatik Yenileme</p>
+                  <p className="text-xs text-gray-400">30 saniyede bir yeniler</p>
+                </div>
+                <button type="button" onClick={() => setAutoRefresh(!autoRefresh)}
+                  className={`relative inline-flex h-6 w-11 cursor-pointer rounded-full border-2 border-transparent transition-colors ${autoRefresh ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition ${autoRefresh ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
               </div>
             </div>
           </div>
-        )}
 
-        {/* Table Section */}
-        {data.length > 0 ? (
-          <>
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <EnposCiroTable 
-                data={data} 
-                onSubeInfoClick={(subeNo) => {
-                  setSelectedSubeNo(subeNo);
-                  setShowKrediKartiDetaylari(true);
-                }}
+          {/* ── TABLO ───────────────────────────────────────────── */}
+          {data.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <EnposCiroTable
+                data={data}
+                onSubeInfoClick={(subeNo) => { setSelectedSubeNo(subeNo); setShowKrediKartiDetaylari(true); }}
               />
             </div>
-          </>
-        ) : (
-          !loading && (
-            <div className="bg-white rounded-lg shadow p-8 text-center">
-              <div className="flex flex-col items-center justify-center">
-                <svg className="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Henüz veri yok</h3>
-                <p className="text-gray-500">Raporu görüntülemek için tarih aralığı seçip "Raporu Getir" butonuna tıklayın</p>
+          ) : (
+            !loading && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-bold text-gray-700 mb-1">Henüz Veri Yok</h3>
+                <p className="text-gray-400 text-sm">Tarih aralığı seçip <strong className="text-emerald-600">Raporu Getir</strong> butonuna tıklayın</p>
               </div>
-            </div>
-          )
-        )}
+            )
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

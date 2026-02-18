@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import Lottie from 'lottie-react';
 import { sendSecureProxyRequest } from '../../utils/api';
 import { getCurrentUser } from '../../utils/simple-permissions';
+import { useColumnPreferences } from '../../hooks/useColumnPreferences';
+import ColumnManager from '../ColumnManager';
+
+const HIDDEN_KEYS = new Set(['LOGICALREF', 'CLIENTREF', 'CurrencyNo']);
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -76,6 +80,26 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
         return [];
     }
   };
+
+  // Dinamik kolon tanımları — data gelince hesaplanır
+  const dynamicColDefs = useMemo(
+    () =>
+      data.length > 0
+        ? Object.keys(data[0])
+            .filter(k => !HIDDEN_KEYS.has(k))
+            .map(k => ({ key: k, label: k, defaultVisible: true }))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.length > 0 ? Object.keys(data[0]).join('|') : '']
+  );
+
+  const { orderedColumns, toggle, reorder, showAll, hideAll } = useColumnPreferences(
+    'c-bakiye',
+    dynamicColDefs
+  );
+
+  // Görünür kolon anahtarları (sıralı)
+  const visibleKeys = orderedColumns.filter(c => c.visible).map(c => c.key);
 
   // Loading animasyonunu yükle
   useEffect(() => {
@@ -1462,6 +1486,17 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                 </svg>
                 <span className="hidden sm:inline">PDF</span>
               </button>
+
+              {dynamicColDefs.length > 0 && (
+                <ColumnManager
+                  orderedColumns={orderedColumns}
+                  columnDefs={dynamicColDefs}
+                  onToggle={toggle}
+                  onReorder={reorder}
+                  onShowAll={showAll}
+                  onHideAll={hideAll}
+                />
+              )}
             </div>
             
             <button
@@ -1670,8 +1705,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                   />
                 </th>
                 {data.length > 0 &&
-                  Object.keys(data[0])
-                    .filter(header => header !== 'LOGICALREF' && header !== 'CLIENTREF' && header !== 'CurrencyNo')
+                  (visibleKeys.length > 0 ? visibleKeys : Object.keys(data[0]).filter(k => !HIDDEN_KEYS.has(k)))
                     .map((header) => (
                       <th
                         key={header}
@@ -1756,9 +1790,8 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                     )}
                   </div>
                 </td>
-                {Object.entries(row)
-                  .filter(([key]) => key !== 'LOGICALREF' && key !== 'CLIENTREF' && key !== 'CurrencyNo')
-                  .map(([key, value], cellIndex) => (
+                {(visibleKeys.length > 0 ? visibleKeys : Object.keys(row).filter(k => !HIDDEN_KEYS.has(k)))
+                  .map((key, cellIndex) => { const value = row[key]; return (
                     <td
                       key={cellIndex}
                       className={`py-4 whitespace-nowrap text-sm border-b border-gray-200 ${
@@ -1825,7 +1858,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                     })()}
                       </div>
                   </td>
-                ))}
+                ); })}
               </tr>
             ))}
           </tbody>

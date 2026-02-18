@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { getCurrentUser } from '../../utils/simple-permissions';
+import { useColumnPreferences } from '../../hooks/useColumnPreferences';
+import ColumnManager from '../ColumnManager';
 
 // jsPDF türleri için extend
 declare module 'jspdf' {
@@ -31,10 +33,14 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
   const [minValue, setMinValue] = useState<string>('');
   const [maxValue, setMaxValue] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
-  const [columnWidths, setColumnWidths] = useState<{[key: string]: number}>({});
-  const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [draggedCol, setDraggedCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  // Kaydedilen genişliklerin senkron bridge'i (savedWidths state async güncellenene kadar)
+  const committedWidthsRef = useRef<Record<string, number>>({});
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  // resize için aktif genişlikleri local tut, mouseUp'ta hook'a kaydet
+  const [localWidths, setLocalWidths] = useState<Record<string, number>>({});
 
   // Sayısal sütunlar
   const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 
@@ -571,43 +577,63 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
     }).format(numValue);
   };
 
-  // Sütun genişliği ayarlama fonksiyonları
-  const getColumnWidth = (column: string): number => {
-    if (columnWidths[column]) return columnWidths[column];
-    // Özel sütun genişlikleri
-    if (column === 'Sube_No') return 30;
-    if (column === 'NAME') return 250;
-    // Diğer sütunlar için varsayılan
-    return 150;
-  };
-
+  // Sütun genişliği resize — mouseUp'ta persist et
   const handleMouseDown = (e: React.MouseEvent, column: string) => {
     e.preventDefault();
-    setIsResizing(true);
     setResizingColumn(column);
-    
+
     const startX = e.clientX;
-    const startWidth = getColumnWidth(column);
-    
+    const startWidth = getColWidth(column);
+    // Mevcut tüm genişlikleri başlangıç noktası olarak al (committedRef + savedWidths birleşimi)
+    let latestWidths: Record<string, number> = { ...savedWidths, ...committedWidthsRef.current };
+
     const handleMouseMove = (e: MouseEvent) => {
-      const diff = e.clientX - startX;
-      const newWidth = Math.max(80, startWidth + diff);
-      setColumnWidths(prev => ({
-        ...prev,
-        [column]: newWidth
-      }));
+      const newWidth = Math.max(60, startWidth + (e.clientX - startX));
+      latestWidths = { ...latestWidths, [column]: newWidth };
+      setLocalWidths(prev => ({ ...prev, [column]: newWidth }));
     };
-    
+
     const handleMouseUp = () => {
-      setIsResizing(false);
       setResizingColumn(null);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      // Senkron bridge'i güncelle — savedWidths async güncellenene kadar doğru değeri verir
+      committedWidthsRef.current = latestWidths;
+      saveWidths(latestWidths);
+      setLocalWidths({});
     };
-    
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
+
+  // ── SÜRÜKLE-BIRAK KOLON SIRASI ──────────────────────────────
+  const handleDragStart = (e: React.DragEvent, column: string) => {
+    if (resizingColumn) { e.preventDefault(); return; }
+    setDraggedCol(column);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', column);
+  };
+
+  const handleDragOver = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (column !== draggedCol) setDragOverCol(column);
+  };
+
+  const handleDrop = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    if (!draggedCol || draggedCol === column) {
+      setDraggedCol(null); setDragOverCol(null); return;
+    }
+    // ciroOrdered içindeki index'leri bul (gizli kolonlar dahil tam liste)
+    const fromIdx = ciroOrdered.findIndex(c => c.key === draggedCol);
+    const toIdx   = ciroOrdered.findIndex(c => c.key === column);
+    if (fromIdx !== -1 && toIdx !== -1) ciroReorder(fromIdx, toIdx);
+    setDraggedCol(null); setDragOverCol(null);
+  };
+
+  const handleDragEnd = () => { setDraggedCol(null); setDragOverCol(null); };
 
   // Sayfa değiştirme fonksiyonları
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
@@ -644,389 +670,447 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
     );
   }
 
-  const columns = Object.keys(data[0]);
+  const allCiroColumns = Object.keys(data[0]);
+
+  // Varsayılan genişlikler
+  const DEFAULT_WIDTHS: Record<string, number> = {
+    'Sube_No': 80,
+    'NAME': 220,
+    'NAKİT SATIŞ': 160,
+    'KREDİ KARTI İLE SATIŞ': 190,
+    'YEMEK KARTI': 150,
+    'NAKİT İADE': 150,
+    'KREDİ KARTI İADE': 165,
+    'TOPLAM': 160,
+  };
+
+  const ciroColDefs = useMemo(
+    () => allCiroColumns.map(k => ({
+      key: k,
+      label: k === 'NAME' ? 'Şube' : k,
+      defaultVisible: true,
+      defaultWidth: DEFAULT_WIDTHS[k] ?? 150,
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allCiroColumns.join('|')]
+  );
+
+  const {
+    orderedColumns: ciroOrdered,
+    toggle: ciroToggle,
+    reorder: ciroReorder,
+    showAll: ciroShowAll,
+    hideAll: ciroHideAll,
+    columnWidths: savedWidths,
+    saveWidths,
+    getWidth,
+  } = useColumnPreferences('enpos-ciro', ciroColDefs);
+
+  // Aktif genişlik: resize sırasında local, sonra commit ref (async bridge), sonra savedWidths
+  const getColWidth = (key: string) =>
+    localWidths[key] ?? committedWidthsRef.current[key] ?? savedWidths[key] ?? DEFAULT_WIDTHS[key] ?? 150;
+
+  const columns = ciroOrdered.filter(c => c.visible).map(c => c.key).length > 0
+    ? ciroOrdered.filter(c => c.visible).map(c => c.key)
+    : allCiroColumns;
 
   return (
-    <div className="w-full">
-      {/* Kontrol Paneli */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Arama ve Filtreleme */}
-          <div className="flex flex-col sm:flex-row gap-2 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <input
-                type="text"
-                placeholder="Arama... (örn: 'şube*', '*ltd', 'a*z')"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-              />
-              <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            
-            {/* Export Butonları */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={exportToExcel}
-                className="px-3 py-2 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors flex items-center gap-2"
-                title="Excel olarak indir"
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h10v2H7v-2z"/>
-                  <path d="M9 9h6v6H9V9zm1 1v4h4v-4h-4z"/>
+    <div className={`w-full select-none ${resizingColumn ? 'cursor-col-resize' : ''}`}>
+
+      {/* ── TOOLBAR ─────────────────────────────────────────────── */}
+      <div className="px-4 py-3 border-b border-gray-100 bg-white">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {/* Arama */}
+          <div className="relative flex-1 max-w-sm">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Şube ara... (örn: şube*, *ltd)"
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 placeholder-gray-400"
+            />
+            {searchTerm && (
+              <button onClick={() => { setSearchTerm(''); setCurrentPage(1); }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                <span className="hidden sm:inline">Excel</span>
               </button>
-              
-              <button
-                onClick={exportToPDF}
-                className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center gap-2"
-                title="PDF olarak yazdır"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-                <span className="hidden sm:inline">PDF</span>
-              </button>
-            </div>
-            
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-            >
-              Filtreler
-            </button>
+            )}
           </div>
 
-          {/* Sayfa Ayarları */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">Sayfa başına:</span>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-              className="border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+          {/* Sağ taraf butonlar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtre */}
+            <button onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border transition-all ${
+                showFilters ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+              </svg>
+              Filtre
+              {(filterColumn || searchTerm) && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>}
+            </button>
+
+            {/* Sütun Yöneticisi */}
+            <ColumnManager
+              orderedColumns={ciroOrdered}
+              columnDefs={ciroColDefs}
+              onToggle={ciroToggle}
+              onReorder={ciroReorder}
+              onShowAll={ciroShowAll}
+              onHideAll={ciroHideAll}
+            />
+
+            {/* Excel */}
+            <button onClick={exportToExcel}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="hidden sm:inline">Excel</span>
+            </button>
+
+            {/* PDF */}
+            <button onClick={exportToPDF}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              <span className="hidden sm:inline">PDF</span>
+            </button>
+
+            {/* Sayfa başına */}
+            <div className="flex items-center gap-1.5 border border-gray-200 rounded-xl px-2 py-1.5 bg-white">
+              <span className="text-xs text-gray-500">Satır:</span>
+              <select value={itemsPerPage} onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                className="text-xs font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer">
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* Gelişmiş Filtreler */}
+        {/* Gelişmiş Filtre Paneli */}
         {showFilters && (
-          <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Filtre Sütunu
-                </label>
-                <select
-                  value={filterColumn}
-                  onChange={(e) => setFilterColumn(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                >
-                  <option value="">Sütun seçin</option>
-                  {numericColumns.map(col => (
-                    <option key={col} value={col}>{col}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Min Değer
-                </label>
-                <input
-                  type="number"
-                  value={minValue}
-                  onChange={(e) => setMinValue(e.target.value)}
-                  placeholder="Min"
-                  className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Değer
-                </label>
-                <input
-                  type="number"
-                  value={maxValue}
-                  onChange={(e) => setMaxValue(e.target.value)}
-                  placeholder="Max"
-                  className="w-full border border-gray-300 rounded px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                />
-              </div>
-              
-              <div className="flex items-end">
-                <button
-                  onClick={clearFilters}
-                  className="w-full px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-                >
-                  Temizle
-                </button>
-              </div>
+          <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sütun</label>
+              <select value={filterColumn} onChange={(e) => setFilterColumn(e.target.value)}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white">
+                <option value="">Seçiniz</option>
+                {numericColumns.map(col => <option key={col} value={col}>{col}</option>)}
+              </select>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Min</label>
+              <input type="number" value={minValue} onChange={(e) => setMinValue(e.target.value)} placeholder="0"
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Max</label>
+              <input type="number" value={maxValue} onChange={(e) => setMaxValue(e.target.value)} placeholder="∞"
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-white" />
+            </div>
+            <div className="flex items-end">
+              <button onClick={clearFilters}
+                className="w-full px-4 py-2 text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                Temizle
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sonuç bilgisi */}
+        {(searchTerm || filterColumn) && (
+          <div className="mt-2 flex items-center gap-2">
+            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+            <span className="text-xs text-gray-500">
+              {filteredData.length} kayıt bulundu
+              {searchTerm && <span> · &quot;{searchTerm}&quot; arandı</span>}
+            </span>
           </div>
         )}
       </div>
 
-      {/* Desktop Tablo Görünümü */}
+      {/* ── DESKTOP TABLO ───────────────────────────────────────── */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full">
+        {/*
+          Tablo stratejisi:
+          - Veri kolonları: kesin piksel genişliği (tableLayout fixed ile)
+          - Filler kolonu (son, veri yok): kalan boşluğu alır → tablo her zaman tam genişlikte
+          - minWidth: toplam kolon genişliği → yatay scroll gereken yerde devreye girer
+        */}
+        <table
+          className="w-full border-collapse"
+          style={{
+            tableLayout: 'fixed',
+            minWidth: `${columns.reduce((sum, col) => sum + getColWidth(col), 0)}px`,
+          }}
+        >
+          <colgroup>
+            {columns.map(col => (
+              <col key={col} style={{ width: `${getColWidth(col)}px` }} />
+            ))}
+            {/* Filler: kalan boşluğu sessizce kaplar */}
+            <col style={{ width: 'auto' }} />
+          </colgroup>
           <thead>
-            <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
-              {columns.map((column) => (
-                <th
-                  key={column}
-                  className="relative px-6 py-4 text-left text-sm font-bold uppercase tracking-wider cursor-pointer hover:bg-red-800 transition-colors duration-200 select-none border-b border-red-800"
-                  style={{ width: `${getColumnWidth(column)}px`, minWidth: `${getColumnWidth(column)}px` }}
-                  onClick={() => handleSort(column)}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="truncate">{column === 'NAME' ? 'Şube' : column}</span>
-                    {getSortIcon(column)}
-                  </div>
-                  
-                  {/* Resize handle */}
-                  <div
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-red-600 group opacity-0 hover:opacity-100 transition-opacity"
-                    onMouseDown={(e) => handleMouseDown(e, column)}
+            <tr className="bg-slate-800 text-white">
+              {columns.map((column) => {
+                const w = getColWidth(column);
+                const isResizingThis = resizingColumn === column;
+                const isDragging  = draggedCol  === column;
+                const isDragOver  = dragOverCol === column && draggedCol !== column;
+                return (
+                  <th key={column}
+                    draggable={!resizingColumn}
+                    onDragStart={(e) => handleDragStart(e, column)}
+                    onDragOver={(e)  => handleDragOver(e, column)}
+                    onDrop={(e)      => handleDrop(e, column)}
+                    onDragEnd={handleDragEnd}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null);
+                    }}
+                    className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors ${
+                      isDragging ? 'opacity-30' : ''
+                    } ${isDragOver ? 'bg-slate-600' : ''}`}
+                    style={{ width: w, minWidth: 0, overflow: 'hidden' }}
                   >
-                    <div className="w-full h-full group-hover:bg-red-600"></div>
-                  </div>
-                </th>
-              ))}
+                    {/* Bırakma göstergesi — sol kenar çizgisi */}
+                    {isDragOver && (
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />
+                    )}
+
+                    {/* Başlık + sıralama */}
+                    <div
+                      className="flex items-center gap-1.5 px-3 py-3 cursor-grab active:cursor-grabbing hover:bg-slate-700/60 transition-colors"
+                      onClick={() => !draggedCol && handleSort(column)}
+                    >
+                      {/* Grip ikonu */}
+                      <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70" fill="currentColor" viewBox="0 0 10 16">
+                        <circle cx="2.5" cy="3"  r="1.5"/>
+                        <circle cx="2.5" cy="8"  r="1.5"/>
+                        <circle cx="2.5" cy="13" r="1.5"/>
+                        <circle cx="7.5" cy="3"  r="1.5"/>
+                        <circle cx="7.5" cy="8"  r="1.5"/>
+                        <circle cx="7.5" cy="13" r="1.5"/>
+                      </svg>
+                      <span className="truncate flex-1">{column === 'NAME' ? 'Şube Adı' : column}</span>
+                      <span className="flex-shrink-0">{getSortIcon(column)}</span>
+                    </div>
+
+                    {/* Resize handle */}
+                    <div
+                      draggable={false}
+                      onDragStart={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, column); }}
+                      className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize flex items-center justify-center group z-10"
+                      title="Sürükleyerek genişlet"
+                    >
+                      <div className={`w-0.5 h-4/5 rounded-full transition-all ${
+                        isResizingThis ? 'bg-emerald-400 w-1' : 'bg-slate-600 group-hover:bg-emerald-400 group-hover:w-1'
+                      }`}></div>
+                    </div>
+                  </th>
+                );
+              })}
+              {/* Filler th */}
+              <th className="bg-slate-800 border-b border-slate-700" />
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-100">
             {paginatedData.map((row, index) => {
               const subeNo = Math.round(safeParseFloat(row['Sube_No']));
+              const isEven = index % 2 === 0;
               return (
-                <tr key={index} className="hover:bg-gray-50">
-                  {columns.map((column) => (
-                    <td
-                      key={column}
-                      className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${
-                        numericColumns.includes(column) ? 'text-right' : ''
-                      }`}
-                      style={{ width: `${getColumnWidth(column)}px`, minWidth: `${getColumnWidth(column)}px` }}
-                    >
-                      <div className={`truncate ${column === 'KREDİ KARTI İLE SATIŞ' ? 'flex items-center justify-end gap-2' : ''}`}>
-                        {column === 'Sube_No' 
-                          ? subeNo
-                          : column === 'NAME'
-                          ? (() => {
+                <tr key={index} className={`transition-colors hover:bg-emerald-50/60 ${isEven ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  {columns.map((column) => {
+                    const w = getColWidth(column);
+                    const isNumeric = numericColumns.includes(column);
+                    return (
+                      <td key={column}
+                        className={`px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden ${isNumeric ? 'text-right font-medium tabular-nums' : 'text-gray-800'}`}
+                        style={{ width: w, minWidth: 0, overflow: 'hidden' }}
+                      >
+                        {column === 'Sube_No' ? (
+                          <span className="inline-flex items-center justify-center w-8 h-6 bg-slate-100 text-slate-700 rounded-md text-xs font-bold">
+                            {subeNo}
+                          </span>
+                        ) : column === 'NAME' ? (
+                          <span className="font-medium text-gray-900 truncate block">
+                            {(() => {
                               const fullName = String(row[column] || '');
                               const dashIndex = fullName.indexOf('-');
-                              return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
-                            })()
-                          : column === 'KREDİ KARTI İLE SATIŞ' && numericColumns.includes(column)
-                          ? (() => {
-                              const value = safeParseFloat(row[column]);
-                              return (
-                                <div className="flex items-center justify-end gap-2">
-                                  <span className="text-green-600">{formatCurrency(value)}</span>
-                                  {onSubeInfoClick && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onSubeInfoClick(subeNo);
-                                      }}
-                                      className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
-                                      title="Kredi kartı detaylarını göster"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })()
-                          : numericColumns.includes(column) 
-                          ? (() => {
-                              const value = safeParseFloat(row[column]);
-                              const isIade = column.includes('İADE');
-                              const colorClass = isIade ? 'text-red-600' : 'text-green-600';
-                              return <span className={colorClass}>{formatCurrency(value)}</span>;
-                            })()
-                          : String(row[column] || '')
-                        }
-                      </div>
-                    </td>
-                  ))}
+                              return dashIndex !== -1 ? fullName.substring(dashIndex + 1).trim() : fullName;
+                            })()}
+                          </span>
+                        ) : column === 'KREDİ KARTI İLE SATIŞ' ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className="text-gray-800">{formatCurrency(safeParseFloat(row[column]))}</span>
+                            {onSubeInfoClick && (
+                              <button onClick={(e) => { e.stopPropagation(); onSubeInfoClick(subeNo); }}
+                                className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+                                title="Banka detayları">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        ) : isNumeric ? (
+                          <span className={column.includes('İADE') ? 'text-red-500' : 'text-gray-800'}>
+                            {formatCurrency(safeParseFloat(row[column]))}
+                          </span>
+                        ) : (
+                          <span className="truncate block">{String(row[column] || '')}</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  {/* Filler td */}
+                  <td className={isEven ? 'bg-white' : 'bg-gray-50/50'} />
                 </tr>
               );
             })}
           </tbody>
+
+          {/* Toplam satırı */}
+          {paginatedData.length > 0 && (
+            <tfoot>
+              <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold text-sm">
+                {columns.map((column, i) => {
+                  const w = getColWidth(column);
+                  if (i === 0) return (
+                    <td key={column} className="px-3 py-2.5 text-xs font-bold text-slate-600 uppercase" style={{ width: w }}>
+                      TOPLAM
+                    </td>
+                  );
+                  if (column === 'NAME') return <td key={column} className="px-3 py-2.5" style={{ width: w }}></td>;
+                  if (!numericColumns.includes(column)) return <td key={column} className="px-3 py-2.5" style={{ width: w }}></td>;
+                  const total = filteredData.reduce((s, r) => s + safeParseFloat(r[column]), 0);
+                  return (
+                    <td key={column} className={`px-3 py-2.5 text-right tabular-nums ${column.includes('İADE') ? 'text-red-600' : 'text-slate-900'}`} style={{ width: w }}>
+                      {formatCurrency(total)}
+                    </td>
+                  );
+                })}
+                {/* Filler td */}
+                <td className="bg-slate-100" />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
-      {/* Mobil Card Görünümü */}
-      <div className="md:hidden space-y-4 bg-gray-50 rounded-lg p-4">
+      {/* ── MOBİL KARTLAR ───────────────────────────────────────── */}
+      <div className="md:hidden divide-y divide-gray-100">
         {paginatedData.map((row, index) => {
           const subeNo = Math.round(safeParseFloat(row['Sube_No']));
+          const subeName = (() => {
+            const fullName = String(row['NAME'] || '');
+            const di = fullName.indexOf('-');
+            return di !== -1 ? fullName.substring(di + 1).trim() : fullName;
+          })();
           return (
-            <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-lg font-semibold text-red-700">
-                      Şube {subeNo}
-                    </h3>
-                    {onSubeInfoClick && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSubeInfoClick(subeNo);
-                        }}
-                        className="text-blue-500 hover:text-blue-700 transition-colors"
-                        title="Kredi kartı detaylarını göster"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-gray-700 text-sm">
-                    {(() => {
-                      const fullName = String(row['NAME'] || '');
-                      const dashIndex = fullName.indexOf('-');
-                      return dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
-                    })()}
-                  </p>
+            <div key={index} className="p-4 bg-white hover:bg-gray-50 transition-colors">
+              {/* Başlık */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-6 bg-slate-800 text-white rounded text-xs font-bold flex items-center justify-center">{subeNo}</span>
+                  <span className="font-semibold text-gray-900 text-sm">{subeName || `Şube ${subeNo}`}</span>
                 </div>
+                {onSubeInfoClick && (
+                  <button onClick={() => onSubeInfoClick(subeNo)}
+                    className="text-blue-500 hover:text-blue-700 p-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                )}
               </div>
-            
-            {/* Satış Bilgileri */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-green-50 rounded-md p-3">
-                <p className="text-xs text-gray-600 mb-1">NAKİT SATIŞ</p>
-                <p className="text-green-600 font-bold text-sm text-right">
-                  {formatCurrency(safeParseFloat(row['NAKİT SATIŞ']))}
-                </p>
+
+              {/* Satış grid */}
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {[
+                  { label: 'Nakit Satış', key: 'NAKİT SATIŞ', color: 'emerald' },
+                  { label: 'Kredi Kartı', key: 'KREDİ KARTI İLE SATIŞ', color: 'blue' },
+                  { label: 'Yemek Kartı', key: 'YEMEK KARTI', color: 'orange' },
+                  { label: 'Toplam İade', key: 'NAKİT İADE', color: 'red', extra: 'KREDİ KARTI İADE' },
+                ].map(({ label, key, color, extra }) => {
+                  const val = safeParseFloat(row[key]) + (extra ? safeParseFloat(row[extra]) : 0);
+                  const colors: Record<string, string> = {
+                    emerald: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+                    blue: 'bg-blue-50 border-blue-100 text-blue-700',
+                    orange: 'bg-orange-50 border-orange-100 text-orange-700',
+                    red: 'bg-red-50 border-red-100 text-red-600',
+                  };
+                  return (
+                    <div key={key} className={`rounded-xl border p-2.5 ${colors[color]}`}>
+                      <p className="text-xs opacity-70 font-medium mb-0.5">{label}</p>
+                      <p className="text-sm font-bold text-right tabular-nums">{formatCurrency(val)}</p>
+                    </div>
+                  );
+                })}
               </div>
-              
-              <div className="bg-blue-50 rounded-md p-3">
-                <p className="text-xs text-gray-600 mb-1">KREDİ KARTI SATIŞ</p>
-                <p className="text-green-600 font-bold text-sm text-right">
-                  {formatCurrency(safeParseFloat(row['KREDİ KARTI İLE SATIŞ']))}
-                </p>
-              </div>
-              
-              <div className="bg-orange-50 rounded-md p-3">
-                <p className="text-xs text-gray-600 mb-1">YEMEK KARTI</p>
-                <p className="text-green-600 font-bold text-sm text-right">
-                  {formatCurrency(safeParseFloat(row['YEMEK KARTI']))}
-                </p>
-              </div>
-              
-              <div className="bg-red-50 rounded-md p-3">
-                <p className="text-xs text-gray-600 mb-1">TOPLAM İADE</p>
-                <p className="text-red-600 font-bold text-sm text-right">
-                  {formatCurrency(safeParseFloat(row['NAKİT İADE']) + safeParseFloat(row['KREDİ KARTI İADE']))}
-                </p>
-              </div>
-            </div>
-            
-            {/* İade Detayları */}
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="text-xs flex justify-between">
-                <span className="text-gray-500">Nakit İade:</span>
-                <span className="text-red-600 font-medium">
-                  {formatCurrency(safeParseFloat(row['NAKİT İADE']))}
-                </span>
-              </div>
-              <div className="text-xs flex justify-between">
-                <span className="text-gray-500">KK İade:</span>
-                <span className="text-red-600 font-medium">
-                  {formatCurrency(safeParseFloat(row['KREDİ KARTI İADE']))}
-                </span>
-              </div>
-            </div>
-            
-            {/* Net Toplam */}
-            <div className="pt-3 border-t border-gray-200">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">NET CİRO:</span>
-                <span className={`font-bold text-lg ${
-                  safeParseFloat(row['TOPLAM']) < 0 
-                    ? 'text-red-600' 
-                    : safeParseFloat(row['TOPLAM']) > 0 
-                    ? 'text-green-600' 
-                    : 'text-gray-900'
+
+              {/* Net ciro */}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Net Ciro</span>
+                <span className={`text-base font-bold tabular-nums ${
+                  safeParseFloat(row['TOPLAM']) < 0 ? 'text-red-600' : 'text-gray-900'
                 }`}>
                   {formatCurrency(safeParseFloat(row['TOPLAM']))}
                 </span>
               </div>
             </div>
-          </div>
           );
         })}
       </div>
 
-      {/* Sayfalama */}
-      <div className="px-4 lg:px-6 py-3 bg-gray-50 border-t border-gray-200">
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="text-sm text-gray-700">
-            Toplam {filteredData.length} kayıttan {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filteredData.length)} arası gösteriliyor
-          </div>
-          
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              İlk
+      {/* ── SAYFALAMA ───────────────────────────────────────────── */}
+      <div className="px-4 py-3 border-t border-gray-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-xs text-gray-500">
+          Toplam <strong className="text-gray-800">{filteredData.length}</strong> kayıt ·{' '}
+          <strong className="text-gray-800">{((currentPage - 1) * itemsPerPage) + 1}–{Math.min(currentPage * itemsPerPage, filteredData.length)}</strong> gösteriliyor
+        </p>
+
+        <div className="flex items-center gap-1">
+          <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
+            className="px-2 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            «
+          </button>
+          <button onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 1}
+            className="px-2.5 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            ‹
+          </button>
+
+          {getPageNumbers().map(page => (
+            <button key={page} onClick={() => setCurrentPage(page)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                currentPage === page
+                  ? 'bg-slate-800 text-white border border-slate-800'
+                  : 'border border-gray-200 hover:bg-gray-50 text-gray-700'
+              }`}>
+              {page}
             </button>
-            
-            <button
-              onClick={() => setCurrentPage(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Önceki
-            </button>
-            
-            <div className="flex gap-1">
-              {getPageNumbers().map(page => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`px-3 py-1 border rounded text-sm ${
-                    currentPage === page
-                      ? 'bg-red-600 text-white border-red-600'
-                      : 'border-gray-300 hover:bg-gray-100'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
-            </div>
-            
-            <button
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Sonraki
-            </button>
-            
-            <button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Son
-            </button>
-          </div>
+          ))}
+
+          <button onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage === totalPages}
+            className="px-2.5 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            ›
+          </button>
+          <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
+            className="px-2 py-1.5 text-xs font-semibold border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            »
+          </button>
         </div>
       </div>
     </div>

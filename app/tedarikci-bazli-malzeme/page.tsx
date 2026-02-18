@@ -8,6 +8,13 @@ import DatePicker from '../components/DatePicker';
 import MalzemeDetayModal from '../components/MalzemeDetayModal';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import { useColumnPreferences } from '../hooks/useColumnPreferences';
+import ColumnManager from '../components/ColumnManager';
+
+const COLUMN_DEFS = [
+  { key: 'Malzeme Kodu', label: 'Malzeme Kodu', defaultVisible: true },
+  { key: 'Malzeme Adı',  label: 'Malzeme Adı',  defaultVisible: true },
+];
 
 // Yardımcı fonksiyon: Date'i 'YYYY-MM-DD' formatına çevir
 function formatDateToYMD(date: string | Date): string {
@@ -68,6 +75,11 @@ export default function TedarikciMalzemeRaporu() {
   const [hasFetched, setHasFetched] = useState(false);
   
   const router = useRouter();
+
+  const { orderedColumns, toggle, reorder, showAll, hideAll } = useColumnPreferences(
+    'tedarikci-bazli-malzeme',
+    COLUMN_DEFS
+  );
   
   // Animation data'ları yükleyelim
   const [animationData, setAnimationData] = useState(null);
@@ -839,7 +851,7 @@ export default function TedarikciMalzemeRaporu() {
                   </div>
                 </div>
                 
-                {/* Arama Sonuçları ve Temizleme */}
+                {/* Arama Sonuçları, Temizleme ve Kolon Yönetimi */}
                 <div className="flex items-center gap-3">
                   {searchTerm && (
                     <div className="text-sm text-gray-600">
@@ -857,6 +869,14 @@ export default function TedarikciMalzemeRaporu() {
                       Temizle
                     </button>
                   )}
+                  <ColumnManager
+                    orderedColumns={orderedColumns}
+                    columnDefs={COLUMN_DEFS}
+                    onToggle={toggle}
+                    onReorder={reorder}
+                    onShowAll={showAll}
+                    onHideAll={hideAll}
+                  />
                 </div>
               </div>
             </div>
@@ -867,12 +887,11 @@ export default function TedarikciMalzemeRaporu() {
                         <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                           #
                         </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                          Malzeme Kodu
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                          Malzeme Adı
-                        </th>
+                        {orderedColumns.filter(c => c.visible).map(col => (
+                          <th key={col.key} className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                            {COLUMN_DEFS.find(d => d.key === col.key)?.label ?? col.key}
+                          </th>
+                        ))}
                         <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                           İşlemler
                         </th>
@@ -884,34 +903,37 @@ export default function TedarikciMalzemeRaporu() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {indexOfFirstItem + index + 1}
                       </td>
+                      {orderedColumns.filter(c => c.visible).map(col => (
+                        <td key={col.key} className="px-6 py-4 whitespace-nowrap">
+                          {col.key === 'Malzeme Kodu' ? (
+                            <span className="text-sm font-bold text-gray-900 bg-gradient-to-r from-blue-100 to-blue-200 px-3 py-1 rounded-lg shadow-sm">
+                              {item['Malzeme Kodu']}
+                            </span>
+                          ) : col.key === 'Malzeme Adı' ? (
+                            <div className="text-sm font-medium text-gray-900">
+                              {item['Malzeme Adı']}
+                            </div>
+                          ) : null}
+                        </td>
+                      ))}
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-bold text-gray-900 bg-gradient-to-r from-blue-100 to-blue-200 px-3 py-1 rounded-lg shadow-sm">
-                          {item['Malzeme Kodu']}
-                        </span>
+                        <button
+                          onClick={() => {
+                            setSelectedMalzemeForDetail({
+                              kodu: item['Malzeme Kodu'],
+                              adi: item['Malzeme Adı'],
+                              itemRef: item['Malzeme LogicalRef'].toString()
+                            });
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all duration-200"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                          Detay
+                        </button>
                       </td>
-                                              <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {item['Malzeme Adı']}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => {
-                              setSelectedMalzemeForDetail({
-                                kodu: item['Malzeme Kodu'],
-                                adi: item['Malzeme Adı'],
-                                itemRef: item['Malzeme LogicalRef'].toString() // LogicalRef'i string olarak gönder
-                              });
-                              setIsDetailModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all duration-200"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            Detay
-                          </button>
-                        </td>
                     </tr>
                   ))}
                 </tbody>
