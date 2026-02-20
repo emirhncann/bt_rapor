@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -8,15 +8,15 @@ import { useColumnPreferences } from '../../hooks/useColumnPreferences';
 import ColumnManager from '../ColumnManager';
 
 const COLUMN_DEFS = [
-  { key: 'Portföy No',        label: 'Portföy No',        defaultVisible: true },
-  { key: 'Seri No',           label: 'Seri No',           defaultVisible: true },
-  { key: 'Tur',               label: 'Tür',               defaultVisible: true },
-  { key: 'Statu',             label: 'Statü',             defaultVisible: true },
-  { key: 'Modul',             label: 'Modül',             defaultVisible: true },
-  { key: 'Devir',             label: 'Devir',             defaultVisible: true },
-  { key: 'Düzenlenme Tarihi', label: 'Düzenlenme Tarihi', defaultVisible: true },
-  { key: 'Hareket Tarihi',    label: 'Hareket Tarihi',    defaultVisible: true },
-  { key: 'Vade Tarihi',       label: 'Vade Tarihi',       defaultVisible: true },
+  { key: 'Portföy No',        label: 'Portföy No',        defaultVisible: true, defaultWidth: 120 },
+  { key: 'Seri No',           label: 'Seri No',           defaultVisible: true, defaultWidth: 120 },
+  { key: 'Tur',               label: 'Tür',               defaultVisible: true, defaultWidth: 100 },
+  { key: 'Statu',             label: 'Statü',             defaultVisible: true, defaultWidth: 110 },
+  { key: 'Modul',             label: 'Modül',             defaultVisible: true, defaultWidth: 100 },
+  { key: 'Devir',             label: 'Devir',             defaultVisible: true, defaultWidth: 80  },
+  { key: 'Düzenlenme Tarihi', label: 'Düzenlenme Tarihi', defaultVisible: true, defaultWidth: 150 },
+  { key: 'Hareket Tarihi',    label: 'Hareket Tarihi',    defaultVisible: true, defaultWidth: 140 },
+  { key: 'Vade Tarihi',       label: 'Vade Tarihi',       defaultVisible: true, defaultWidth: 130 },
 ];
 
 // jsPDF türleri için extend
@@ -52,10 +52,75 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   const [filterModul, setFilterModul] = useState<string>('');
   const [filterDevir, setFilterDevir] = useState<string>('');
 
-  const { orderedColumns, toggle, reorder, showAll, hideAll } = useColumnPreferences(
-    'cek-senet-raporu',
-    COLUMN_DEFS
+  // Kolon genişliği ve sürükle-bırak
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [draggedCol, setDraggedCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const committedWidthsRef = useRef<Record<string, number>>({});
+  const [localWidths, setLocalWidths] = useState<Record<string, number>>({});
+
+  const {
+    orderedColumns,
+    toggle,
+    reorder,
+    showAll,
+    hideAll,
+    columnWidths: savedWidths,
+    saveWidths,
+  } = useColumnPreferences('cek-senet-raporu', COLUMN_DEFS);
+
+  const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
+    COLUMN_DEFS.map(d => [d.key, d.defaultWidth])
   );
+
+  const getColWidth = (key: string) =>
+    localWidths[key] ?? committedWidthsRef.current[key] ?? savedWidths[key] ?? DEFAULT_WIDTHS[key] ?? 150;
+
+  // Resize handler
+  const handleMouseDown = (e: React.MouseEvent, column: string) => {
+    e.preventDefault();
+    setResizingColumn(column);
+    const startX = e.clientX;
+    const startWidth = getColWidth(column);
+    let latestWidths: Record<string, number> = { ...savedWidths, ...committedWidthsRef.current };
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(60, startWidth + (e.clientX - startX));
+      latestWidths = { ...latestWidths, [column]: newWidth };
+      setLocalWidths(prev => ({ ...prev, [column]: newWidth }));
+    };
+    const handleMouseUp = () => {
+      setResizingColumn(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      committedWidthsRef.current = latestWidths;
+      saveWidths(latestWidths);
+      setLocalWidths({});
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Drag-to-reorder handlers
+  const handleDragStart = (e: React.DragEvent, column: string) => {
+    if (resizingColumn) { e.preventDefault(); return; }
+    setDraggedCol(column);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', column);
+  };
+  const handleDragOver = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (column !== draggedCol) setDragOverCol(column);
+  };
+  const handleDrop = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    if (!draggedCol || draggedCol === column) { setDraggedCol(null); setDragOverCol(null); return; }
+    const fromIdx = orderedColumns.findIndex(c => c.key === draggedCol);
+    const toIdx = orderedColumns.findIndex(c => c.key === column);
+    if (fromIdx !== -1 && toIdx !== -1) reorder(fromIdx, toIdx);
+    setDraggedCol(null); setDragOverCol(null);
+  };
+  const handleDragEnd = () => { setDraggedCol(null); setDragOverCol(null); };
 
   // Görünür kolonlar (sıralı) — export/print için de kullanılır
   const columns = orderedColumns
@@ -66,9 +131,9 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
     });
 
   // Benzersiz değerleri al (filtre seçenekleri için)
-  const uniqueTurler = [...new Set(data.map(item => item.Tur).filter(Boolean))];
-  const uniqueStatuler = [...new Set(data.map(item => item.Statu).filter(Boolean))];
-  const uniqueModuller = [...new Set(data.map(item => item.Modul).filter(Boolean))];
+  const uniqueTurler = Array.from(new Set(data.map(item => item.Tur).filter(Boolean)));
+  const uniqueStatuler = Array.from(new Set(data.map(item => item.Statu).filter(Boolean)));
+  const uniqueModuller = Array.from(new Set(data.map(item => item.Modul).filter(Boolean)));
 
   // Arama ve filtreleme
   const filteredData = data.filter(item => {
@@ -616,73 +681,89 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       {/* Tablo */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {columns.map((column) => (
-                  <th
-                    key={column.key}
-                    className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                      column.sortable ? 'cursor-pointer hover:bg-gray-100' : ''
-                    }`}
-                    onClick={() => column.sortable && handleSort(column.key)}
-                  >
-                    <div className="flex items-center gap-1">
-                      {column.label}
-                      {column.sortable && sortColumn === column.key && (
-                        <span className="text-red-600">
-                          {sortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                ))}
+          <table
+            className="border-collapse"
+            style={{
+              tableLayout: 'fixed',
+              width: `${columns.reduce((s, c) => s + getColWidth(c.key), 0)}px`,
+              minWidth: `${columns.reduce((s, c) => s + getColWidth(c.key), 0)}px`,
+            }}
+          >
+            <colgroup>
+              {columns.map(col => <col key={col.key} style={{ width: `${getColWidth(col.key)}px` }} />)}
+              <col style={{ width: 'auto' }} />
+            </colgroup>
+            <thead>
+              <tr className="bg-slate-800 text-white">
+                {columns.map((column) => {
+                  const w = getColWidth(column.key);
+                  const isResizingThis = resizingColumn === column.key;
+                  const isDragging = draggedCol === column.key;
+                  const isDragOver = dragOverCol === column.key && draggedCol !== column.key;
+                  return (
+                    <th key={column.key}
+                      draggable={!resizingColumn}
+                      onDragStart={(e) => handleDragStart(e, column.key)}
+                      onDragOver={(e) => handleDragOver(e, column.key)}
+                      onDrop={(e) => handleDrop(e, column.key)}
+                      onDragEnd={handleDragEnd}
+                      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
+                      className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors ${isDragging ? 'opacity-30' : ''} ${isDragOver ? 'bg-slate-600' : ''}`}
+                      style={{ width: w, minWidth: 0, overflow: 'hidden' }}
+                    >
+                      {isDragOver && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />}
+                      <div
+                        className="flex items-center gap-1.5 px-3 py-3 cursor-grab active:cursor-grabbing hover:bg-slate-700/60 transition-colors"
+                        onClick={() => !draggedCol && column.sortable && handleSort(column.key)}
+                      >
+                        <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70" fill="currentColor" viewBox="0 0 10 16">
+                          <circle cx="2.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/>
+                          <circle cx="7.5" cy="3" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/>
+                        </svg>
+                        <span className="truncate flex-1">{column.label}</span>
+                        {column.sortable && sortColumn === column.key && (
+                          <span className="flex-shrink-0 text-emerald-400">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                      <div
+                        draggable={false}
+                        onDragStart={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, column.key); }}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize flex items-center justify-center group z-10"
+                      >
+                        <div className={`w-0.5 h-4/5 rounded-full transition-all ${isResizingThis ? 'bg-emerald-400 w-1' : 'bg-slate-600 group-hover:bg-emerald-400 group-hover:w-1'}`} />
+                      </div>
+                    </th>
+                  );
+                })}
+                <th className="bg-slate-800 border-b border-slate-700" />
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedData.map((item, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  {columns.map(col => (
-                    <td key={col.key} className="px-6 py-4 whitespace-nowrap">
-                      {col.key === 'Portföy No' && (
-                        <span className="text-sm font-medium text-gray-900">{item['Portföy No']}</span>
-                      )}
-                      {col.key === 'Seri No' && (
-                        <span className="text-sm text-gray-900">{item['Seri No']}</span>
-                      )}
-                      {col.key === 'Tur' && (
-                        <span className={`text-xs px-2 py-1 rounded-full ${getTurColor(item.Tur)}`}>
-                          {item.Tur}
-                        </span>
-                      )}
-                      {col.key === 'Statu' && (
-                        <span className={`text-xs px-2 py-1 rounded-full ${getStatuColor(item.Statu)}`}>
-                          {item.Statu}
-                        </span>
-                      )}
-                      {col.key === 'Modul' && (
-                        <span className="text-sm text-gray-700">{item.Modul}</span>
-                      )}
-                      {col.key === 'Devir' && (
-                        item.Devir === 'D' ? (
-                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 font-medium">D</span>
-                        ) : (
-                          <span className="text-gray-300">-</span>
-                        )
-                      )}
-                      {col.key === 'Düzenlenme Tarihi' && (
-                        <span className="text-sm text-gray-700">{formatDate(item['Düzenlenme Tarihi'])}</span>
-                      )}
-                      {col.key === 'Hareket Tarihi' && (
-                        <span className="text-sm text-gray-700">{formatDate(item['Hareket Tarihi'])}</span>
-                      )}
-                      {col.key === 'Vade Tarihi' && (
-                        <span className="text-sm font-medium text-gray-900">{formatDate(item['Vade Tarihi'])}</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+            <tbody className="divide-y divide-gray-100">
+              {paginatedData.map((item, index) => {
+                const isEven = index % 2 === 0;
+                return (
+                  <tr key={index} className={`transition-colors hover:bg-blue-50/40 ${isEven ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    {columns.map(col => (
+                      <td key={col.key}
+                        className="px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden"
+                        style={{ width: getColWidth(col.key), minWidth: 0, overflow: 'hidden' }}
+                      >
+                        {col.key === 'Portföy No' && <span className="font-medium text-gray-900">{item['Portföy No']}</span>}
+                        {col.key === 'Seri No' && <span className="text-gray-700">{item['Seri No']}</span>}
+                        {col.key === 'Tur' && <span className={`text-xs px-2 py-1 rounded-full font-medium ${getTurColor(item.Tur)}`}>{item.Tur}</span>}
+                        {col.key === 'Statu' && <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatuColor(item.Statu)}`}>{item.Statu}</span>}
+                        {col.key === 'Modul' && <span className="text-gray-700">{item.Modul}</span>}
+                        {col.key === 'Devir' && (item.Devir === 'D' ? <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 font-medium">D</span> : <span className="text-gray-300">-</span>)}
+                        {col.key === 'Düzenlenme Tarihi' && <span className="text-gray-700">{formatDate(item['Düzenlenme Tarihi'])}</span>}
+                        {col.key === 'Hareket Tarihi' && <span className="text-gray-700">{formatDate(item['Hareket Tarihi'])}</span>}
+                        {col.key === 'Vade Tarihi' && <span className="font-medium text-gray-900">{formatDate(item['Vade Tarihi'])}</span>}
+                      </td>
+                    ))}
+                    <td className={isEven ? 'bg-white' : 'bg-gray-50/50'} />
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

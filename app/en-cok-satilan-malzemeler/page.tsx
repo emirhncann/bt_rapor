@@ -8,6 +8,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import ReportFilterPanel, { FilterValues, DateRangeValue } from '../components/ReportFilterPanel';
 
 // Yardımcı fonksiyon: Date'i 'YYYY-MM-DD' formatına çevir
 function formatDateToYMD(date: string | Date): string {
@@ -62,6 +63,20 @@ export default function EnCokSatilanMalzemeler() {
 
   const [startDate, setStartDate] = useState(getFirstDayOfMonth());
   const [endDate, setEndDate] = useState(getTodayDate());
+  
+  const [filterValues, setFilterValues] = useState<FilterValues>(() => ({
+    dateRange: { start: getFirstDayOfMonth(), end: getTodayDate() },
+  }));
+
+  const handleFilterChange = (key: string, value: import('../components/ReportFilterPanel').FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    if (key === 'dateRange') {
+      const dr = value as DateRangeValue;
+      if (dr.start) setStartDate(dr.start);
+      if (dr.end) setEndDate(dr.end);
+    }
+  };
+  
   const [sirala, setSirala] = useState('DESC'); // ASC veya DESC
   const [olcu, setOlcu] = useState('MIKTAR'); // MIKTAR veya TUTAR
   const [topCount, setTopCount] = useState(50);
@@ -823,27 +838,41 @@ EXEC sp_executesql
   return (
     <DashboardLayout title="En Çok / En Az Satılan Malzemeler">
       <div className="space-y-6">
-        {/* Header Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">En Çok / En Az Satılan Malzemeler</h2>
-                <p className="text-red-100 text-sm">
-                  Toplam Kayıt: {data.length} | Analiz Kriteri: {olcu === 'MIKTAR' ? 'Miktar' : 'Tutar'} | Sıralama: {sirala === 'ASC' ? 'En Az' : 'En Çok'} | 
-                  Satış Türü: {selectedTrCodes.map(code => code === '7' ? 'Perakende' : 'Toptan').join(', ')}
-                </p>
-              </div>
+        {/* FULL-BLEED WRAPPER for hero */}
+        <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-1">
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-amber-950 overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute -top-16 -right-16 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl" />
+              <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-amber-700/10 rounded-full blur-2xl" />
+              <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
             </div>
-            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Rapor Dönemi</p>
-                <p className="text-lg lg:text-xl font-semibold text-white">{startDate} - {endDate}</p>
+            <div className="relative px-4 lg:px-6 py-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => router.push('/')}
+                    className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div className="w-11 h-11 bg-amber-500/20 border border-amber-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg sm:text-xl font-bold text-white">En Çok Satılan Malzemeler</h1>
+                      <span className="hidden sm:inline text-xs font-semibold bg-amber-500/20 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded-full">Satış Analizi</span>
+                    </div>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      {data.length > 0 ? `${data.length} kayıt · ${olcu === 'MIKTAR' ? 'Miktar' : 'Tutar'} bazlı · ${sirala === 'DESC' ? 'En çok' : 'En az'} sıralı` : 'Malzeme satış analizi'}
+                    </p>
+                  </div>
+                </div>
+                <div className="hidden lg:flex items-center gap-2">
+                  <span className="text-slate-400 text-xs">{startDate} — {endDate}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -852,17 +881,17 @@ EXEC sp_executesql
         {/* Parametreler Butonu */}
         <button
           onClick={() => setIsParametersOpen(true)}
-          className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg shadow-lg p-4 flex items-center justify-between transition-all duration-200"
+          className="w-full bg-white hover:bg-gray-50 border border-gray-200 rounded-2xl shadow-sm p-4 flex items-center justify-between transition-all duration-200 text-gray-700"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
             </div>
             <div className="text-left">
-              <h3 className="text-lg font-bold">Rapor Parametreleri</h3>
-              <p className="text-sm text-red-100">Filtreleri düzenlemek için tıklayın</p>
+              <h3 className="text-lg font-bold text-gray-800">Rapor Parametreleri</h3>
+              <p className="text-sm text-gray-500">Filtreleri düzenlemek için tıklayın</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -871,7 +900,7 @@ EXEC sp_executesql
                 Rapor Hazır
               </span>
             )}
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
             </svg>
           </div>

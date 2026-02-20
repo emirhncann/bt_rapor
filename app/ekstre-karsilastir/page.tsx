@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '../components/DashboardLayout';
 import ExcelUploader from '../components/ExcelUploader';
+import ReportFilterPanel, { FilterValues, DateRangeValue } from '../components/ReportFilterPanel';
 import { sendSecureProxyRequest } from '../utils/api';
 
 interface Customer {
@@ -71,6 +73,37 @@ export default function EkstreKarsilastirPage() {
   });
   const [hiddenDifferences, setHiddenDifferences] = useState<Set<number>>(new Set());
   const [selectedDifferences, setSelectedDifferences] = useState<Set<number>>(new Set());
+
+  const router = useRouter();
+  const [filterValues, setFilterValues] = useState<FilterValues>({
+    dateRange: { start: startDate, end: endDate },
+    musteri: selectedCustomer,
+  });
+
+  const handleFilterChange = (key: string, value: import('../components/ReportFilterPanel').FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    if (key === 'dateRange') {
+      const dr = value as DateRangeValue;
+      if (dr.start !== undefined) setStartDate(dr.start);
+      if (dr.end !== undefined) setEndDate(dr.end);
+    } else if (key === 'musteri') {
+      setSelectedCustomer((value as string) ?? '');
+    }
+  };
+
+  const handleFilterReset = () => {
+    setStartDate(''); setEndDate(''); setSelectedCustomer('');
+    setFilterValues({ dateRange: { start: '', end: '' }, musteri: '' });
+  };
+
+  // Keep filterValues in sync with state
+  useEffect(() => {
+    setFilterValues(prev => ({
+      ...prev,
+      dateRange: { start: startDate, end: endDate },
+      musteri: selectedCustomer,
+    }));
+  }, [startDate, endDate, selectedCustomer]);
 
   // Müşterileri yükle
   useEffect(() => {
@@ -1032,150 +1065,69 @@ export default function EkstreKarsilastirPage() {
   return (
     <DashboardLayout title="Ekstre Karşılaştırma">
       <div className="space-y-6">
-        {/* Başlık */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            Ekstre Karşılaştırma (Çapraz)
-          </h1>
-          <p className="text-gray-600">
-            Karşı taraftan gelen ekstre ile sistem ekstresi arasında çapraz karşılaştırma yapın. 
-            <span className="text-blue-600 font-semibold"> Logo alacak ↔ Excel borç</span> ve 
-            <span className="text-green-600 font-semibold"> Excel alacak ↔ Logo borç</span> karşılaştırması yapılır.
-          </p>
-        </div>
-
-        {/* Tarih Aralığı Seçimi */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            1. Tarih Aralığı Seçimi
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Başlangıç Tarihi *
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        {/* FULL-BLEED HERO */}
+        <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-5">
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-cyan-950 overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute -top-16 -right-16 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl" />
+              <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-cyan-700/10 rounded-full blur-2xl" />
+              <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Bitiş Tarihi *
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Müşteri Seçimi */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            2. Müşteri Seçimi
-          </h2>
-          
-          {/* Arama Kutusu */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-600 mb-2">
-              Müşteri Ara ({customers.length} adet)
-            </label>
-            <input
-              type="text"
-              placeholder="Müşteri kodu veya adı ile arayın..."
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm transition-all duration-200"
-              onChange={(e) => {
-                const searchTerm = e.target.value.toLowerCase().trim();
-                if (searchTerm === '') {
-                  setFilteredCustomers([]); // Boş arama yapıldığında liste gizlensin
-                } else {
-                  const filtered = customers.filter(customer => {
-                    const code = customer.code.toLowerCase();
-                    const definition = customer.definition.toLowerCase();
-                    const normalizedSearchTerm = searchTerm.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    const normalizedCode = code.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    const normalizedDefinition = definition.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    
-                    return normalizedCode.includes(normalizedSearchTerm) || 
-                           normalizedDefinition.includes(normalizedSearchTerm) ||
-                           code.includes(searchTerm) || 
-                           definition.includes(searchTerm);
-                  });
-                  setFilteredCustomers(filtered);
-                }
-              }}
-            />
-          </div>
-          
-          {/* Müşteri Listesi */}
-          {filteredCustomers.length > 0 && (
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {filteredCustomers.map((customer) => (
-                <div 
-                  key={customer.logicalRef}
-                  onClick={() => setSelectedCustomer(customer.logicalRef.toString())}
-                  className={`p-4 bg-white border rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
-                    selectedCustomer === customer.logicalRef.toString()
-                      ? 'border-blue-500 bg-blue-50 shadow-md'
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
-                      selectedCustomer === customer.logicalRef.toString()
-                        ? 'border-blue-500 bg-blue-500 shadow-md'
-                        : 'border-gray-300'
-                    }`}>
-                      {selectedCustomer === customer.logicalRef.toString() && (
-                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
+            <div className="relative px-4 lg:px-6 py-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => router.push('/')}
+                    className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div className="w-11 h-11 bg-cyan-500/20 border border-cyan-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg sm:text-xl font-bold text-white">Ekstre Karşılaştırma</h1>
+                      <span className="hidden sm:inline text-xs font-semibold bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 px-2 py-0.5 rounded-full">Mutabakat</span>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="text-sm font-bold text-gray-900 bg-gradient-to-r from-gray-100 to-gray-200 px-3 py-1 rounded-lg shadow-sm">
-                          {customer.code}
-                        </span>
-                        <h3 className="text-sm font-medium text-gray-900">
-                          {customer.definition}
-                        </h3>
-                      </div>
-                    </div>
+                    <p className="text-slate-400 text-xs mt-0.5">Logo ekstresi ile Excel ekstresi çapraz karşılaştırması</p>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-          
-          {/* Seçim Bilgisi */}
-          {selectedCustomer && (
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm text-blue-700">
-                <span>✅</span>
-                <span>
-                  Seçili Müşteri: {
-                    customers.find(c => c.logicalRef.toString() === selectedCustomer)?.definition || 'Bilinmeyen'
-                  }
-                </span>
+                <div className="hidden lg:flex items-center gap-3">
+                  <span className="text-slate-400 text-sm">{new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                </div>
               </div>
             </div>
-          )}
-
-          {/* Loading durumu */}
-          {loadingCustomers && (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <span className="ml-2 text-sm text-gray-500">Müşteriler yükleniyor...</span>
-            </div>
-          )}
+          </div>
         </div>
+
+        {/* FILTER PANEL */}
+        <ReportFilterPanel
+          filters={[
+            {
+              type: 'dateRange',
+              id: 'dateRange',
+              presets: ['thisMonth', 'lastMonth', 'last3Months', 'thisYear'],
+            },
+            {
+              type: 'select',
+              id: 'musteri',
+              label: 'Müşteri',
+              options: customers.map(c => ({ value: c.logicalRef.toString(), label: `${c.code} - ${c.definition}` })),
+              placeholder: 'Müşteri seçin',
+              searchable: true,
+              clearable: true,
+            },
+          ]}
+          values={filterValues}
+          onChange={handleFilterChange}
+          onReset={handleFilterReset}
+          onApply={() => {/* comparison triggered by next steps */}}
+          applyLabel="Devam Et"
+          autoCollapse={false}
+        />
 
         {/* Excel Yükleme */}
         <div className="bg-white rounded-lg shadow">

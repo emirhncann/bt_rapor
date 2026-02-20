@@ -305,6 +305,15 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   </svg>
                   <span className="ml-3">🍽️ Yemek Kartı Satış</span>
                 </a>
+                <a
+                  href="/xrp-kasa-raporu"
+                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg group"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span className="ml-3">📋 XRP Kasa Raporu</span>
+                </a>
               </>
             )}
 

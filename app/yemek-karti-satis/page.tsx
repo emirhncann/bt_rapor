@@ -6,7 +6,7 @@ import Lottie from 'lottie-react';
 import YemekKartiSatisTable from '../components/tables/YemekKartiSatisTable';
 import HataliKayitlarTable from '../components/tables/HataliKayitlarTable';
 import DashboardLayout from '../components/DashboardLayout';
-import DatePicker from '../components/DatePicker';
+import ReportFilterPanel, { FilterValues, FilterValue, DateRangeValue } from '../components/ReportFilterPanel';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 
@@ -67,6 +67,30 @@ export default function YemekKartiSatis() {
   const [loadingSubeler, setLoadingSubeler] = useState(false);
   const [showSubeDropdown, setShowSubeDropdown] = useState(false);
   const [expandedZRaporu, setExpandedZRaporu] = useState<string | null>(null);
+
+  // ReportFilterPanel state
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
+  const handleFilterChange = (key: string, value: FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    if (key === 'tarih') {
+      const dr = value as DateRangeValue | undefined;
+      if (dr) {
+        setStartDate(dr.start || '');
+        setEndDate(dr.end || '');
+      }
+    }
+    if (key === 'sube') {
+      const arr = value as string[] | undefined;
+      setSelectedSubeler(arr ? arr.map(Number) : []);
+    }
+  };
+  const handleFilterReset = () => {
+    setFilterValues({});
+    setStartDate('');
+    setEndDate('');
+    setSelectedSubeler([]);
+    setDatePreset('');
+  };
 
   // Akordiyon state'leri
   const [accordionState, setAccordionState] = useState({
@@ -1135,47 +1159,28 @@ export default function YemekKartiSatis() {
   return (
     <DashboardLayout title="Yemek Kartları Satış Raporu">
       <div className="space-y-6">
-        {/* Header Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Yemek Kartları Satış Raporu</h2>
-                <p className="text-red-100 text-sm">
-                  Toplam Kayıt: {data.length} | Seçili Tarih: {startDate} | 
-                  Şubeler: {selectedSubeler.length === 0 ? 'Seçiniz' : 
-                    selectedSubeler.length === subeler.length ? 'Tümü' :
-                    `${selectedSubeler.length} şube seçili`}
-                </p>
+        {/* FULL-BLEED HERO */}
+        <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-5">
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-green-950 to-slate-900 px-6 py-10 lg:px-10 lg:py-14">
+            <div className="absolute inset-0 opacity-10" style={{backgroundImage:'radial-gradient(circle at 20% 50%, #22c55e 0%, transparent 50%), radial-gradient(circle at 80% 50%, #16a34a 0%, transparent 50%)'}} />
+            <div className="relative z-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <img src="/img/btRapor.png" alt="btRapor Logo" className="h-14 lg:h-20 w-auto bg-white/90 rounded-2xl p-2 shadow-lg" />
+                <div>
+                  <h1 className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight">Yemek Kartları Satış Raporu</h1>
+                  <p className="mt-1 text-green-200/80 text-sm">
+                    Toplam Kayıt: {data.length} | Seçili Tarih: {startDate} |{' '}
+                    Şubeler: {selectedSubeler.length === 0 ? 'Seçiniz' : selectedSubeler.length === subeler.length ? 'Tümü' : `${selectedSubeler.length} şube seçili`}
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-lg lg:text-xl font-semibold text-white">{new Date().toLocaleDateString('tr-TR')}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={clearCacheAndReload}
-                  disabled={loading}
-                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title="Cache'i temizle ve yeni veri getir"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-green-100/70 text-sm mr-1">{new Date().toLocaleDateString('tr-TR')}</span>
+                <button onClick={clearCacheAndReload} disabled={loading} className="px-4 py-2 rounded-xl text-sm font-semibold bg-white/10 text-white backdrop-blur hover:bg-white/20 transition disabled:opacity-40 flex items-center gap-2" title="Cache temizle">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                   Yeniden Yükle
                 </button>
-                <button
-                  onClick={handleFetchReport}
-                  disabled={loading}
-                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
+                <button onClick={handleFetchReport} disabled={loading} className="px-5 py-2 rounded-xl text-sm font-semibold bg-green-600 text-white hover:bg-green-500 transition disabled:opacity-40">
                   Raporu Getir
                 </button>
               </div>
@@ -1183,303 +1188,21 @@ export default function YemekKartiSatis() {
           </div>
         </div>
 
-        {/* Parametreler */}
-        <div className="bg-white rounded-lg shadow-lg border border-gray-100">
-          <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-red-50 to-pink-50">
-            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white text-lg">⚙️</span>
-              </div>
-              <div>
-                <div className="text-xl font-bold text-gray-900">Rapor Parametreleri</div>
-                <div className="text-sm text-gray-600 font-normal">Yemek kartı satış verilerinizi filtrelemek için parametreleri ayarlayın</div>
-              </div>
-            </h3>
-          </div>
-          
-          <div className="p-6 space-y-6">
-            {/* Parametreler Kartı */}
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-100 shadow-inner">
-              <h4 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z" />
-                  </svg>
-                </div>
-                Filtreleme Seçenekleri
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    📅 Rapor Tarihi
-                  </label>
-                  {/* Tarih Aralığı */}
-                  <div className="flex flex-col md:flex-row gap-4 items-end">
-                    <div className="flex-1">
-                      <DatePicker
-                        label="Başlangıç Tarihi"
-                        placeholder="DD/MM/YYYY (örn: 21/01/2025)"
-                        value={startDate}
-                        onChange={(date) => {
-                          setStartDate(date);
-                          setDatePreset('');
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <DatePicker
-                        label="Bitiş Tarihi"
-                        placeholder="DD/MM/YYYY (örn: 21/01/2025)"
-                        value={endDate}
-                        onChange={(date) => {
-                          setEndDate(date);
-                          setDatePreset('');
-                        }}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Hızlı Tarih Seçenekleri */}
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="block text-sm font-medium text-gray-700">⚡ Hızlı Seçim</label>
-                      {startDate && endDate && (
-                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                          📅 {startDate} - {endDate}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setDatePresetRange('today')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          datePreset === 'today'
-                            ? 'bg-blue-600 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
-                        }`}
-                      >
-                        📅 Bugün
-                      </button>
-                      <button
-                        onClick={() => setDatePresetRange('yesterday')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          datePreset === 'yesterday'
-                            ? 'bg-blue-600 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
-                        }`}
-                      >
-                        📅 Dün
-                      </button>
-                      <button
-                        onClick={() => setDatePresetRange('thisWeek')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          datePreset === 'thisWeek'
-                            ? 'bg-blue-600 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
-                        }`}
-                      >
-                        📅 Bu Hafta
-                      </button>
-                      <button
-                        onClick={() => setDatePresetRange('thisMonth')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          datePreset === 'thisMonth'
-                            ? 'bg-blue-600 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
-                        }`}
-                      >
-                        📅 Bu Ay
-                      </button>
-                      <button
-                        onClick={() => setDatePresetRange('lastMonth')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          datePreset === 'lastMonth'
-                            ? 'bg-blue-600 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-700 hover:scale-105'
-                        }`}
-                      >
-                        📅 Geçen Ay
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    🏢 Şube Seçimi
-                  </label>
-                  
-                  {loadingSubeler ? (
-                    <div className="flex items-center justify-center p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-3"></div>
-                      <span className="text-blue-700 font-medium">ENPOS'tan şubeler yükleniyor...</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {/* Dropdown Trigger */}
-                      <button
-                        type="button"
-                        onClick={() => setShowSubeDropdown(!showSubeDropdown)}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl hover:border-red-300 focus:border-red-500 focus:ring-4 focus:ring-red-100 transition-all duration-200 group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-md">
-                            <span className="text-white font-bold text-sm">
-                              {selectedSubeler.length}
-                            </span>
-                          </div>
-                          <div className="text-left">
-                            <div className="font-semibold text-gray-900">
-                              {selectedSubeler.length === 0 
-                                ? 'Şube seçiniz' 
-                                : selectedSubeler.length === subeler.length 
-                                  ? 'Tüm şubeler seçili'
-                                  : `${selectedSubeler.length} şube seçili`
-                              }
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {selectedSubeler.length > 0 && selectedSubeler.length < subeler.length && (
-                                selectedSubeler.slice(0, 2).map(id => 
-                                  subeler.find(s => s.value === id)?.label
-                                ).join(', ') + (selectedSubeler.length > 2 ? '...' : '')
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
-                            {selectedSubeler.length}/{subeler.length}
-                          </span>
-                          <svg 
-                            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${showSubeDropdown ? 'rotate-180' : ''}`}
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      </button>
-
-                      {/* Dropdown Content */}
-                      {showSubeDropdown && (
-                        <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                          <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                🏢 Şube Listesi
-                              </h3>
-                              <button
-                                onClick={toggleAllSubeler}
-                                className="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg"
-                              >
-                                {selectedSubeler.length === subeler.length ? '❌ Tümünü Kaldır' : '✅ Tümünü Seç'}
-                              </button>
-                            </div>
-                          </div>
-                          
-                          <div className="max-h-64 overflow-y-auto">
-                            {subeler.map((sube, index) => (
-                              <label 
-                                key={sube.value} 
-                                className="flex items-center p-4 hover:bg-gradient-to-r hover:from-red-50 hover:to-pink-50 cursor-pointer transition-all duration-150 border-b border-gray-50 last:border-b-0 group"
-                              >
-                                <div className="relative">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedSubeler.includes(sube.value)}
-                                    onChange={() => toggleSube(sube.value)}
-                                    className="w-5 h-5 rounded-md border-2 border-gray-300 text-red-600 focus:ring-red-500 focus:ring-2 transition-all duration-200"
-                                  />
-                                  {selectedSubeler.includes(sube.value) && (
-                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse"></div>
-                                  )}
-                                </div>
-                                
-                                <div className="ml-4 flex-1">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-medium text-gray-900 group-hover:text-red-700 transition-colors">
-                                      {sube.label}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
-                                        #{sube.value}
-                                      </span>
-                                      {selectedSubeler.includes(sube.value) && (
-                                        <span className="text-xs text-green-600 font-medium">
-                                          ✓ Seçili
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </label>
-                            ))}
-                            
-                            {subeler.length === 0 && (
-                              <div className="text-center py-8 text-gray-500">
-                                <div className="w-16 h-16 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
-                                  🏢
-                                </div>
-                                <p className="font-medium">Şube bulunamadı</p>
-                                <p className="text-sm">ENPOS'tan şube verileri alınamadı</p>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {subeler.length > 0 && (
-                            <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-t border-gray-100">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-gray-600">
-                                  Toplam {subeler.length} şube
-                                </span>
-                                <button
-                                  onClick={() => setShowSubeDropdown(false)}
-                                  className="px-3 py-1.5 text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                                >
-                                  Kapat ✕
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Seçili Şubeler Özetı */}
-                  {selectedSubeler.length > 0 && !showSubeDropdown && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {selectedSubeler.slice(0, 4).map(id => {
-                        const sube = subeler.find(s => s.value === id);
-                        return sube ? (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 text-white text-xs font-medium rounded-full shadow-md hover:shadow-lg transition-shadow"
-                          >
-                            <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
-                            {sube.label}
-                            <button
-                              onClick={() => toggleSube(id)}
-                              className="ml-1 w-4 h-4 hover:bg-white hover:bg-opacity-20 rounded-full flex items-center justify-center transition-colors"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ) : null;
-                      })}
-                      {selectedSubeler.length > 4 && (
-                        <span className="inline-flex items-center px-3 py-1.5 bg-gray-500 text-white text-xs font-medium rounded-full">
-                          +{selectedSubeler.length - 4} daha
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Filtre Paneli */}
+        <ReportFilterPanel
+          filters={[
+            { type: 'dateRange', id: 'tarih', label: 'Rapor Tarihi', presets: ['today', 'yesterday', 'thisWeek', 'thisMonth', 'lastMonth'] },
+            { type: 'multiSelect', id: 'sube', label: 'Şube Seçimi', options: subeler.map(s => ({ value: String(s.value), label: s.label })), placeholder: loadingSubeler ? 'Şubeler yükleniyor...' : 'Şube seçiniz', searchable: true },
+          ]}
+          values={filterValues}
+          onChange={handleFilterChange}
+          onApply={handleFetchReport}
+          onReset={handleFilterReset}
+          applyLabel="Raporu Getir"
+          loading={loading}
+          defaultOpen={!hasFetched}
+          autoCollapse
+        />
 
         {/* Sonuç Bilgisi */}
         {hasFetched && data.length > 0 && (

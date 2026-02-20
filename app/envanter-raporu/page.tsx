@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import EnvanterRaporuTable from '../components/tables/EnvanterRaporuTable';
@@ -9,6 +9,7 @@ import MalzemeDetayModal from '../components/MalzemeDetayModal';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 import { buildInventoryFilters } from '../utils/buildFilter';
+import ReportFilterPanel, { FilterValues } from '../components/ReportFilterPanel';
 
 // Şube isimlerini doğal sırayla (1,2,10 yerine 1,2,3) sıralamak için yardımcı fonksiyon
 const naturalSort = (a:string, b:string) => {
@@ -33,7 +34,40 @@ export default function EnvanterRaporu() {
   const selectedFiltersRef = useRef(selectedFilters);
   useEffect(()=>{selectedFiltersRef.current = selectedFilters;},[selectedFilters]);
   
+  // ReportFilterPanel state
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
+
+  const handleFilterChange = (key: string, value: import('../components/ReportFilterPanel').FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    setSelectedFilters(prev => ({ ...prev, [key]: (value as string[]) ?? [] }));
+  };
+
+  const handleFilterReset = () => {
+    setSelectedFilters({});
+    setFilterValues({});
+  };
+  
   const router = useRouter();
+  
+  // filterCodes'dan ReportFilterPanel için filter tanımları oluştur
+  const filterDefs = useMemo(() => {
+    // Unique ALAN değerlerini bul
+    const alanlar = Array.from(new Set(filterCodes.map(fc => fc.ALAN)));
+    return alanlar.map(alan => ({
+      type: 'multiSelect' as const,
+      id: alan,
+      label: alan === 'STRGRPCODE' ? 'Grup Kodu' :
+             alan === 'SPECODE'    ? 'Özel Kod 1' :
+             alan === 'SPECODE2'   ? 'Özel Kod 2' :
+             alan === 'SPECODE3'   ? 'Özel Kod 3' :
+             alan === 'SPECODE4'   ? 'Özel Kod 4' :
+             alan === 'SPECODE5'   ? 'Özel Kod 5' : alan,
+      options: filterCodes
+        .filter(fc => fc.ALAN === alan)
+        .map(fc => ({ value: fc.KOD, label: `${fc.KOD}${fc.AÇIKLAMA ? ' - ' + fc.AÇIKLAMA : ''}` })),
+      searchable: true,
+    }));
+  }, [filterCodes]);
   
   // Animation data'ları yükleyelim
   const [animationData, setAnimationData] = useState(null);
@@ -657,10 +691,12 @@ export default function EnvanterRaporu() {
   const toggleFilterValue = (codeType: string, value: string) => {
     setSelectedFilters(prev => {
       const currentArr = prev[codeType] || [];
-      if (currentArr.includes(value)) {
-        return { ...prev, [codeType]: currentArr.filter(v => v !== value) };
-      }
-      return { ...prev, [codeType]: [...currentArr, value] };
+      const newArr = currentArr.includes(value)
+        ? currentArr.filter(v => v !== value)
+        : [...currentArr, value];
+      // Sync filterValues
+      setFilterValues(filterPrev => ({ ...filterPrev, [codeType]: newArr }));
+      return { ...prev, [codeType]: newArr };
     });
   };
 
@@ -704,103 +740,64 @@ export default function EnvanterRaporu() {
   return (
     <DashboardLayout title="Envanter Raporu">
       <div className="space-y-6">
-        {/* Header Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Envanter Raporu</h2>
-                <p className="text-red-100 text-sm">
-                  Toplam Ambar: {dynamicColumns.length} | Toplam Ürün: {data.length}
-                </p>
-              </div>
+        {/* Hero Section */}
+        <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-5">
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute -top-16 -right-16 w-72 h-72 bg-teal-500/10 rounded-full blur-3xl" />
+              <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-teal-700/10 rounded-full blur-2xl" />
+              <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
             </div>
-            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-lg lg:text-xl font-semibold text-white">{new Date().toLocaleDateString('tr-TR')}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={clearCacheAndReload}
-                  disabled={loading}
-                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  title="Cache'i temizle ve yeni veri getir"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Yeniden Yükle
-                </button>
-                <button
-                  onClick={handleFetchReport}
-                  disabled={loading}
-                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <span>📊</span>
-                  Raporu Getir
-                  {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
-                    <span className="bg-red-600 text-white text-xs px-2 py-1 rounded-full ml-2">
-                      {Object.values(selectedFilters).flat().length} Filtre
-                    </span>
-                  )}
-                </button>
+            <div className="relative px-4 lg:px-6 py-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => router.push('/')}
+                    className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div className="w-11 h-11 bg-teal-500/20 border border-teal-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg sm:text-xl font-bold text-white">Envanter Raporu</h1>
+                      <span className="hidden sm:inline text-xs font-semibold bg-teal-500/20 border border-teal-500/30 text-teal-300 px-2 py-0.5 rounded-full">Stok</span>
+                    </div>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      {data.length > 0 ? `${data.length} ürün` : 'Anlık stok durumu'}
+                    </p>
+                  </div>
+                </div>
+                <div className="hidden lg:flex items-center gap-3">
+                  <span className="text-slate-400 text-sm">{new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Aktif Filtreler Gösterimi */}
-        {hasFetched && Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
-                <span className="text-blue-600">🔍</span>
-                Aktif Filtreler
-              </h3>
-              <button
-                onClick={() => setSelectedFilters({})}
-                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-              >
-                Tümünü Temizle
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(selectedFilters).map(([codeType, codes]) =>
-                codes.map(code => {
-                  // Filtre kodundan açıklamayı bul
-                  const filterCode = filterCodes.find(fc => fc.ALAN === codeType && fc.KOD === code);
-                  const description = filterCode ? filterCode.AÇIKLAMA : '';
-                  
-                  return (
-                    <div
-                      key={`${codeType}-${code}`}
-                      className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg border border-blue-200"
-                    >
-                      <span className="text-blue-600 mr-2">🏷️</span>
-                      <span className="font-semibold">{getCodeTypeLabel(codeType)}:</span>
-                      <span className="ml-1">{code}</span>
-                      {description && (
-                        <span className="ml-2 text-blue-600 text-xs opacity-75">
-                          ({description})
-                        </span>
-                      )}
-                      <button
-                        onClick={() => toggleFilterValue(codeType, code)}
-                        className="ml-2 text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        ✖
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+        {/* ReportFilterPanel */}
+        {filterDefs.length > 0 && (
+          <ReportFilterPanel
+            filters={filterDefs}
+            values={filterValues}
+            onChange={handleFilterChange}
+            onApply={handleFetchReport}
+            onReset={handleFilterReset}
+            loading={loading}
+          />
+        )}
+        {filterDefs.length === 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center justify-between">
+            <span className="text-sm text-gray-500">Filtre kodu yükleniyor...</span>
+            <button onClick={handleFetchReport} disabled={loading}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60 shadow-sm">
+              {loading ? 'Yükleniyor...' : 'Raporu Getir →'}
+            </button>
           </div>
         )}
 
@@ -836,49 +833,6 @@ export default function EnvanterRaporu() {
             </div>
           </div>
         )}
-
-        {/* Action Button */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Envanter Raporu</h3>
-              <p className="text-sm text-gray-500">Ürün stok durumlarını görüntüleyin ve analiz edin</p>
-              {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
-                <p className="text-sm text-blue-600 mt-1 flex items-center gap-1">
-                  <span>🔍</span>
-                  {Object.values(selectedFilters).flat().length} aktif filtre uygulanacak
-                </p>
-              )}
-            </div>
-            <button
-              onClick={handleFetchReport}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Yükleniyor...
-                </>
-              ) : (
-                <>
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Raporu Getir
-                  {Object.entries(selectedFilters).some(([, codes]) => codes.length > 0) && (
-                    <span className="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded-full">
-                      {Object.values(selectedFilters).flat().length}
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
-          </div>
-        </div>
 
         {/* Data Table */}
         {loading ? (

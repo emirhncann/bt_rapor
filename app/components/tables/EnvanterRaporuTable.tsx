@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -45,10 +45,12 @@ export default function EnvanterRaporuTable({
   const [minValue, setMinValue] = useState<string>('');
   const [maxValue, setMaxValue] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
-  const [columnWidths, setColumnWidths] = useState<{[key: string]: number}>({});
-  const [isResizing, setIsResizing] = useState(false);
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [draggedCol, setDraggedCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const committedWidthsRef = useRef<Record<string, number>>({});
+  const [localWidths, setLocalWidths] = useState<Record<string, number>>({});
 
   // Detay görüntüleme için yeni state'ler
   const [selectedItemRef, setSelectedItemRef] = useState<string | null>(null);
@@ -259,7 +261,7 @@ export default function EnvanterRaporuTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [allColumns.join('|')]
   );
-  const { orderedColumns, toggle, reorder, showAll, hideAll } = useColumnPreferences(
+  const { orderedColumns, toggle, reorder, showAll, hideAll, columnWidths: savedWidths, saveWidths } = useColumnPreferences(
     'envanter-raporu',
     envColDefs
   );
@@ -304,36 +306,29 @@ export default function EnvanterRaporuTable({
     ...Object.fromEntries(dynamicColumns.map(col => [col, 150]))
   };
 
-  // Sütun genişliğini al
-  const getColumnWidth = (column: string): number => {
-    return columnWidths[column] || defaultColumnWidths[column] || 150;
-  };
+  const getColWidth = (key: string) =>
+    localWidths[key] ?? committedWidthsRef.current[key] ?? savedWidths[key] ?? defaultColumnWidths[key] ?? 150;
 
   // Mouse olayları için handlers
   const handleMouseDown = (e: React.MouseEvent, column: string) => {
-    e.preventDefault(); // Seçimi önle
-    setIsResizing(true);
+    e.preventDefault();
     setResizingColumn(column);
-    const startX = e.pageX;
-    const startWidth = getColumnWidth(column);
-
+    const startX = e.clientX;
+    const startWidth = getColWidth(column);
+    let latestWidths: Record<string, number> = { ...savedWidths, ...committedWidthsRef.current };
     const handleMouseMove = (e: MouseEvent) => {
-      if (isResizing && resizingColumn === column) {
-        const width = startWidth + (e.pageX - startX);
-        setColumnWidths(prev => ({
-          ...prev,
-          [column]: Math.max(100, width) // Minimum 100px
-        }));
-      }
+      const newWidth = Math.max(60, startWidth + (e.clientX - startX));
+      latestWidths = { ...latestWidths, [column]: newWidth };
+      setLocalWidths(prev => ({ ...prev, [column]: newWidth }));
     };
-
     const handleMouseUp = () => {
-      setIsResizing(false);
       setResizingColumn(null);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      committedWidthsRef.current = latestWidths;
+      saveWidths(latestWidths);
+      setLocalWidths({});
     };
-
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
@@ -343,6 +338,28 @@ export default function EnvanterRaporuTable({
     setItemsPerPage(newItemsPerPage);
     setCurrentPage(1);
   };
+
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent, column: string) => {
+    if (resizingColumn) { e.preventDefault(); return; }
+    setDraggedCol(column);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', column);
+  };
+  const handleDragOver = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (column !== draggedCol) setDragOverCol(column);
+  };
+  const handleDrop = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    if (!draggedCol || draggedCol === column) { setDraggedCol(null); setDragOverCol(null); return; }
+    const fromIdx = orderedColumns.findIndex(c => c.key === draggedCol);
+    const toIdx = orderedColumns.findIndex(c => c.key === column);
+    if (fromIdx !== -1 && toIdx !== -1) reorder(fromIdx, toIdx);
+    setDraggedCol(null); setDragOverCol(null);
+  };
+  const handleDragEnd = () => { setDraggedCol(null); setDragOverCol(null); };
 
   // Filtreleme kodları için helper fonksiyonlar
   const getCodeTypes = () => {
@@ -930,93 +947,129 @@ export default function EnvanterRaporuTable({
 
       {/* Tablo container */}
       <div className="overflow-x-auto w-full" style={{ maxWidth: '100vw' }}>
-        <table className="w-full table-auto divide-y divide-gray-200">
-          <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-            <tr>
+        <table
+          className="border-collapse"
+          style={{
+            tableLayout: 'fixed',
+            width: `${visibleEnvColumns.reduce((s, c) => s + getColWidth(c), 0) + 64}px`,
+            minWidth: `${visibleEnvColumns.reduce((s, c) => s + getColWidth(c), 0) + 64}px`,
+          }}
+        >
+          <colgroup>
+            <col style={{ width: '64px' }} />
+            {visibleEnvColumns.map(col => <col key={col} style={{ width: `${getColWidth(col)}px` }} />)}
+            <col style={{ width: 'auto' }} />
+          </colgroup>
+          <thead>
+            <tr className="bg-slate-800 text-white">
               {/* Detay butonu için ek kolon */}
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-700 uppercase tracking-wider w-16">
+              <th className="px-6 py-4 text-left text-xs font-medium text-white uppercase tracking-wider bg-slate-800 border-b border-slate-700 w-16">
                 <span className="font-semibold">Detay</span>
               </th>
-              {(visibleEnvColumns.length > 0 ? visibleEnvColumns : allColumns).map(column => (
-                <th
-                  key={column}
-                  onClick={() => handleSort(column)}
-                  className="px-6 py-4 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer select-none relative group hover:bg-gray-200 transition-colors duration-200"
-                  style={{ 
-                    width: `${100 / (visibleEnvColumns.length || allColumns.length)}%`,
-                    minWidth: column === 'Malzeme Adı' ? '250px' : '100px'
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{column}</span>
-                    <span className="text-gray-400">{getSortIcon(column)}</span>
-                  </div>
-                  <div
-                    className="absolute top-0 right-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onMouseDown={(e) => handleMouseDown(e, column)}
-                  />
-                </th>
-              ))}
+              {(visibleEnvColumns.length > 0 ? visibleEnvColumns : allColumns).map(column => {
+                const isDragging = draggedCol === column;
+                const isDragOver = dragOverCol === column && draggedCol !== column;
+                return (
+                  <th
+                    key={column}
+                    draggable={!resizingColumn}
+                    onDragStart={(e) => handleDragStart(e, column)}
+                    onDragOver={(e) => handleDragOver(e, column)}
+                    onDrop={(e) => handleDrop(e, column)}
+                    onDragEnd={handleDragEnd}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
+                    className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors ${isDragging ? 'opacity-30' : ''} ${isDragOver ? 'bg-slate-600' : ''}`}
+                    style={{ width: getColWidth(column), minWidth: 0, overflow: 'hidden' }}
+                  >
+                    {isDragOver && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />}
+                    <div
+                      className="flex items-center gap-1.5 px-3 py-3 cursor-grab active:cursor-grabbing hover:bg-slate-700/60 transition-colors"
+                      onClick={() => !draggedCol && handleSort(column)}
+                    >
+                      <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70" fill="currentColor" viewBox="0 0 10 16">
+                        <circle cx="2.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/>
+                        <circle cx="7.5" cy="3" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/>
+                      </svg>
+                      <span className="truncate flex-1">{column}</span>
+                      <span className="flex-shrink-0">{getSortIcon(column)}</span>
+                    </div>
+                    <div
+                      draggable={false}
+                      onDragStart={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, column); }}
+                      className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize flex items-center justify-center group z-10"
+                    >
+                      <div className={`w-0.5 h-4/5 rounded-full transition-all ${resizingColumn === column ? 'bg-emerald-400 w-1' : 'bg-slate-600 group-hover:bg-emerald-400 group-hover:w-1'}`} />
+                    </div>
+                  </th>
+                );
+              })}
+              <th className="bg-slate-800 border-b border-slate-700" />
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {currentData.map((row, rowIndex) => (
-              <tr key={rowIndex} className={`hover:bg-gray-50 transition-colors duration-200 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                {/* Detay butonu */}
-                <td className="px-6 py-4 whitespace-nowrap text-sm w-16">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        console.log('🔍 Row data:', row);
-                        const itemRef = row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref || '';
-                        const itemName = row['Malzeme Adı'] || row.NAME || row.malzeme_adi || 'Malzeme';
-                        const malzemeKodu = row['Malzeme Kodu'] || row.CODE || row.malzeme_kodu || '';
-                        console.log('🔍 ItemRef:', itemRef);
-                        console.log('🔍 ItemName:', itemName);
-                        console.log('🔍 MalzemeKodu:', malzemeKodu);
-                        
-                        if (itemRef && onOpenMalzemeDetail) {
-                          // Envanter raporunda STLINE verisi yok, bu yüzden CLIENTREF boş
-                          // Gerçek kullanımda STLINE'dan CLIENTREF çekilecek
-                          onOpenMalzemeDetail(itemRef, malzemeKodu, itemName, '');
-                        } else if (itemRef) {
-                          fetchItemDetails(itemRef, itemName);
-                        } else {
-                          alert('Malzeme referansı bulunamadı!');
-                        }
-                      }}
-                      className="text-gray-600 hover:text-red-800 transition-colors"
-                      title="Fiyat detaylarını görüntüle"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-                {(visibleEnvColumns.length > 0 ? visibleEnvColumns : allColumns).map(column => (
-                  <td 
-                    key={column} 
-                    className="px-6 py-4 whitespace-nowrap text-sm"
-                    style={{ 
-                      width: `${100 / (visibleEnvColumns.length || allColumns.length)}%`,
-                      minWidth: column === 'Malzeme Adı' ? '250px' : '100px'
-                    }}
-                  >
-                    {numericColumns.includes(column) ? (
-                      <span className="font-medium text-right block text-gray-900">
-                        {formatNumber(safeParseFloat(row[column]))}
-                      </span>
-                    ) : (
-                      <div className="truncate text-gray-700" title={row[column]}>
-                        {row[column]}
-                      </div>
-                    )}
+            {currentData.map((row, rowIndex) => {
+              const isEven = rowIndex % 2 === 0;
+              return (
+                <tr key={rowIndex} className={`hover:bg-gray-50 transition-colors duration-200 ${isEven ? 'bg-white' : 'bg-gray-50'}`}>
+                  {/* Detay butonu */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm w-16">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          console.log('🔍 Row data:', row);
+                          const itemRef = row['Malzeme Ref'] || row.LOGICALREF || row.malzeme_ref || '';
+                          const itemName = row['Malzeme Adı'] || row.NAME || row.malzeme_adi || 'Malzeme';
+                          const malzemeKodu = row['Malzeme Kodu'] || row.CODE || row.malzeme_kodu || '';
+                          console.log('🔍 ItemRef:', itemRef);
+                          console.log('🔍 ItemName:', itemName);
+                          console.log('🔍 MalzemeKodu:', malzemeKodu);
+                          
+                          if (itemRef && onOpenMalzemeDetail) {
+                            // Envanter raporunda STLINE verisi yok, bu yüzden CLIENTREF boş
+                            // Gerçek kullanımda STLINE'dan CLIENTREF çekilecek
+                            onOpenMalzemeDetail(itemRef, malzemeKodu, itemName, '');
+                          } else if (itemRef) {
+                            fetchItemDetails(itemRef, itemName);
+                          } else {
+                            alert('Malzeme referansı bulunamadı!');
+                          }
+                        }}
+                        className="text-gray-600 hover:text-red-800 transition-colors"
+                        title="Fiyat detaylarını görüntüle"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {(visibleEnvColumns.length > 0 ? visibleEnvColumns : allColumns).map(column => (
+                    <td 
+                      key={column} 
+                      className="px-6 py-4 whitespace-nowrap text-sm overflow-hidden"
+                      style={{ 
+                        width: getColWidth(column),
+                        minWidth: 0,
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {numericColumns.includes(column) ? (
+                        <span className="font-medium text-right block text-gray-900">
+                          {formatNumber(safeParseFloat(row[column]))}
+                        </span>
+                      ) : (
+                        <div className="truncate text-gray-700" title={row[column]}>
+                          {row[column]}
+                        </div>
+                      )}
+                    </td>
+                  ))}
+                  <td className={isEven ? 'bg-white' : 'bg-gray-50'} />
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -1139,52 +1139,79 @@ export default function CBakiye() {
       )}
       
       <div className="space-y-6">
-        {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-4 lg:p-8 text-white">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col lg:flex-row lg:items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2">Cari Bakiye Raporu</h2>
-                <p className="text-red-100 text-sm">
-                  Seçili Döviz Türleri: {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).join(', ')}
-                </p>
-              </div>
+        {/* FULL-BLEED HERO */}
+        <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-5">
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-rose-950 overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute -top-16 -right-16 w-72 h-72 bg-rose-500/10 rounded-full blur-3xl" />
+              <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-rose-700/10 rounded-full blur-2xl" />
+              <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
             </div>
-            <div className="mt-4 lg:mt-0 flex flex-col space-y-2">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-lg lg:text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setShowCurrencySelector(!showCurrencySelector)}
-                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium"
-                >
-                  💱 Döviz Türü Seçimi
-                </button>
-                <button
-                  onClick={clearCacheAndReload}
-                  disabled={loading || selectedCurrencies.length === 0}
-                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Cache'i temizle ve yeni veri getir"
-                >
-                  <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Yeniden Yükle
-                </button>
-                <button
-                  onClick={fetchSqlData}
-                  disabled={loading || selectedCurrencies.length === 0}
-                  className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg hover:bg-opacity-30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  📊 Raporu Getir
-                </button>
+            <div className="relative px-4 lg:px-6 py-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => router.push('/')}
+                    className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div className="w-11 h-11 bg-rose-500/20 border border-rose-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h1 className="text-lg sm:text-xl font-bold text-white">Cari Bakiye Raporu</h1>
+                      <span className="text-xs font-semibold bg-rose-500/20 border border-rose-500/30 text-rose-300 px-2 py-0.5 rounded-full">CRM</span>
+                      {selectedCurrencies.length > 0 && (
+                        <span className="text-xs bg-white/10 text-slate-300 px-2 py-0.5 rounded-full">
+                          {selectedCurrencies.map(no => getCurrencyByNo(no)?.Kodu).filter(Boolean).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-400 text-xs mt-0.5">Cari hesap bakiye ve mutabakat analizi</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setShowCurrencySelector(!showCurrencySelector)}
+                    className="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-lg transition-colors text-xs font-medium flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="hidden sm:inline">Döviz</span>
+                  </button>
+                  <button
+                    onClick={clearCacheAndReload}
+                    disabled={loading || selectedCurrencies.length === 0}
+                    className="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-lg transition-colors text-xs font-medium disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span className="hidden sm:inline">Yenile</span>
+                  </button>
+                  <button
+                    onClick={fetchSqlData}
+                    disabled={loading || selectedCurrencies.length === 0}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {loading ? (
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    )}
+                    Raporu Getir
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1293,38 +1320,6 @@ export default function CBakiye() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Action Button */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Cari Hesap Raporu</h3>
-              <p className="text-sm text-gray-500">Müşteri hesap bakiyelerini görüntüleyin ve analiz edin</p>
-            </div>
-      <button
-        onClick={fetchSqlData}
-        disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Yükleniyor...
-                </>
-              ) : (
-                <>
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Raporu Yenile
-                </>
-              )}
-      </button>
-          </div>
         </div>
 
         {/* Data Table */}

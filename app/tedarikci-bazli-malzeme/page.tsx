@@ -10,6 +10,7 @@ import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 import ColumnManager from '../components/ColumnManager';
+import ReportFilterPanel, { FilterValues, DateRangeValue } from '../components/ReportFilterPanel';
 
 const COLUMN_DEFS = [
   { key: 'Malzeme Kodu', label: 'Malzeme Kodu', defaultVisible: true },
@@ -91,6 +92,36 @@ export default function TedarikciMalzemeRaporu() {
   const [startDate, setStartDate] = useState(formatDateToYMD(new Date()));
   const [endDate, setEndDate] = useState(formatDateToYMD(new Date()));
   const [selectedTedarikci, setSelectedTedarikci] = useState<string>('');
+  
+  // ReportFilterPanel state
+  const [filterValues, setFilterValues] = useState<FilterValues>({
+    dateRange: { start: startDate, end: endDate },
+    tedarikci: selectedTedarikci,
+  });
+
+  const handleFilterChange = (key: string, value: import('../components/ReportFilterPanel').FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    if (key === 'dateRange') {
+      const dr = value as DateRangeValue;
+      if (dr.start) setStartDate(dr.start);
+      if (dr.end) setEndDate(dr.end);
+    } else if (key === 'tedarikci') {
+      setSelectedTedarikci((value as string) ?? '');
+    }
+  };
+
+  const handleFilterReset = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setStartDate(today); setEndDate(today);
+    setSelectedTedarikci('');
+    setFilterValues({ dateRange: { start: today, end: today }, tedarikci: '' });
+  };
+
+  const handleApplyFilters = async () => {
+    await fetchReportData();
+    setHasFetched(true);
+    setCurrentPage(1);
+  };
   
   // Arama ve filtreleme
   const [searchTerm, setSearchTerm] = useState('');
@@ -188,6 +219,15 @@ export default function TedarikciMalzemeRaporu() {
 
     checkReportAccess();
   }, []);
+
+  // Sync filterValues when startDate, endDate, or selectedTedarikci change externally
+  useEffect(() => {
+    setFilterValues(prev => ({
+      ...prev,
+      dateRange: { start: startDate, end: endDate },
+      tedarikci: selectedTedarikci,
+    }));
+  }, [startDate, endDate, selectedTedarikci]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -600,218 +640,70 @@ export default function TedarikciMalzemeRaporu() {
     return (
     <DashboardLayout title="Tedarikçi Bazlı Malzeme Raporu">
       <div className="space-y-6 overflow-visible">
-        {/* Header Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2 text-white">Tedarikçi Bazlı Malzeme Raporu</h2>
-                <p className="text-red-100 text-sm">
-                  Toplam Tedarikçi: {cariHesaplar.length} | Yüklenen: {filteredCariHesaplar.length}
-                </p>
-              </div>
+        {/* FULL-BLEED WRAPPER for hero */}
+        <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6 mb-5">
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-violet-950 overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute -top-16 -right-16 w-72 h-72 bg-violet-500/10 rounded-full blur-3xl" />
+              <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-violet-700/10 rounded-full blur-2xl" />
+              <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
             </div>
-          </div>
-        </div>
-
-        {/* Tedarikçi Seçimi */}
-        <div className="bg-white rounded-lg shadow-lg border border-gray-100">
-          <div className="p-6 border-b border-gray-100">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                  <span className="text-red-600">👥</span>
-                </div>
-                Tedarikçi Cari Hesapları
-              </h3>
-              {hasFetched && (
-                <button
-                  onClick={() => setIsFilterCollapsed(!isFilterCollapsed)}
-                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-                >
-                  <span>{isFilterCollapsed ? 'Genişlet' : 'Küçült'}</span>
-                  <svg 
-                    className={`w-4 h-4 transition-transform duration-200 ${isFilterCollapsed ? 'rotate-180' : ''}`}
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
-          
-          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${
-            isFilterCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'
-          }`}>
-            <div className="p-6">
-                        {/* Arama Kutusu */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-600 mb-2">
-                Tedarikçi Ara ({cariHesaplar.length} adet)
-              </label>
-              <input
-                type="text"
-                placeholder="Tedarikçi kodu veya adı ile arayın..."
-                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm shadow-sm transition-all duration-200"
-                onChange={(e) => {
-                  const searchTerm = e.target.value.toLowerCase().trim();
-                  if (searchTerm === '') {
-                    setFilteredCariHesaplar([]); // Boş arama yapıldığında liste gizlensin
-                  } else {
-                    const filtered = cariHesaplar.filter(cari => {
-                      const code = cari.code.toLowerCase();
-                      const definition = cari.definition.toLowerCase();
-                      const normalizedSearchTerm = searchTerm.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                      const normalizedCode = code.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                      const normalizedDefinition = definition.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                      
-                      return normalizedCode.includes(normalizedSearchTerm) || 
-                             normalizedDefinition.includes(normalizedSearchTerm) ||
-                             code.includes(searchTerm) || 
-                             definition.includes(searchTerm);
-                    });
-                    setFilteredCariHesaplar(filtered);
-                  }
-                }}
-              />
-            </div>
-            
-            {/* Tedarikçi Listesi */}
-            {filteredCariHesaplar.length > 0 && (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                {filteredCariHesaplar.map((cari) => (
-                  <div 
-                    key={cari.logicalRef}
-                    onClick={() => setSelectedTedarikci(cari.logicalRef.toString())}
-                    className={`p-4 bg-white border rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
-                      selectedTedarikci === cari.logicalRef.toString()
-                        ? 'border-red-500 bg-red-50 shadow-md'
-                        : 'border-gray-200 hover:border-red-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
-                        selectedTedarikci === cari.logicalRef.toString()
-                          ? 'border-red-500 bg-red-500 shadow-md'
-                          : 'border-gray-300'
-                      }`}>
-                        {selectedTedarikci === cari.logicalRef.toString() && (
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="text-sm font-bold text-gray-900 bg-gradient-to-r from-gray-100 to-gray-200 px-3 py-1 rounded-lg shadow-sm">
-                            {cari.code}
-                          </span>
-                          <h3 className="text-sm font-medium text-gray-900">
-                            {cari.definition}
-                          </h3>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {/* Seçim Bilgisi */}
-            {selectedTedarikci && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-blue-700">
-                  <span>✅</span>
-                  <span>
-                    Seçili Tedarikçi: {
-                      cariHesaplar.find(c => c.logicalRef.toString() === selectedTedarikci)?.definition || 'Bilinmeyen'
-                    }
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Tarih Seçimi */}
-            <div className="mt-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2">Başlangıç Tarihi</label>
-                  <DatePicker 
-                    value={startDate}
-                    onChange={(date) => setStartDate(date)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2">Bitiş Tarihi</label>
-                  <DatePicker 
-                    value={endDate}
-                    onChange={(date) => setEndDate(date)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Raporu Getir Butonu */}
-            <div className="mt-6 bg-white rounded-lg shadow p-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">Tedarikçi Bazlı Malzeme Raporu</h3>
-                  <p className="text-sm text-gray-500">Tedarikçilerinizden aldığınız malzemeleri analiz edin</p>
-                  {selectedTedarikci && (
-                    <p className="text-sm text-blue-600 mt-1 flex items-center gap-1">
-                      <span>🔍</span>
-                      Seçili tedarikçi filtresi uygulanacak
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={clearCacheAndReload}
-                    disabled={loading || !selectedTedarikci}
-                    className="px-4 py-3 bg-blue-600 text-white font-medium rounded-lg shadow hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-                    title="Cache'i temizle ve yeni veri getir"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <div className="relative px-4 lg:px-6 py-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => router.push('/')}
+                    className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                     </svg>
-                    Yeniden Yükle
                   </button>
-                  <button
-                    onClick={handleFetchReport}
-                    disabled={loading || !selectedTedarikci}
-                    className="px-6 py-3 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Rapor Hazırlanıyor...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        Raporu Getir
-                      </>
-                    )}
-                  </button>
+                  <div className="w-11 h-11 bg-violet-500/20 border border-violet-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg sm:text-xl font-bold text-white">Tedarikçi Bazlı Malzeme</h1>
+                      <span className="hidden sm:inline text-xs font-semibold bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded-full">Satın Alma</span>
+                    </div>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      {cariHesaplar.length > 0 ? `${cariHesaplar.length} tedarikçi` : 'Tedarikçi bazlı malzeme analizi'}
+                    </p>
+                  </div>
+                </div>
+                <div className="hidden lg:flex items-center gap-3">
+                  <span className="text-slate-400 text-sm">{new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        </div>
+
+        {/* FILTER PANEL */}
+        <ReportFilterPanel
+          filters={[
+            {
+              type: 'dateRange',
+              id: 'dateRange',
+              presets: ['today', 'thisWeek', 'thisMonth', 'lastMonth'],
+            },
+            {
+              type: 'select',
+              id: 'tedarikci',
+              label: 'Tedarikçi',
+              options: cariHesaplar.map(c => ({ value: c.logicalRef.toString(), label: `${c.code} - ${c.definition}` })),
+              placeholder: 'Tedarikçi seçin',
+              searchable: true,
+              clearable: true,
+            },
+          ]}
+          values={filterValues}
+          onChange={handleFilterChange}
+          onApply={handleApplyFilters}
+          onReset={handleFilterReset}
+          loading={loading}
+        />
 
         {/* Malzeme Tablosu */}
         {hasFetched && data.length > 0 && (

@@ -6,6 +6,7 @@ import Lottie from 'lottie-react';
 import EnposCiroTable from '../components/tables/CiroTable';
 import DashboardLayout from '../components/DashboardLayout';
 import DatePicker from '../components/DatePicker';
+import ReportFilterPanel, { FilterValues, DateRangeValue } from '../components/ReportFilterPanel';
 import { fetchUserReports, getCurrentUser, hasReportAccess, getAuthorizedReports } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 
@@ -19,7 +20,37 @@ export default function EnposCiro() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('');
-  
+
+  // ReportFilterPanel için birleşik filtre state'i
+  const [filterValues, setFilterValues] = useState<FilterValues>({
+    dateRange: { start: '', end: '' },
+    autoRefresh: false,
+  });
+
+  // YYYY-MM-DD → DD/MM/YYYY dönüşümü (mevcut fetchCiroData'yla uyumluluk için)
+  const isoToDisplay = (iso: string) => {
+    if (!iso || !iso.includes('-')) return iso;
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  const handleFilterChange = (key: string, value: import('../components/ReportFilterPanel').FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    if (key === 'dateRange') {
+      const dr = value as DateRangeValue;
+      setStartDate(isoToDisplay(dr.start ?? ''));
+      setEndDate(isoToDisplay(dr.end ?? ''));
+      setDatePreset('');
+    } else if (key === 'autoRefresh') {
+      setAutoRefresh(value as boolean);
+    }
+  };
+
+  const handleFilterReset = () => {
+    setFilterValues({ dateRange: { start: '', end: '' }, autoRefresh: false });
+    setStartDate(''); setEndDate(''); setDatePreset(''); setAutoRefresh(false);
+  };
+
   // Otomatik yenileme state'leri
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
@@ -728,6 +759,7 @@ GROUP BY B.Sube_No,D.NAME
           o.Tus_No,
           K.Info,
           o.AcquirerID,
+          CASE WHEN o.AcquirerID > 0 AND ISNULL(o.Kredi_Kart_No,'') <> '' THEN 1 ELSE -1 END AS KrediKartiMi,
           SUM(o.TUTAR) AS Tutar
         FROM odeme o
         LEFT JOIN belge b ON o.Belge_ID = b.belge_ID
@@ -739,7 +771,8 @@ GROUP BY B.Sube_No,D.NAME
           AND B.Iptal = 0 
           AND B.BELGETARIH BETWEEN '${formatToSQLDate(startYYMMDD)} 00:00:00.000' 
           AND '${formatToSQLDate(endYYMMDD)} 23:59:59.000'
-        GROUP BY B.Sube_No, D.NAME, o.Tus_No, K.Info, o.AcquirerID
+        GROUP BY B.Sube_No, D.NAME, o.Tus_No, K.Info, o.AcquirerID,
+          CASE WHEN o.AcquirerID > 0 AND ISNULL(o.Kredi_Kart_No,'') <> '' THEN 1 ELSE -1 END
       `;
 
       console.log('📝 Kredi Kartı Detay SQL Sorgusu:', krediKartiDetaySQL);
@@ -841,7 +874,9 @@ GROUP BY B.Sube_No,D.NAME
               return {
                 ...item,
                 Banka_Adi: bankaAdi,
-                Tutar: safeParseFloat(item.Tutar || item.TUTAR || 0)
+                Tutar: safeParseFloat(item.Tutar || item.TUTAR || 0),
+                KrediKartiMi: item.KrediKartiMi === 1 || item.KrediKartiMi === '1',
+                OdemeTipiLabel: (item.KrediKartiMi === 1 || item.KrediKartiMi === '1') ? 'Kredi Kartı' : 'NFC, QR, vb.'
               };
             });
             
@@ -1060,11 +1095,19 @@ GROUP BY B.Sube_No,D.NAME
                 
                 const toplamTutar = filteredDetaylar.reduce((sum, item) => sum + item.Tutar, 0);
                 
-                // Banka bazında toplamları hesapla
+                // Banka bazında toplamları hesapla (genel + Kredi Kartı / NFC, QR vb. ayrımı)
                 const bankaToplamlari: {[key: string]: number} = {};
+                const bankaKrediKarti: {[key: string]: number} = {};
+                const bankaNfcQr: {[key: string]: number} = {};
                 filteredDetaylar.forEach((item) => {
                   const bankaAdi = item.Banka_Adi || 'Diğer';
-                  bankaToplamlari[bankaAdi] = (bankaToplamlari[bankaAdi] || 0) + item.Tutar;
+                  const tutar = item.Tutar || 0;
+                  bankaToplamlari[bankaAdi] = (bankaToplamlari[bankaAdi] || 0) + tutar;
+                  if (item.KrediKartiMi) {
+                    bankaKrediKarti[bankaAdi] = (bankaKrediKarti[bankaAdi] || 0) + tutar;
+                  } else {
+                    bankaNfcQr[bankaAdi] = (bankaNfcQr[bankaAdi] || 0) + tutar;
+                  }
                 });
                 
                 // Banka toplamlarını sırala (en yüksekten en düşüğe)
@@ -1078,7 +1121,10 @@ GROUP BY B.Sube_No,D.NAME
                       <div className="bg-gray-50 rounded-lg p-3 md:p-4">
                         <h4 className="text-xs md:text-sm font-semibold text-gray-700 mb-2 md:mb-3">Banka Bazında Toplamlar</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
-                          {sortedBankalar.map(([bankaAdi, toplam], index) => (
+                          {sortedBankalar.map(([bankaAdi, toplam], index) => {
+                            const krediTutar = bankaKrediKarti[bankaAdi] || 0;
+                            const nfcQrTutar = bankaNfcQr[bankaAdi] || 0;
+                            return (
                             <div 
                               key={index}
                               className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
@@ -1100,6 +1146,20 @@ GROUP BY B.Sube_No,D.NAME
                                   </div>
                                 </div>
                               </div>
+                              {(krediTutar > 0 || nfcQrTutar > 0) && (
+                                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                                  {krediTutar > 0 && (
+                                    <p className="text-xs text-gray-600">
+                                      <span className="font-medium">Kredi Kartı:</span> {formatCurrency(krediTutar)}
+                                    </p>
+                                  )}
+                                  {nfcQrTutar > 0 && (
+                                    <p className="text-xs text-gray-600">
+                                      <span className="font-medium">NFC, QR, vb.:</span> {formatCurrency(nfcQrTutar)}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                               <div className="mt-2">
                                 <div className="w-full bg-gray-200 rounded-full h-1.5">
                                   <div 
@@ -1112,7 +1172,8 @@ GROUP BY B.Sube_No,D.NAME
                                 </p>
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         {/* Genel Toplam */}
                         <div className="mt-4 pt-4 border-t border-gray-300">
@@ -1140,6 +1201,9 @@ GROUP BY B.Sube_No,D.NAME
                             <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Banka
                             </th>
+                            <th className="px-4 md:px-6 py-2 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Ödeme Tipi
+                            </th>
                             <th className="px-4 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Tutar
                             </th>
@@ -1160,6 +1224,11 @@ GROUP BY B.Sube_No,D.NAME
                                     {item.Banka_Adi}
                                   </span>
                                 </td>
+                                <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm text-gray-900">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${item.KrediKartiMi ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {item.OdemeTipiLabel || (item.KrediKartiMi ? 'Kredi Kartı' : 'NFC, QR, vb.')}
+                                  </span>
+                                </td>
                                 <td className="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-sm font-semibold text-gray-900 text-right">
                                   {formatCurrency(item.Tutar)}
                                 </td>
@@ -1167,7 +1236,7 @@ GROUP BY B.Sube_No,D.NAME
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={4} className="px-4 md:px-6 py-4 text-center text-sm text-gray-500">
+                              <td colSpan={5} className="px-4 md:px-6 py-4 text-center text-sm text-gray-500">
                                 {selectedSubeNo 
                                   ? `Şube ${selectedSubeNo} için kredi kartı detayı bulunamadı.`
                                   : 'Kredi kartı detayı bulunamadı.'}
@@ -1178,7 +1247,7 @@ GROUP BY B.Sube_No,D.NAME
                         {filteredDetaylar.length > 0 && (
                           <tfoot className="bg-gray-50 sticky bottom-0">
                             <tr>
-                              <td colSpan={3} className="px-4 md:px-6 py-2 md:py-3 text-sm font-semibold text-gray-900 text-right">
+                              <td colSpan={4} className="px-4 md:px-6 py-2 md:py-3 text-sm font-semibold text-gray-900 text-right">
                                 Toplam:
                               </td>
                               <td className="px-4 md:px-6 py-2 md:py-3 text-sm font-bold text-gray-900 text-right">
@@ -1200,9 +1269,14 @@ GROUP BY B.Sube_No,D.NAME
                                 <p className="text-sm font-semibold text-gray-900">Şube {item.Sube_No}</p>
                                 <p className="text-xs text-gray-600 mt-1">{item.NAME}</p>
                               </div>
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {item.Banka_Adi}
-                              </span>
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  {item.Banka_Adi}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${item.KrediKartiMi ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                  {item.OdemeTipiLabel || (item.KrediKartiMi ? 'Kredi Kartı' : 'NFC, QR, vb.')}
+                                </span>
+                              </div>
                             </div>
                             <div className="pt-3 border-t border-gray-200">
                               <div className="flex items-center justify-between">
@@ -1435,88 +1509,27 @@ GROUP BY B.Sube_No,D.NAME
             </div>
           )}
 
-          {/* ── TARİH FİLTRESİ ─────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Tarih Filtresi</h3>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {/* Hızlı seçim */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { key: 'today', label: 'Bugün' },
-                  { key: 'yesterday', label: 'Dün' },
-                  { key: 'thisWeek', label: 'Bu Hafta' },
-                  { key: 'thisMonth', label: 'Bu Ay' },
-                  { key: 'lastMonth', label: 'Geçen Ay' },
-                ].map(({ key, label }) => (
-                  <button key={key} onClick={() => setDatePresetRange(key)}
-                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                      datePreset === key
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Özel tarih + Butonlar */}
-              <div className="flex flex-col md:flex-row gap-3 items-end">
-                <div className="flex-1">
-                  <DatePicker label="Başlangıç Tarihi" placeholder="DD/MM/YYYY"
-                    value={startDate} onChange={(date) => { setStartDate(date); setDatePreset(''); }} />
-                </div>
-                <div className="flex-1">
-                  <DatePicker label="Bitiş Tarihi" placeholder="DD/MM/YYYY"
-                    value={endDate} onChange={(date) => { setEndDate(date); setDatePreset(''); }} />
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={clearCacheAndReload} disabled={loading}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition-colors disabled:opacity-50">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Yenile
-                  </button>
-                  <button onClick={fetchCiroData} disabled={loading}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-colors disabled:opacity-50 shadow-sm">
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Yükleniyor...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                        Raporu Getir
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Mobil oto yenileme */}
-              <div className="md:hidden flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                <div>
-                  <p className="text-sm font-semibold text-gray-700">Otomatik Yenileme</p>
-                  <p className="text-xs text-gray-400">30 saniyede bir yeniler</p>
-                </div>
-                <button type="button" onClick={() => setAutoRefresh(!autoRefresh)}
-                  className={`relative inline-flex h-6 w-11 cursor-pointer rounded-full border-2 border-transparent transition-colors ${autoRefresh ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition ${autoRefresh ? 'translate-x-5' : 'translate-x-0'}`} />
-                </button>
-              </div>
-            </div>
-          </div>
+          {/* ── FİLTRELER ───────────────────────────────────────── */}
+          <ReportFilterPanel
+            filters={[
+              {
+                type: 'dateRange',
+                id: 'dateRange',
+                presets: ['today', 'yesterday', 'thisWeek', 'thisMonth', 'lastMonth'],
+              },
+              {
+                type: 'toggle',
+                id: 'autoRefresh',
+                label: 'Otomatik Yenileme',
+                description: '30 saniyede bir yeniler',
+              },
+            ]}
+            values={filterValues}
+            onChange={handleFilterChange}
+            onApply={fetchCiroData}
+            onReset={handleFilterReset}
+            loading={loading}
+          />
 
           {/* ── TABLO ───────────────────────────────────────────── */}
           {data.length > 0 ? (

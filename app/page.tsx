@@ -873,6 +873,7 @@ const getReportRoute = (report: ReportWithAccess) => {
   if (name.includes('fatura') && name.includes('kontrol')) return '/fatura-kontrol';
   if (name.includes('hareket') && name.includes('görmeyen')) return '/hareket-gormeyen-cariler';
   if (name.includes('satılan') || name.includes('malzeme')) return '/en-cok-satilan-malzemeler';
+  if (name.includes('xrp') && name.includes('kasa')) return '/xrp-kasa-raporu';
   return null;
 };
 
@@ -948,6 +949,14 @@ const getReportShowcaseInfo = (report: ReportWithAccess): ShowcaseInfo => {
       description: 'En yüksek satış hacmine sahip ürünlerinizi ve malzemelerinizi keşfedin. Pareto analiziyle en çok gelir getiren ürünlere odaklanın ve stok planlamanızı optimize edin.',
       features: ['Satış Sıralaması', 'Pareto Analizi', 'Kategori Karşılaştırma', 'Dönemsel Trend'],
       gradient: 'from-cyan-600 via-sky-600 to-blue-700',
+    };
+  }
+  if (name.includes('xrp') && name.includes('kasa')) {
+    return {
+      badge: 'Satış',
+      description: 'XRP belge tipine ait kasa bazlı adet raporu. Şube ve tarih filtreleriyle ENPOS ve Logo veritabanlarından veri çeker.',
+      features: ['Kasa Bazlı Adet', 'Şube Gruplaması', 'Tarih Filtresi', 'Excel İndirme'],
+      gradient: 'from-indigo-600 via-indigo-700 to-purple-800',
     };
   }
   if (name.includes('çek') || name.includes('senet') || name.includes('cek')) {

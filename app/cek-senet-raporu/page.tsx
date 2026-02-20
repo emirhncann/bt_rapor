@@ -7,6 +7,8 @@ import CekSenetTable from '../components/tables/CekSenetTable';
 import DashboardLayout from '../components/DashboardLayout';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
+import ReportFilterPanel, { FilterValues, DateRangeValue } from '../components/ReportFilterPanel';
+import DatePicker from '../components/DatePicker';
 
 export default function CekSenetRaporu() {
   const [data, setData] = useState<any[]>([]);
@@ -36,6 +38,28 @@ export default function CekSenetRaporu() {
   });
   
   const router = useRouter();
+
+  // ReportFilterPanel state
+  const [filterValues, setFilterValues] = useState<FilterValues>({
+    dateRange: { start: startDate, end: endDate },
+  });
+
+  const handleFilterChange = (key: string, value: import('../components/ReportFilterPanel').FilterValue) => {
+    setFilterValues(prev => ({ ...prev, [key]: value }));
+    if (key === 'dateRange') {
+      const dr = value as DateRangeValue;
+      if (dr.start) setStartDate(dr.start);
+      if (dr.end) setEndDate(dr.end);
+    }
+  };
+
+  const handleFilterReset = () => {
+    const defaultStart = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]; })();
+    const defaultEnd = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]; })();
+    setStartDate(defaultStart);
+    setEndDate(defaultEnd);
+    setFilterValues({ dateRange: { start: defaultStart, end: defaultEnd } });
+  };
 
   // İstatistikler
   const [stats, setStats] = useState<{
@@ -462,236 +486,132 @@ export default function CekSenetRaporu() {
 
   return (
     <DashboardLayout title="Çek/Senet Raporu">
-      {/* Loading Overlay */}
+      {/* Loading Overlay - keep existing as-is */}
       {loading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-sm w-full mx-4">
-            <div className="flex flex-col items-center justify-center">
-              {animationData ? (
-                <Lottie 
-                  animationData={animationData}
-                  style={{ height: 150, width: 150 }}
-                  loop={true}
-                  autoplay={true}
-                />
-              ) : (
-                <svg className="animate-spin h-12 w-12 text-red-800 mb-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              )}
-              <p className="text-gray-700 font-medium text-lg mt-4">Rapor hazırlanıyor...</p>
-              <p className="text-gray-500 text-sm mt-2">Lütfen bekleyiniz</p>
-            </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
+            {animationData ? (
+              <Lottie animationData={animationData} style={{ height: 120, width: 120 }} loop autoplay />
+            ) : (
+              <svg className="animate-spin w-12 h-12 text-blue-600" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            <p className="text-gray-700 font-semibold">Rapor hazırlanıyor...</p>
           </div>
         </div>
       )}
-      
-      <div className="space-y-6">
-        {/* Header Section */}
-        <div className="bg-gradient-to-r from-red-800 to-red-900 rounded-lg shadow-lg p-4 lg:p-8 text-white">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col lg:flex-row lg:items-center">
-              <img 
-                src="/img/btRapor.png" 
-                alt="btRapor Logo" 
-                className="h-12 lg:h-16 w-auto mb-4 lg:mb-0 lg:mr-6 bg-white rounded-lg p-2 self-start"
-              />
-              <div>
-                <h2 className="text-2xl lg:text-3xl font-bold mb-2">📋 Çek/Senet Raporu</h2>
-                <p className="text-red-100 text-sm">
-                  Vade tarihine göre çek ve senet hareketlerini görüntüleyin
-                </p>
+
+      <div className="-mx-4 lg:-mx-6 -mt-4 lg:-mt-6">
+        {/* HERO */}
+        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-16 -right-16 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-blue-700/10 rounded-full blur-2xl" />
+            <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+          </div>
+          <div className="relative px-4 lg:px-6 py-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <button onClick={() => router.push('/')}
+                  className="w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="w-11 h-11 bg-blue-500/20 border border-blue-500/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg sm:text-xl font-bold text-white">Çek/Senet Raporu</h1>
+                    <span className="hidden sm:inline text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full">Finans</span>
+                  </div>
+                  <p className="text-slate-400 text-xs mt-0.5">Vade tarihine göre çek ve senet hareketleri</p>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 lg:mt-0">
-              <div className="text-left lg:text-right">
-                <p className="text-red-100 text-sm">Bugün</p>
-                <p className="text-lg lg:text-xl font-semibold">{new Date().toLocaleDateString('tr-TR')}</p>
+              <div className="hidden lg:flex items-center gap-3">
+                <span className="text-slate-400 text-sm">{new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Filtre ve Arama */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">📅 Vade Tarihi Aralığı</h3>
-          
-          {/* Hızlı Seçenekler */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            <button
-              onClick={() => setQuickDateRange('thisMonth')}
-              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Bu Ay
-            </button>
-            <button
-              onClick={() => setQuickDateRange('nextMonth')}
-              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Gelecek Ay
-            </button>
-            <button
-              onClick={() => setQuickDateRange('next3Months')}
-              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              3 Aylık
-            </button>
-            <button
-              onClick={() => setQuickDateRange('thisYear')}
-              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Bu Yıl
-            </button>
-          </div>
+        {/* CONTENT */}
+        <div className="px-4 lg:px-6 py-5 bg-gray-50 min-h-screen space-y-5">
+          {/* Filter Panel */}
+          <ReportFilterPanel
+            filters={[
+              {
+                type: 'dateRange',
+                id: 'dateRange',
+                label: 'Vade Tarihi Aralığı',
+                presets: ['thisMonth', 'nextMonth', 'next3Months', 'thisYear'],
+              },
+            ]}
+            values={filterValues}
+            onChange={handleFilterChange}
+            onApply={fetchData}
+            onReset={handleFilterReset}
+            loading={loading}
+          />
 
-          <div className="flex flex-col sm:flex-row gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç Tarihi</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş Tarihi</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-              />
-            </div>
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="px-6 py-2 bg-gradient-to-r from-red-800 to-red-900 text-white font-medium rounded-lg shadow hover:from-red-900 hover:to-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Yükleniyor...
-                </>
-              ) : (
-                <>
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Raporu Getir
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Özet Kartlar */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Stats cards - keep existing stats section here */}
+          {stats && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Toplam Kayıt</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalCount}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                    </svg>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">Toplam Kayıt</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.totalCount}</p>
                   </div>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Farklı Tür</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.turDagilimi.length}</p>
-                </div>
               </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+              {stats.turDagilimi.slice(0,1).map(t => (
+                <div key={t.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium">{t.name}</p>
+                      <p className="text-2xl font-bold text-gray-900">{t.count}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Farklı Statü</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.statuDagilimi.length}</p>
-                </div>
-              </div>
+              ))}
             </div>
+          )}
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                  </div>
+          {/* Table */}
+          {data.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <CekSenetTable data={data} />
+            </div>
+          ) : (
+            !loading && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Farklı Modül</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.modulDagilimi.length}</p>
-                </div>
+                <h3 className="text-base font-bold text-gray-700 mb-1">Henüz Veri Yok</h3>
+                <p className="text-gray-400 text-sm">Tarih aralığı seçip <strong className="text-blue-600">Raporu Getir</strong> butonuna tıklayın</p>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tablo */}
-        {loading ? (
-          <div className="bg-white rounded-lg shadow p-12">
-            <div className="flex flex-col items-center justify-center">
-              <svg className="animate-spin h-8 w-8 text-red-800 mb-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p className="text-gray-600 font-medium">Veriler yükleniyor...</p>
-            </div>
-          </div>
-        ) : Array.isArray(data) && data.length > 0 ? (
-          <CekSenetTable 
-            data={data} 
-            stats={stats || undefined}
-            currentUser={getCurrentUser()}
-          />
-        ) : (
-          <div className="bg-white rounded-lg shadow p-12">
-            <div className="text-center">
-              <svg className="h-16 w-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-              </svg>
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Henüz veri yok</h3>
-              <p className="text-gray-500 mb-4">Raporu getirmek için tarih aralığı seçin ve "Raporu Getir" butonuna tıklayın</p>
-              <button
-                onClick={fetchData}
-                className="px-6 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Raporu Getir
-              </button>
-            </div>
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

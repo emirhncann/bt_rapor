@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useColumnPreferences } from '../../hooks/useColumnPreferences';
+import ColumnManager from '../ColumnManager';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -22,6 +24,20 @@ interface EnCokSatilanMalzemelerTableProps {
 
 type SortDirection = 'asc' | 'desc' | null;
 
+const COLUMN_DEFS = [
+  { key: 'Malzeme Kodu',   label: 'Malzeme Kodu',   defaultVisible: true, defaultWidth: 140 },
+  { key: 'Malzeme Adı',    label: 'Malzeme Adı',    defaultVisible: true, defaultWidth: 220 },
+  { key: 'Toplam Miktar',  label: 'Toplam Miktar',  defaultVisible: true, defaultWidth: 130 },
+  { key: 'Toplam Tutar',   label: 'Toplam Tutar',   defaultVisible: true, defaultWidth: 130 },
+  { key: 'Grup Kodu',      label: 'Grup Kodu',      defaultVisible: true, defaultWidth: 110 },
+  { key: 'Grup Açıklama',  label: 'Grup Açıklama',  defaultVisible: true, defaultWidth: 160 },
+  { key: 'Özel Kod 1',     label: 'Özel Kod 1',     defaultVisible: true, defaultWidth: 100 },
+  { key: 'Özel Kod 2',     label: 'Özel Kod 2',     defaultVisible: true, defaultWidth: 100 },
+  { key: 'Özel Kod 3',     label: 'Özel Kod 3',     defaultVisible: true, defaultWidth: 100 },
+  { key: 'Özel Kod 4',     label: 'Özel Kod 4',     defaultVisible: true, defaultWidth: 100 },
+  { key: 'Özel Kod 5',     label: 'Özel Kod 5',     defaultVisible: true, defaultWidth: 100 },
+];
+
 export default function EnCokSatilanMalzemelerTable({ 
   data,
   filterCodes = [],
@@ -40,6 +56,24 @@ export default function EnCokSatilanMalzemelerTable({
   const [showCodeSelector, setShowCodeSelector] = useState(true);
   const [selectedCodeType, setSelectedCodeType] = useState<string>('');
   const [codeSearchTerm, setCodeSearchTerm] = useState<string>('');
+
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [draggedCol, setDraggedCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const committedWidthsRef = useRef<Record<string, number>>({});
+  const [localWidths, setLocalWidths] = useState<Record<string, number>>({});
+
+  const {
+    orderedColumns,
+    toggle,
+    reorder,
+    showAll,
+    hideAll,
+    columnWidths: savedWidths,
+    saveWidths,
+  } = useColumnPreferences('en-cok-satilan-malzemeler', COLUMN_DEFS);
+
+  const columns = orderedColumns.filter(c => c.visible).map(c => c.key);
 
   // Filtreleme kodları için helper fonksiyonlar
   const getCodeTypes = () => {
@@ -96,21 +130,6 @@ export default function EnCokSatilanMalzemelerTable({
   //   );
   // };
 
-  // Tablo kolonları
-  const columns = [
-    'Malzeme Kodu',
-    'Malzeme Adı',
-    'Toplam Miktar',
-    'Toplam Tutar',
-    'Grup Kodu',
-    'Grup Açıklama',
-    'Özel Kod 1',
-    'Özel Kod 2',
-    'Özel Kod 3',
-    'Özel Kod 4',
-    'Özel Kod 5'
-  ];
-
   // Sıralama fonksiyonu
   const handleSort = (columnName: string) => {
     if (sortColumn === columnName) {
@@ -121,6 +140,57 @@ export default function EnCokSatilanMalzemelerTable({
     }
     setCurrentPage(1);
   };
+
+  const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
+    COLUMN_DEFS.map(d => [d.key, d.defaultWidth])
+  );
+
+  const getColWidth = (key: string) =>
+    localWidths[key] ?? committedWidthsRef.current[key] ?? savedWidths[key] ?? DEFAULT_WIDTHS[key] ?? 150;
+
+  const handleMouseDown = (e: React.MouseEvent, column: string) => {
+    e.preventDefault();
+    setResizingColumn(column);
+    const startX = e.clientX;
+    const startWidth = getColWidth(column);
+    let latestWidths: Record<string, number> = { ...savedWidths, ...committedWidthsRef.current };
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(60, startWidth + (e.clientX - startX));
+      latestWidths = { ...latestWidths, [column]: newWidth };
+      setLocalWidths(prev => ({ ...prev, [column]: newWidth }));
+    };
+    const handleMouseUp = () => {
+      setResizingColumn(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      committedWidthsRef.current = latestWidths;
+      saveWidths(latestWidths);
+      setLocalWidths({});
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleDragStart = (e: React.DragEvent, column: string) => {
+    if (resizingColumn) { e.preventDefault(); return; }
+    setDraggedCol(column);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', column);
+  };
+  const handleDragOver = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (column !== draggedCol) setDragOverCol(column);
+  };
+  const handleDrop = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    if (!draggedCol || draggedCol === column) { setDraggedCol(null); setDragOverCol(null); return; }
+    const fromIdx = orderedColumns.findIndex(c => c.key === draggedCol);
+    const toIdx = orderedColumns.findIndex(c => c.key === column);
+    if (fromIdx !== -1 && toIdx !== -1) reorder(fromIdx, toIdx);
+    setDraggedCol(null); setDragOverCol(null);
+  };
+  const handleDragEnd = () => { setDraggedCol(null); setDragOverCol(null); };
 
   // Kod tiplerine karşılık gelen tablo alanları
   const codeFieldMap: {[key: string]: string} = {
@@ -452,6 +522,15 @@ export default function EnCokSatilanMalzemelerTable({
 
           {/* Export Buttons */}
           <div className="flex items-center gap-2">
+            <ColumnManager
+              orderedColumns={orderedColumns}
+              columnDefs={COLUMN_DEFS}
+              onToggle={toggle}
+              onReorder={reorder}
+              onShowAll={showAll}
+              onHideAll={hideAll}
+            />
+            
             <select
               value={itemsPerPage}
               onChange={(e) => {
@@ -496,61 +575,87 @@ export default function EnCokSatilanMalzemelerTable({
       {/* Table */}
       {currentData.length > 0 ? (
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {columns.map((column) => (
-                  <th
-                    key={column}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleSort(column)}
-                  >
-                    <div className="flex items-center gap-1">
-                      {column}
-                      {getSortIcon(column)}
-                    </div>
-                  </th>
-                ))}
+          <table
+            className="border-collapse"
+            style={{
+              tableLayout: 'fixed',
+              width: `${columns.reduce((s, c) => s + getColWidth(c), 0)}px`,
+              minWidth: `${columns.reduce((s, c) => s + getColWidth(c), 0)}px`,
+            }}
+          >
+            <colgroup>
+              {columns.map(col => <col key={col} style={{ width: `${getColWidth(col)}px` }} />)}
+              <col style={{ width: 'auto' }} />
+            </colgroup>
+            <thead>
+              <tr className="bg-slate-800 text-white">
+                {columns.map((column) => {
+                  const w = getColWidth(column);
+                  const isResizingThis = resizingColumn === column;
+                  const isDragging = draggedCol === column;
+                  const isDragOver = dragOverCol === column && draggedCol !== column;
+                  return (
+                    <th key={column}
+                      draggable={!resizingColumn}
+                      onDragStart={(e) => handleDragStart(e, column)}
+                      onDragOver={(e) => handleDragOver(e, column)}
+                      onDrop={(e) => handleDrop(e, column)}
+                      onDragEnd={handleDragEnd}
+                      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
+                      className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors ${isDragging ? 'opacity-30' : ''} ${isDragOver ? 'bg-slate-600' : ''}`}
+                      style={{ width: w, minWidth: 0, overflow: 'hidden' }}
+                    >
+                      {isDragOver && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />}
+                      <div
+                        className="flex items-center gap-1.5 px-3 py-3 cursor-grab active:cursor-grabbing hover:bg-slate-700/60 transition-colors"
+                        onClick={() => !draggedCol && handleSort(column)}
+                      >
+                        <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70" fill="currentColor" viewBox="0 0 10 16">
+                          <circle cx="2.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/>
+                          <circle cx="7.5" cy="3" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/>
+                        </svg>
+                        <span className="truncate flex-1">{column}</span>
+                        {sortColumn === column && (
+                          <span className="flex-shrink-0 text-emerald-400">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                        )}
+                      </div>
+                      <div
+                        draggable={false}
+                        onDragStart={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, column); }}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize flex items-center justify-center group z-10"
+                      >
+                        <div className={`w-0.5 h-4/5 rounded-full transition-all ${isResizingThis ? 'bg-emerald-400 w-1' : 'bg-slate-600 group-hover:bg-emerald-400 group-hover:w-1'}`} />
+                      </div>
+                    </th>
+                  );
+                })}
+                <th className="bg-slate-800 border-b border-slate-700" />
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {currentData.map((item, index) => (
-                <tr key={index} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {item['Malzeme Kodu'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Malzeme Adı']}>
-                    {item['Malzeme Adı'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">
-                    {formatNumber(item['Toplam Miktar'])}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
-                    ₺{formatNumber(item['Toplam Tutar'], true)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item['Grup Kodu'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Grup Açıklama']}>
-                    {item['Grup Açıklama'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Özel Kod 1']}>
-                    {item['Özel Kod 1'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Özel Kod 2']}>
-                    {item['Özel Kod 2'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Özel Kod 3']}>
-                    {item['Özel Kod 3'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Özel Kod 4']}>
-                    {item['Özel Kod 4'] || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate" title={item['Özel Kod 5']}>
-                    {item['Özel Kod 5'] || '-'}
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-gray-100">
+              {currentData.map((item, index) => {
+                const isEven = index % 2 === 0;
+                return (
+                  <tr key={index} className={`transition-colors hover:bg-amber-50/40 ${isEven ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    {columns.map(col => (
+                      <td key={col}
+                        className="px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden"
+                        style={{ width: getColWidth(col), minWidth: 0, overflow: 'hidden' }}
+                      >
+                        {col === 'Malzeme Kodu' && <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded font-medium text-gray-700">{item['Malzeme Kodu']}</span>}
+                        {col === 'Malzeme Adı' && <span className="font-medium text-gray-900">{item['Malzeme Adı']}</span>}
+                        {col === 'Toplam Miktar' && <span className="text-right block tabular-nums text-gray-800">{item['Toplam Miktar']?.toLocaleString('tr-TR')}</span>}
+                        {col === 'Toplam Tutar' && <span className="text-right block tabular-nums text-gray-800">{typeof item['Toplam Tutar'] === 'number' ? item['Toplam Tutar'].toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : item['Toplam Tutar']}</span>}
+                        {!['Malzeme Kodu','Malzeme Adı','Toplam Miktar','Toplam Tutar'].includes(col) && (
+                          <span className="text-gray-600 truncate block">{item[col] ?? '-'}</span>
+                        )}
+                      </td>
+                    ))}
+                    <td className={isEven ? 'bg-white' : 'bg-gray-50/50'} />
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

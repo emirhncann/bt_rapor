@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -49,6 +49,8 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [loadingAnimation, setLoadingAnimation] = useState(null);
+  const [draggedCol, setDraggedCol] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
   // Basitleştirilmiş filtre kategorileri - sadece temel 3 seçenek
   const filterCategories = ['Borç', 'Alacak', 'Bakiye'];
@@ -1351,13 +1353,13 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     
     if (sortDirection === 'asc') {
       return (
-        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
         </svg>
       );
     } else {
       return (
-        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
         </svg>
       );
@@ -1408,6 +1410,35 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
     
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Drag handlers for column reordering
+  const handleDragStart = (e: React.DragEvent, column: string) => {
+    if (resizingColumn) { e.preventDefault(); return; }
+    setDraggedCol(column);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', column);
+  };
+
+  const handleDragOver = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (column !== draggedCol) setDragOverCol(column);
+  };
+
+  const handleDrop = (e: React.DragEvent, column: string) => {
+    e.preventDefault();
+    if (!draggedCol || draggedCol === column) { setDraggedCol(null); setDragOverCol(null); return; }
+    const fromIdx = orderedColumns.findIndex((c: {key: string}) => c.key === draggedCol);
+    const toIdx = orderedColumns.findIndex((c: {key: string}) => c.key === column);
+    if (fromIdx !== -1 && toIdx !== -1) reorder(fromIdx, toIdx);
+    setDraggedCol(null);
+    setDragOverCol(null);
+  };
+
+  const handleDragEnd = () => { 
+    setDraggedCol(null); 
+    setDragOverCol(null); 
   };
 
   // Sayfa başına kayıt sayısını değiştirme
@@ -1684,23 +1715,32 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
           }}
         >
           <table className="w-full border-separate border-spacing-0" style={{ minWidth: '800px' }}>
+            <colgroup>
+              <col style={{ width: getColumnWidth('DETAY') }} />
+              {data.length > 0 && (visibleKeys.length > 0 ? visibleKeys : Object.keys(data[0]).filter(k => !HIDDEN_KEYS.has(k))).map((header) => (
+                <col key={header} style={{ width: getColumnWidth(header) }} />
+              ))}
+              <col style={{ width: 'auto' }} />
+            </colgroup>
             <thead>
-              <tr className="bg-gradient-to-r from-red-900 to-red-800 text-white">
+              <tr className="bg-slate-800 text-white">
                 <th 
-                  className="py-4 text-center text-sm font-bold uppercase tracking-wider border-b border-red-800 relative"
+                  className="relative text-center text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700"
                   style={{ 
                     position: 'sticky', 
                     top: 0, 
                     zIndex: 10,
-                    background: 'linear-gradient(to right, rgb(127 29 29), rgb(153 27 27))',
+                    background: 'rgb(30 41 55)',
                     width: getColumnWidth('DETAY'),
                     minWidth: getColumnWidth('DETAY'),
                     maxWidth: getColumnWidth('DETAY')
                   }}
                 >
-                  <div className="px-6">DETAY</div>
+                  <div className="flex items-center justify-center px-6 py-4">
+                    <span className="truncate">DETAY</span>
+                  </div>
                   <div 
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-red-600 opacity-0 hover:opacity-100 transition-opacity"
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400 opacity-0 hover:opacity-100 transition-opacity"
                     onMouseDown={(e) => handleMouseDown(e, 'DETAY')}
                   />
                 </th>
@@ -1709,24 +1749,36 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                     .map((header) => (
                       <th
                         key={header}
-                        className="py-4 text-left text-sm font-bold uppercase tracking-wider border-b border-red-800 cursor-pointer hover:bg-red-800 transition-colors duration-200 relative"
+                        draggable={!resizingColumn}
+                        onDragStart={(e) => handleDragStart(e, header)}
+                        onDragOver={(e) => handleDragOver(e, header)}
+                        onDrop={(e) => handleDrop(e, header)}
+                        onDragEnd={handleDragEnd}
+                        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
+                        className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors cursor-pointer ${draggedCol === header ? 'opacity-30' : ''} ${dragOverCol === header && draggedCol !== header ? 'bg-slate-600' : ''}`}
                         style={{ 
                           position: 'sticky', 
                           top: 0, 
                           zIndex: 10,
-                          background: 'linear-gradient(to right, rgb(127 29 29), rgb(153 27 27))',
+                          background: 'rgb(30 41 55)',
                           width: getColumnWidth(header),
                           minWidth: getColumnWidth(header),
                           maxWidth: getColumnWidth(header)
                         }}
-                        onClick={() => handleSort(header)}
                       >
-                        <div className="flex items-center justify-between px-6">
-                          <span>{header}</span>
+                        {dragOverCol === header && draggedCol !== header && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />}
+                        <div className="flex items-center gap-1.5 px-6 py-4 cursor-grab active:cursor-grabbing hover:bg-slate-700/60 transition-colors"
+                          onClick={() => !draggedCol && handleSort(header)}
+                        >
+                          <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70" fill="currentColor" viewBox="0 0 10 16">
+                            <circle cx="2.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/>
+                            <circle cx="7.5" cy="3" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/>
+                          </svg>
+                          <span className="truncate flex-1">{header}</span>
                           {getSortIcon(header)}
                         </div>
                         <div 
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-red-600 opacity-0 hover:opacity-100 transition-opacity z-20"
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-400 opacity-0 hover:opacity-100 transition-opacity z-20 group-hover:opacity-100"
                           onMouseDown={(e) => {
                             e.stopPropagation();
                             handleMouseDown(e, header);
@@ -1734,6 +1786,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                         />
                       </th>
                     ))}
+                <th className="bg-slate-800 border-b border-slate-700" />
               </tr>
             </thead>
           <tbody>
@@ -1859,6 +1912,7 @@ export default function CBakiyeTable({ data, preloadedDetails = {}, onPageChange
                       </div>
                   </td>
                 ); })}
+                <td />
               </tr>
             ))}
           </tbody>
