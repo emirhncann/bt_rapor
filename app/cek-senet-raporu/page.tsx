@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Lottie from 'lottie-react';
 import CekSenetTable from '../components/tables/CekSenetTable';
+import CekSenetTimeline from '../components/CekSenetTimeline';
 import DashboardLayout from '../components/DashboardLayout';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
@@ -60,6 +61,9 @@ export default function CekSenetRaporu() {
     setEndDate(defaultEnd);
     setFilterValues({ dateRange: { start: defaultStart, end: defaultEnd } });
   };
+
+  // Tür (CSC.DOC) filtre durumu
+  const [docType, setDocType] = useState<string>('');
 
   // İstatistikler
   const [stats, setStats] = useState<{
@@ -213,17 +217,17 @@ export default function CekSenetRaporu() {
     const modulCount: { [key: string]: number } = {};
 
     data.forEach(item => {
-      // Tür
-      const tur = item.Tur || 'Bilinmeyen';
+      // Tür (yeni sorguda [Tür])
+      const tur = item['Tür'] ?? item.Tur ?? 'Bilinmeyen';
       turCount[tur] = (turCount[tur] || 0) + 1;
 
-      // Statü
-      const statu = item.Statu || 'Bilinmeyen';
+      // Güncel Durumu (yeni sorguda [Güncel Durumu], eski Statu)
+      const statu = item['Güncel Durumu'] ?? item.Statu ?? 'Bilinmeyen';
       statuCount[statu] = (statuCount[statu] || 0) + 1;
 
-      // Modül
-      const modul = item.Modul || 'Bilinmeyen';
-      modulCount[modul] = (modulCount[modul] || 0) + 1;
+      // Döviz Türü dağılımı (Modül yerine)
+      const modul = item['Döviz Türü'] ?? item.Modul ?? '';
+      if (modul) modulCount[modul] = (modulCount[modul] || 0) + 1;
     });
 
     return {
@@ -297,51 +301,66 @@ export default function CekSenetRaporu() {
       
       console.log('📅 Tarih aralığı:', startDateSQL, '-', endDateSQL);
       
-      // SQL Sorgusu
+      // DOC tipi filtresi (ör: 1=Müşteri Çeki, 2=Müşteri Senedi, 3=Kendi Çekimiz, 4=Borç Senedimiz)
+      const docFilterClause = docType ? ` AND CSC.DOC = ${docType}` : '';
+
+      // SQL Sorgusu (OUTER APPLY ile son hareket, CLCARD ile ilgili hesap)
       const sqlQuery = `
-        SELECT DISTINCT 
+        SELECT
           [Referans] = CSC.LOGICALREF,
-          [Devir] = CASE CST.DEVIR  
-            WHEN 0 THEN '' 
-            ELSE 'D' 
+          [Devir] = CASE CSC.DEVIR
+            WHEN 0 THEN ''
+            ELSE 'D'
           END,
           [Portföy No] = CSC.PORTFOYNO,
           [Seri No] = CSC.NEWSERINO,
-          [Tur] = CASE CSC.DOC   
-            WHEN 1 THEN 'Müşteri Çeki'  
-            WHEN 2 THEN 'Müşteri Senedi' 
-            WHEN 3 THEN 'Kendi Çekimiz' 
-            WHEN 4 THEN 'Borç Senedimiz' 
-            ELSE 'Bilinmeyen' 
-          END, 
-          [Statu] = CASE CST.STATUS 
-            WHEN 1 THEN 'Portföyde'     
-            WHEN 2 THEN 'Ciro Edildi' 
-            WHEN 3 THEN 'Teminata Verildi' 
-            WHEN 4 THEN 'Tahsile Verildi' 
-            WHEN 5 THEN 'Protestolu Tahsile Verildi' 
-            WHEN 6 THEN 'Iade Edildi' 
-            WHEN 7 THEN 'Protesto Edildi' 
-            WHEN 8 THEN 'Tahsil Edildi' 
-            WHEN 9 THEN 'Kendi Çekimiz-Verilen Çek'
-            WHEN 10 THEN 'Borç Senedimiz' 
-            WHEN 11 THEN 'Karsiligi Yok' 
-            WHEN 12 THEN 'Tahsil Edilemiyor' 
-            ELSE 'Bilinmiyor' 
-          END, 
-          [Modul] = CASE CST.CARDMD 
-            WHEN 5 THEN 'Cari Hesap'    
-            WHEN 7 THEN 'Banka' 
-            ELSE 'Bulunamadi' 
-          END, 
+          [Tür] = CASE CSC.DOC
+            WHEN 1 THEN 'Müşteri Çeki'
+            WHEN 2 THEN 'Müşteri Senedi'
+            WHEN 3 THEN 'Kendi Çekimiz'
+            WHEN 4 THEN 'Borç Senedimiz'
+            ELSE 'Bilinmeyen'
+          END,
+          [İlgili Hesap] = CLC.CODE + ' ' + CLC.DEFINITION_,
+          [Çek/Senet Sahibi] = CSC.OWING,
+          [Güncel Durumu-Kod] = CSC.CURRSTAT,
+          [Güncel Durumu] = CASE CSC.CURRSTAT
+            WHEN 1 THEN 'Portföyde'
+            WHEN 2 THEN 'Ciro Edildi'
+            WHEN 3 THEN 'Teminata Verildi'
+            WHEN 4 THEN 'Tahsile Verildi'
+            WHEN 5 THEN 'Protestolu Tahsile Verildi'
+            WHEN 6 THEN 'Iade Edildi'
+            WHEN 7 THEN 'Protesto Edildi'
+            WHEN 8 THEN 'Tahsil Edildi'
+            WHEN 9 THEN 'Kendi Çekimiz'
+            WHEN 10 THEN 'Borç Senedimiz'
+            WHEN 11 THEN 'Karsiligi Yok'
+            WHEN 12 THEN 'Tahsil Edilemiyor'
+            ELSE 'Bilinmiyor'
+          END,
           [Düzenlenme Tarihi] = CSC.SETDATE,
-          [Hareket Tarihi] = CST.DATE_,
-          [Vade Tarihi] = CSC.DUEDATE
-        FROM LG_${firmaNo}_${donemNo}_CSCARD CSC, LG_${firmaNo}_${donemNo}_CSTRANS CST 
-        WHERE (CAST(CSC.DUEDATE AS DATE) >= CONVERT(date, '${startDateSQL}', 104)) 
-          AND (CAST(CSC.DUEDATE AS DATE) <= CONVERT(date, '${endDateSQL}', 104)) 
-          AND CST.CSREF = CSC.LOGICALREF
-        ORDER BY CSC.PORTFOYNO, CST.DATE_
+          [Vade Tarihi] = CSC.DUEDATE,
+          [Dövizli Tutar] = CSC.TRNET,
+          [Döviz Türü] = CASE CSC.TRCURR
+            WHEN 0 THEN 'TL'
+            WHEN 1 THEN 'USD'
+            WHEN 20 THEN 'EURO'
+            ELSE ''
+          END,
+          [Tutar] = CSC.AMOUNT
+        FROM LG_${firmaNo}_${donemNo}_CSCARD CSC
+        OUTER APPLY (
+          SELECT TOP 1 *
+          FROM LG_${firmaNo}_${donemNo}_CSTRANS T
+          WHERE T.CSREF = CSC.LOGICALREF
+          ORDER BY T.DATE_ DESC, T.LOGICALREF DESC
+        ) CST
+        LEFT JOIN LG_${firmaNo}_CLCARD CLC ON CLC.LOGICALREF = CST.CARDREF AND CST.CARDMD=5
+        WHERE (CAST(CSC.DUEDATE AS DATE) >= CONVERT(date, '${startDateSQL}', 104))
+          AND (CAST(CSC.DUEDATE AS DATE) <= CONVERT(date, '${endDateSQL}', 104))
+          ${docFilterClause}
+        ORDER BY CSC.DUEDATE, CSC.PORTFOYNO
       `;
 
       console.log('📝 SQL Sorgusu:', sqlQuery);
@@ -559,7 +578,35 @@ export default function CekSenetRaporu() {
             loading={loading}
           />
 
-          {/* Stats cards - keep existing stats section here */}
+          {/* Tür (DOC) filtre seçimi */}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">Tür filtresi:</span>
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+            >
+              <option value="">Tüm türler</option>
+              <option value="1">Müşteri Çeki</option>
+              <option value="2">Müşteri Senedi</option>
+              <option value="3">Kendi Çekimiz</option>
+              <option value="4">Borç Senedimiz</option>
+            </select>
+            {docType && (
+              <button
+                type="button"
+                onClick={() => setDocType('')}
+                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Tür filtresini temizle
+              </button>
+            )}
+          </div>
+
+          {/* Stats cards */}
           {stats && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -575,7 +622,7 @@ export default function CekSenetRaporu() {
                   </div>
                 </div>
               </div>
-              {stats.turDagilimi.slice(0,1).map(t => (
+              {stats.turDagilimi.slice(0, 1).map(t => (
                 <div key={t.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -591,6 +638,11 @@ export default function CekSenetRaporu() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Timeline */}
+          {data.length > 0 && (
+            <CekSenetTimeline data={data} />
           )}
 
           {/* Table */}

@@ -8,15 +8,19 @@ import { useColumnPreferences } from '../../hooks/useColumnPreferences';
 import ColumnManager from '../ColumnManager';
 
 const COLUMN_DEFS = [
-  { key: 'Portföy No',        label: 'Portföy No',        defaultVisible: true, defaultWidth: 120 },
-  { key: 'Seri No',           label: 'Seri No',           defaultVisible: true, defaultWidth: 120 },
-  { key: 'Tur',               label: 'Tür',               defaultVisible: true, defaultWidth: 100 },
-  { key: 'Statu',             label: 'Statü',             defaultVisible: true, defaultWidth: 110 },
-  { key: 'Modul',             label: 'Modül',             defaultVisible: true, defaultWidth: 100 },
-  { key: 'Devir',             label: 'Devir',             defaultVisible: true, defaultWidth: 80  },
-  { key: 'Düzenlenme Tarihi', label: 'Düzenlenme Tarihi', defaultVisible: true, defaultWidth: 150 },
-  { key: 'Hareket Tarihi',    label: 'Hareket Tarihi',    defaultVisible: true, defaultWidth: 140 },
-  { key: 'Vade Tarihi',       label: 'Vade Tarihi',       defaultVisible: true, defaultWidth: 130 },
+  { key: 'Referans',           label: 'Referans',           defaultVisible: false, defaultWidth: 90  },
+  { key: 'Portföy No',        label: 'Portföy No',        defaultVisible: true,  defaultWidth: 120 },
+  { key: 'Seri No',           label: 'Seri No',           defaultVisible: true,  defaultWidth: 120 },
+  { key: 'Tür',               label: 'Tür',               defaultVisible: true,  defaultWidth: 120 },
+  { key: 'İlgili Hesap',      label: 'İlgili Hesap',      defaultVisible: true,  defaultWidth: 180 },
+  { key: 'Çek/Senet Sahibi',  label: 'Çek/Senet Sahibi',  defaultVisible: true,  defaultWidth: 140 },
+  { key: 'Güncel Durumu',     label: 'Güncel Durumu',     defaultVisible: true,  defaultWidth: 140 },
+  { key: 'Devir',             label: 'Devir',             defaultVisible: true,  defaultWidth: 80  },
+  { key: 'Düzenlenme Tarihi', label: 'Düzenlenme Tarihi', defaultVisible: true,  defaultWidth: 120 },
+  { key: 'Vade Tarihi',       label: 'Vade Tarihi',       defaultVisible: true,  defaultWidth: 120 },
+  { key: 'Dövizli Tutar',     label: 'Dövizli Tutar',     defaultVisible: true,  defaultWidth: 110 },
+  { key: 'Döviz Türü',        label: 'Döviz Türü',        defaultVisible: true,  defaultWidth: 90  },
+  { key: 'Tutar',             label: 'Tutar',             defaultVisible: true,  defaultWidth: 110 },
 ];
 
 // jsPDF türleri için extend
@@ -48,8 +52,8 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   
   // Filtreler
   const [filterTur, setFilterTur] = useState<string>('');
-  const [filterStatu, setFilterStatu] = useState<string>('');
-  const [filterModul, setFilterModul] = useState<string>('');
+  const [filterGuncelDurum, setFilterGuncelDurum] = useState<string>('');
+  const [filterDoviz, setFilterDoviz] = useState<string>('');
   const [filterDevir, setFilterDevir] = useState<string>('');
 
   // Kolon genişliği ve sürükle-bırak
@@ -130,10 +134,10 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       return { key: c.key, label: def.label, sortable: true };
     });
 
-  // Benzersiz değerleri al (filtre seçenekleri için)
-  const uniqueTurler = Array.from(new Set(data.map(item => item.Tur).filter(Boolean)));
-  const uniqueStatuler = Array.from(new Set(data.map(item => item.Statu).filter(Boolean)));
-  const uniqueModuller = Array.from(new Set(data.map(item => item.Modul).filter(Boolean)));
+  // Benzersiz değerleri al (filtre seçenekleri için) - yeni sorgu: Tür, Güncel Durumu, Döviz Türü
+  const uniqueTurler = Array.from(new Set(data.map(item => item['Tür'] ?? item.Tur).filter(Boolean)));
+  const uniqueGuncelDurumlar = Array.from(new Set(data.map(item => item['Güncel Durumu'] ?? item.Statu).filter(Boolean)));
+  const uniqueDovizler = Array.from(new Set(data.map(item => item['Döviz Türü'] ?? item.Modul).filter(Boolean)));
 
   // Arama ve filtreleme
   const filteredData = data.filter(item => {
@@ -143,21 +147,25 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       const matchesSearch = (
         (item['Portföy No']?.toString().toLowerCase().includes(searchLower)) ||
         (item['Seri No']?.toString().toLowerCase().includes(searchLower)) ||
-        (item['Tur']?.toString().toLowerCase().includes(searchLower)) ||
-        (item['Statu']?.toString().toLowerCase().includes(searchLower)) ||
-        (item['Modul']?.toString().toLowerCase().includes(searchLower))
+        ((item['Tür'] ?? item.Tur)?.toString().toLowerCase().includes(searchLower)) ||
+        ((item['Güncel Durumu'] ?? item.Statu)?.toString().toLowerCase().includes(searchLower)) ||
+        (item['İlgili Hesap']?.toString().toLowerCase().includes(searchLower)) ||
+        ((item['Döviz Türü'] ?? item.Modul)?.toString().toLowerCase().includes(searchLower))
       );
       if (!matchesSearch) return false;
     }
 
     // Tür filtresi
-    if (filterTur && item.Tur !== filterTur) return false;
+    const tur = item['Tür'] ?? item.Tur;
+    if (filterTur && tur !== filterTur) return false;
 
-    // Statü filtresi
-    if (filterStatu && item.Statu !== filterStatu) return false;
+    // Güncel durum filtresi
+    const guncelDurum = item['Güncel Durumu'] ?? item.Statu;
+    if (filterGuncelDurum && guncelDurum !== filterGuncelDurum) return false;
 
-    // Modül filtresi
-    if (filterModul && item.Modul !== filterModul) return false;
+    // Döviz türü filtresi
+    const doviz = item['Döviz Türü'] ?? item.Modul;
+    if (filterDoviz && doviz !== filterDoviz) return false;
 
     // Devir filtresi
     if (filterDevir) {
@@ -212,7 +220,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   // Sayfa değişimi
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortColumn, sortDirection, filterTur, filterStatu, filterModul, filterDevir]);
+  }, [searchTerm, sortColumn, sortDirection, filterTur, filterGuncelDurum, filterDoviz, filterDevir]);
 
   // Sıralama işlevi
   const handleSort = (column: string) => {
@@ -248,26 +256,30 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   const clearFilters = () => {
     setSearchTerm('');
     setFilterTur('');
-    setFilterStatu('');
-    setFilterModul('');
+    setFilterGuncelDurum('');
+    setFilterDoviz('');
     setFilterDevir('');
   };
 
   // Aktif filtre sayısı
-  const activeFilterCount = [filterTur, filterStatu, filterModul, filterDevir].filter(Boolean).length;
+  const activeFilterCount = [filterTur, filterGuncelDurum, filterDoviz, filterDevir].filter(Boolean).length;
 
   // Excel export
   const exportToExcel = () => {
     const exportData = sortedData.map(item => ({
+      'Referans': item.Referans,
       'Portföy No': item['Portföy No'],
       'Seri No': item['Seri No'],
-      'Tür': item.Tur,
-      'Statü': item.Statu,
-      'Modül': item.Modul,
+      'Tür': item['Tür'] ?? item.Tur,
+      'İlgili Hesap': item['İlgili Hesap'],
+      'Çek/Senet Sahibi': item['Çek/Senet Sahibi'],
+      'Güncel Durumu': item['Güncel Durumu'] ?? item.Statu,
       'Devir': item.Devir,
       'Düzenlenme Tarihi': formatDate(item['Düzenlenme Tarihi']),
-      'Hareket Tarihi': formatDate(item['Hareket Tarihi']),
-      'Vade Tarihi': formatDate(item['Vade Tarihi'])
+      'Vade Tarihi': formatDate(item['Vade Tarihi']),
+      'Dövizli Tutar': item['Dövizli Tutar'],
+      'Döviz Türü': item['Döviz Türü'] ?? item.Modul,
+      'Tutar': item.Tutar
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -323,7 +335,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
                 <p>Toplam Kayıt: ${sortedData.length}</p>
                 ${searchTerm ? `<p>Arama Filtresi: "${searchTerm}"</p>` : ''}
                 ${filterTur ? `<p>Tür Filtresi: ${filterTur}</p>` : ''}
-                ${filterStatu ? `<p>Statü Filtresi: ${filterStatu}</p>` : ''}
+                ${filterGuncelDurum ? `<p>Güncel Durum Filtresi: ${filterGuncelDurum}</p>` : ''}
               </div>
             </div>
           </div>
@@ -339,7 +351,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
               <div class="stat-value">${stats.turDagilimi.length}</div>
             </div>
             <div class="stat-card">
-              <div class="stat-title">Farklı Statü</div>
+              <div class="stat-title">Farklı Güncel Durum</div>
               <div class="stat-value">${stats.statuDagilimi.length}</div>
             </div>
           </div>
@@ -355,11 +367,13 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
               ${sortedData.map(row => `
                 <tr>
                   ${columns.map(col => {
-                    let value = row[col.key];
+                    let value = row[col.key] ?? (col.key === 'Tür' ? row.Tur : col.key === 'Güncel Durumu' ? row.Statu : col.key === 'Döviz Türü' ? row.Modul : undefined);
                     if (col.key.includes('Tarihi') || col.key.includes('Tarih')) {
                       value = formatDate(value);
+                    } else if (col.key === 'Tutar' || col.key === 'Dövizli Tutar') {
+                      value = value != null ? Number(value).toLocaleString('tr-TR') : '-';
                     }
-                    return `<td>${value || '-'}</td>`;
+                    return `<td>${value != null && value !== '' ? value : '-'}</td>`;
                   }).join('')}
                 </tr>
               `).join('')}
@@ -416,11 +430,13 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
     const tableColumns = columns.map(col => col.label);
     const tableRows = sortedData.map(item => 
       columns.map(col => {
-        let value = item[col.key];
+        let value = item[col.key] ?? (col.key === 'Tür' ? item.Tur : col.key === 'Güncel Durumu' ? item.Statu : col.key === 'Döviz Türü' ? item.Modul : undefined);
         if (col.key.includes('Tarihi') || col.key.includes('Tarih')) {
           value = formatDate(value);
+        } else if (col.key === 'Tutar' || col.key === 'Dövizli Tutar') {
+          value = value != null ? Number(value).toLocaleString('tr-TR') : '-';
         }
-        return value?.toString() || '-';
+        return value != null && value !== '' ? String(value) : '-';
       })
     );
 
@@ -457,7 +473,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
     doc.save(`cek_senet_raporu_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  // Statü için renk belirleme
+  // Güncel durum / Statü için renk belirleme
   const getStatuColor = (statu: string): string => {
     switch (statu) {
       case 'Portföyde': return 'bg-blue-100 text-blue-800';
@@ -467,8 +483,11 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       case 'Tahsil Edildi': return 'bg-green-100 text-green-800';
       case 'Protesto Edildi': return 'bg-red-100 text-red-800';
       case 'Kendi Çekimiz-Verilen Çek': return 'bg-indigo-100 text-indigo-800';
+      case 'Kendi Çekimiz': return 'bg-indigo-100 text-indigo-800';
       case 'Borç Senedimiz': return 'bg-pink-100 text-pink-800';
       case 'Karsiligi Yok': return 'bg-red-100 text-red-800';
+      case 'Iade Edildi': return 'bg-gray-100 text-gray-800';
+      case 'Tahsil Edilemiyor': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -519,9 +538,9 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
             </div>
           </div>
 
-          {/* Modül Dağılımı */}
+          {/* Döviz Türü Dağılımı */}
           <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">🏢 Modül Dağılımı</h3>
+            <h3 className="text-sm font-medium text-gray-500 mb-3">💱 Döviz Türü</h3>
             <div className="space-y-2">
               {stats.modulDagilimi.map((item, index) => (
                 <div key={index} className="flex justify-between items-center">
@@ -549,7 +568,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
                 </div>
                 <input
                   type="text"
-                  placeholder="Portföy no, seri no, tür veya statü ile ara..."
+                  placeholder="Portföy no, seri no, tür, güncel durum veya ilgili hesap ile ara..."
                   className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -627,27 +646,27 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
               ))}
             </select>
 
-            {/* Statü Filtresi */}
+            {/* Güncel Durum Filtresi */}
             <select
-              value={filterStatu}
-              onChange={(e) => setFilterStatu(e.target.value)}
+              value={filterGuncelDurum}
+              onChange={(e) => setFilterGuncelDurum(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
             >
-              <option value="">Tüm Statüler</option>
-              {uniqueStatuler.map((statu, index) => (
-                <option key={index} value={statu}>{statu}</option>
+              <option value="">Tüm Güncel Durumlar</option>
+              {uniqueGuncelDurumlar.map((d, index) => (
+                <option key={index} value={d}>{d}</option>
               ))}
             </select>
 
-            {/* Modül Filtresi */}
+            {/* Döviz Türü Filtresi */}
             <select
-              value={filterModul}
-              onChange={(e) => setFilterModul(e.target.value)}
+              value={filterDoviz}
+              onChange={(e) => setFilterDoviz(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
             >
-              <option value="">Tüm Modüller</option>
-              {uniqueModuller.map((modul, index) => (
-                <option key={index} value={modul}>{modul}</option>
+              <option value="">Tüm Dövizler</option>
+              {uniqueDovizler.map((d, index) => (
+                <option key={index} value={d}>{d}</option>
               ))}
             </select>
 
@@ -749,15 +768,19 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
                         className="px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden"
                         style={{ width: getColWidth(col.key), minWidth: 0, overflow: 'hidden' }}
                       >
+                        {col.key === 'Referans' && <span className="text-gray-600 text-xs">{item.Referans}</span>}
                         {col.key === 'Portföy No' && <span className="font-medium text-gray-900">{item['Portföy No']}</span>}
                         {col.key === 'Seri No' && <span className="text-gray-700">{item['Seri No']}</span>}
-                        {col.key === 'Tur' && <span className={`text-xs px-2 py-1 rounded-full font-medium ${getTurColor(item.Tur)}`}>{item.Tur}</span>}
-                        {col.key === 'Statu' && <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatuColor(item.Statu)}`}>{item.Statu}</span>}
-                        {col.key === 'Modul' && <span className="text-gray-700">{item.Modul}</span>}
+                        {col.key === 'Tür' && <span className={`text-xs px-2 py-1 rounded-full font-medium ${getTurColor((item['Tür'] ?? item.Tur) || '')}`}>{item['Tür'] ?? item.Tur}</span>}
+                        {col.key === 'İlgili Hesap' && <span className="text-gray-700 truncate block max-w-[200px]" title={item['İlgili Hesap']}>{item['İlgili Hesap']}</span>}
+                        {col.key === 'Çek/Senet Sahibi' && <span className="text-gray-700">{item['Çek/Senet Sahibi']}</span>}
+                        {col.key === 'Güncel Durumu' && <span className={`text-xs px-2 py-1 rounded-full font-medium ${getStatuColor((item['Güncel Durumu'] ?? item.Statu) || '')}`}>{item['Güncel Durumu'] ?? item.Statu}</span>}
                         {col.key === 'Devir' && (item.Devir === 'D' ? <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 font-medium">D</span> : <span className="text-gray-300">-</span>)}
                         {col.key === 'Düzenlenme Tarihi' && <span className="text-gray-700">{formatDate(item['Düzenlenme Tarihi'])}</span>}
-                        {col.key === 'Hareket Tarihi' && <span className="text-gray-700">{formatDate(item['Hareket Tarihi'])}</span>}
                         {col.key === 'Vade Tarihi' && <span className="font-medium text-gray-900">{formatDate(item['Vade Tarihi'])}</span>}
+                        {col.key === 'Dövizli Tutar' && <span className="text-gray-700">{item['Dövizli Tutar'] != null ? Number(item['Dövizli Tutar']).toLocaleString('tr-TR') : ''}</span>}
+                        {col.key === 'Döviz Türü' && <span className="text-gray-700">{item['Döviz Türü'] ?? item.Modul}</span>}
+                        {col.key === 'Tutar' && <span className="font-medium text-gray-900">{item.Tutar != null ? Number(item.Tutar).toLocaleString('tr-TR') : ''}</span>}
                       </td>
                     ))}
                     <td className={isEven ? 'bg-white' : 'bg-gray-50/50'} />
