@@ -38,7 +38,13 @@ interface ReportFilterPanelProps {
 }
 
 // ── Tarih preset yardımcıları ─────────────────────────────────────────────────
-function toIso(d: Date) { return d.toISOString().split('T')[0]; }
+// UTC yerine yerel saate göre YYYY-MM-DD üret (gün kaymalarını önlemek için)
+function toIso(d: Date) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function getPresetDates(preset: DatePreset): DateRangeValue {
   const now = new Date();
@@ -50,7 +56,7 @@ function getPresetDates(preset: DatePreset): DateRangeValue {
     case 'thisMonth':  return { start: toIso(new Date(y, m, 1)),     end: toIso(now) };
     case 'lastMonth':  return { start: toIso(new Date(y, m - 1, 1)), end: toIso(new Date(y, m, 0)) };
     case 'last3Months':{ const s = new Date(now); s.setMonth(s.getMonth() - 3); return { start: toIso(s), end: toIso(now) }; }
-    case 'thisYear':    return { start: toIso(new Date(y, 0, 1)), end: toIso(now) };
+    case 'thisYear':    return { start: toIso(new Date(y, 0, 1)), end: toIso(new Date(y, 11, 31)) };
     case 'nextMonth':   return { start: toIso(new Date(y, m + 1, 1)), end: toIso(new Date(y, m + 2, 0)) };
     case 'next3Months': return { start: toIso(new Date(y, m, 1)),     end: toIso(new Date(y, m + 3, 0)) };
   }

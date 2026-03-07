@@ -16,19 +16,28 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const [reportsByCategory, setReportsByCategory] = useState<{[category: string]: ReportWithAccess[]}>({});
   const [openCategories, setOpenCategories] = useState<{[key: string]: boolean}>({});
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+
+  // Hydration: sessionStorage sadece client'ta var - isAdmin/isSuperAdmin
+  // server'da farklı dönüyor, bu yüzden koşullu linkleri mount sonrası göster
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Kullanıcı bilgilerini yükle
   useEffect(() => {
+    if (!mounted) return;
     const name = sessionStorage.getItem('userName');
     const email = sessionStorage.getItem('userEmail');
     if (name) setUserName(name);
     if (email) setUserEmail(email);
-  }, []);
+  }, [mounted]);
 
   // Kullanıcı raporlarını yükle
   useEffect(() => {
+    if (!mounted) return;
     loadUserReports();
-  }, []);
+  }, [mounted]);
 
   const loadUserReports = async () => {
     try {
@@ -328,8 +337,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               <span className="ml-3">📊 Ekstre Karşılaştırma</span>
             </a>
             
-            {/* Super Admin Yetkileri */}
-            {isSuperAdmin() && (
+            {/* Super Admin Yetkileri - mount sonrası (hydration uyumu için) */}
+            {mounted && isSuperAdmin() && (
               <a
                 href="/super-admin"
                 className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg group"
@@ -341,8 +350,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               </a>
             )}
 
-            {/* Admin Yetkileri */}
-            {isAdmin() && (
+            {/* Admin Yetkileri - mount sonrası (hydration uyumu için) */}
+            {mounted && isAdmin() && (
               <a
                 href="/kullanici-yetki-yonetimi"
                 className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600 hover:bg-purple-50 rounded-lg group"

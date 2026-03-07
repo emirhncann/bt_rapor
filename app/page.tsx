@@ -871,6 +871,7 @@ const getReportRoute = (report: ReportWithAccess) => {
   if (name.includes('enpos') && name.includes('ciro')) return '/enpos-ciro';
   if (name.includes('stok') || name.includes('envanter')) return '/envanter-raporu';
   if (name.includes('fatura') && name.includes('kontrol')) return '/fatura-kontrol';
+  if (name.includes('fatura') && (name.includes('aktarım') || name.includes('aktarim'))) return '/fatura-aktarim-kontrol';
   if (name.includes('hareket') && name.includes('görmeyen')) return '/hareket-gormeyen-cariler';
   if (name.includes('satılan') || name.includes('malzeme')) return '/en-cok-satilan-malzemeler';
   if (name.includes('xrp') && name.includes('kasa')) return '/xrp-kasa-raporu';

@@ -379,7 +379,15 @@ export default function YemekKartiSatis() {
 
       const connectionInfo = JSON.parse(cachedConnectionInfo);
       const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
-      const firmaNo = connectionInfo.firmaNo || 9;
+      const firmaNoRaw = connectionInfo.first_firma_no ?? connectionInfo.firmaNo;
+      const firmaNo = Number(firmaNoRaw);
+
+      if (!firmaNo) {
+        console.warn('⚠️ Firma numarası bulunamadı veya geçersiz (connectionInfo):', connectionInfo);
+        showErrorMessage('Firma numarası bulunamadı. Lütfen şirket ayarlarınızı kontrol edin.');
+        setLoadingSubeler(false);
+        return;
+      }
 
       console.log('🏢 Şubeler ENPOS ciro tablosundan yükleniyor...');
       console.log('📊 ENPOS DB Key kullanılıyor: enpos_db_key');
@@ -528,8 +536,16 @@ export default function YemekKartiSatis() {
 
       const connectionInfo = JSON.parse(cachedConnectionInfo);
       const logoKurulumDbName = connectionInfo.logoKurulumDbName || 'GO3';
-      const firmaNo = connectionInfo.firmaNo || 9;
+      const firmaNoRaw = connectionInfo.first_firma_no ?? connectionInfo.firmaNo;
+      const firmaNo = Number(firmaNoRaw);
       const enposDatabaseName = connectionInfo.enpos_database_name || 'INTER_BOS';
+
+      if (!firmaNo) {
+        console.warn('⚠️ Firma numarası bulunamadı veya geçersiz (connectionInfo):', connectionInfo);
+        showErrorMessage('Firma numarası bulunamadı. Lütfen şirket ayarlarınızı kontrol edin.');
+        setLoading(false);
+        return;
+      }
 
       console.log(`🔄 Tarih: ${startDate} - ${endDate}, Şubeler: ${selectedSubeler.join(', ')} ile yemek kartı verileri çekiliyor...`);
       console.log(`📅 SQL Tarih Dönüşümü: ${convertDisplayToSQL(startDate)} - ${convertDisplayToSQL(endDate)}`);
@@ -552,11 +568,11 @@ export default function YemekKartiSatis() {
             ELSE K.Info 
           END AS 'Yemek Kartı',
           CAST(SUM(O.TUTAR) AS decimal(18,2)) as Tutar
-        FROM ${enposDatabaseName}..ODEME O
-        JOIN ${enposDatabaseName}..BELGE B ON B.Belge_ID=O.Belge_ID
-        LEFT JOIN ${enposDatabaseName}..[POS_KREDI] K ON O.Tus_No=K.Tus_No
+        FROM [${enposDatabaseName}]..ODEME O
+        JOIN [${enposDatabaseName}]..BELGE B ON B.Belge_ID=O.Belge_ID
+        LEFT JOIN [${enposDatabaseName}]..[POS_KREDI] K ON O.Tus_No=K.Tus_No
         JOIN ${logoKurulumDbName}..L_CAPIDIV D ON B.Sube_No=D.NR AND D.FIRMNR=${firmaNo}
-        LEFT JOIN ${enposDatabaseName}..[SERVER_TICKETFIRM] T ON B.Belge_AltTipi=T.FIRMNO
+        LEFT JOIN [${enposDatabaseName}]..[SERVER_TICKETFIRM] T ON B.Belge_AltTipi=T.FIRMNO
         WHERE B.Iptal=0 
           AND b.Belge_Tipi='YMK'
           AND CAST(B.BELGETARIH AS DATE) BETWEEN '${convertDisplayToSQL(startDate)}' AND '${convertDisplayToSQL(endDate)}'

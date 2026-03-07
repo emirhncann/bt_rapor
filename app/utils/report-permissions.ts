@@ -57,6 +57,16 @@ const REPORT_CATEGORIES: {[key: string]: {name: string, icon: string, route: str
     name: 'Finansal Raporlar',
     icon: 'calculator',
     route: '/fatura-kontrol'
+  },
+  'Fatura Aktarım Kontrol': {
+    name: 'Finansal Raporlar',
+    icon: 'calculator',
+    route: '/fatura-aktarim-kontrol'
+  },
+  'Satış Trendi ve Anomali Analiz Raporu': {
+    name: 'Analiz Raporları',
+    icon: 'chart-line',
+    route: '/satis-trendi-anomali-raporu'
   }
 };
 

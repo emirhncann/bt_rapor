@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -32,6 +33,8 @@ declare module 'jspdf' {
 
 interface CekSenetTableProps {
   data: any[];
+  /** Timeline veya veri kaynağı değiştiğinde filtreleri sıfırlamak için. data referansı yerine bu kullanılır (checkbox seçiminde yanlış sıfırlama olmasın diye). */
+  filterResetKey?: string;
   stats?: {
     totalCount: number;
     turDagilimi: { name: string; count: number }[];
@@ -43,18 +46,45 @@ interface CekSenetTableProps {
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function CekSenetTable({ data, stats, currentUser }: CekSenetTableProps) {
+export default function CekSenetTable({ data, filterResetKey, stats, currentUser }: CekSenetTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>('Vade Tarihi');
+  const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [itemsPerPage, setItemsPerPage] = useState(25);
-  
-  // Filtreler
-  const [filterTur, setFilterTur] = useState<string>('');
-  const [filterGuncelDurum, setFilterGuncelDurum] = useState<string>('');
-  const [filterDoviz, setFilterDoviz] = useState<string>('');
-  const [filterDevir, setFilterDevir] = useState<string>('');
+  const [columnFilterSelections, setColumnFilterSelections] = useState<Record<string, string[]>>({});
+  const filterTriggerRef = useRef<HTMLElement | null>(null);
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [filterDropdownRect, setFilterDropdownRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  // Dışarı tıklayınca filtre dropdown'unu kapat
+  useEffect(() => {
+    if (!openFilterColumn) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        filterTriggerRef.current?.contains(target) ||
+        filterDropdownRef.current?.contains(target)
+      )
+        return;
+      setOpenFilterColumn(null);
+      setFilterDropdownRect(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [openFilterColumn]);
+
+  // Timeline/veri kaynağı değişince arama ve kolon filtrelerini sıfırla (filterResetKey ile; data referansı gereksiz sıfırlamaya yol açmasın)
+  useEffect(() => {
+    setSearchTerm('');
+    setColumnFilterSelections({});
+    setCurrentPage(1);
+  }, [filterResetKey ?? null]);
 
   // Kolon genişliği ve sürükle-bırak
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
@@ -134,10 +164,63 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       return { key: c.key, label: def.label, sortable: true };
     });
 
-  // Benzersiz değerleri al (filtre seçenekleri için) - yeni sorgu: Tür, Güncel Durumu, Döviz Türü
-  const uniqueTurler = Array.from(new Set(data.map(item => item['Tür'] ?? item.Tur).filter(Boolean)));
-  const uniqueGuncelDurumlar = Array.from(new Set(data.map(item => item['Güncel Durumu'] ?? item.Statu).filter(Boolean)));
-  const uniqueDovizler = Array.from(new Set(data.map(item => item['Döviz Türü'] ?? item.Modul).filter(Boolean)));
+  // Kolon bazlı filtrelerde ve seçenek listesinde kullanılacak hücre metni
+  const getFilterDisplayValue = (item: any, colKey: string): string => {
+    let value: any;
+    if (colKey === 'Tür') {
+      value = item['Tür'] ?? item.Tur;
+    } else if (colKey === 'Güncel Durumu') {
+      value = item['Güncel Durumu'] ?? item.Statu;
+    } else if (colKey === 'Döviz Türü') {
+      value = item['Döviz Türü'] ?? item.Modul;
+    } else {
+      value = item[colKey];
+    }
+    return value != null ? String(value) : '';
+  };
+
+  // Her kolon için benzersiz değer listesi (Excel checkbox filtresi için)
+  const columnOptions = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const col of columns) {
+      const set = new Set<string>();
+      for (const item of data) {
+        const v = getFilterDisplayValue(item, col.key);
+        if (v) set.add(v);
+      }
+      result[col.key] = Array.from(set).sort((a, b) => a.localeCompare(b, 'tr-TR'));
+    }
+    return result;
+  }, [data, columns]);
+
+  const toggleFilterValue = (colKey: string, value: string) => {
+    setColumnFilterSelections(prev => {
+      const current = prev[colKey] ?? [];
+      const exists = current.includes(value);
+      const next = exists ? current.filter(v => v !== value) : [...current, value];
+      if (next.length === 0) {
+        const { [colKey]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [colKey]: next };
+    });
+  };
+
+  const clearColumnFilter = (colKey: string) => {
+    setColumnFilterSelections(prev => {
+      const { [colKey]: _, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const activeFilterCount = Object.values(columnFilterSelections).filter(
+    (arr) => arr && arr.length > 0
+  ).length;
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setColumnFilterSelections({});
+  };
 
   // Arama ve filtreleme
   const filteredData = data.filter(item => {
@@ -155,22 +238,13 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       if (!matchesSearch) return false;
     }
 
-    // Tür filtresi
-    const tur = item['Tür'] ?? item.Tur;
-    if (filterTur && tur !== filterTur) return false;
-
-    // Güncel durum filtresi
-    const guncelDurum = item['Güncel Durumu'] ?? item.Statu;
-    if (filterGuncelDurum && guncelDurum !== filterGuncelDurum) return false;
-
-    // Döviz türü filtresi
-    const doviz = item['Döviz Türü'] ?? item.Modul;
-    if (filterDoviz && doviz !== filterDoviz) return false;
-
-    // Devir filtresi
-    if (filterDevir) {
-      if (filterDevir === 'EMPTY' && item.Devir !== '') return false;
-      if (filterDevir === 'D' && item.Devir !== 'D') return false;
+    // Kolon bazlı checkbox filtreleri (Excel benzeri)
+    for (const [colKey, selectedValues] of Object.entries(columnFilterSelections)) {
+      if (!selectedValues || selectedValues.length === 0) continue;
+      const cellStr = getFilterDisplayValue(item, colKey);
+      if (!selectedValues.includes(cellStr)) {
+        return false;
+      }
     }
 
     return true;
@@ -220,7 +294,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   // Sayfa değişimi
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortColumn, sortDirection, filterTur, filterGuncelDurum, filterDoviz, filterDevir]);
+  }, [searchTerm, sortColumn, sortDirection, columnFilterSelections]);
 
   // Sıralama işlevi
   const handleSort = (column: string) => {
@@ -251,18 +325,6 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
       return dateStr;
     }
   };
-
-  // Filtreleri temizle
-  const clearFilters = () => {
-    setSearchTerm('');
-    setFilterTur('');
-    setFilterGuncelDurum('');
-    setFilterDoviz('');
-    setFilterDevir('');
-  };
-
-  // Aktif filtre sayısı
-  const activeFilterCount = [filterTur, filterGuncelDurum, filterDoviz, filterDevir].filter(Boolean).length;
 
   // Excel export
   const exportToExcel = () => {
@@ -334,8 +396,6 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
                 <p>Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')}</p>
                 <p>Toplam Kayıt: ${sortedData.length}</p>
                 ${searchTerm ? `<p>Arama Filtresi: "${searchTerm}"</p>` : ''}
-                ${filterTur ? `<p>Tür Filtresi: ${filterTur}</p>` : ''}
-                ${filterGuncelDurum ? `<p>Güncel Durum Filtresi: ${filterGuncelDurum}</p>` : ''}
               </div>
             </div>
           </div>
@@ -504,62 +564,14 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
   };
 
   return (
-    <div className="space-y-6">
-      {/* İstatistikler */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Tür Dağılımı */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">📄 Tür Dağılımı</h3>
-            <div className="space-y-2">
-              {stats.turDagilimi.map((item, index) => (
-                <div key={index} className="flex justify-between items-center">
-                  <span className={`text-xs px-2 py-1 rounded-full ${getTurColor(item.name)}`}>
-                    {item.name}
-                  </span>
-                  <span className="text-sm font-semibold text-gray-900">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Statü Dağılımı */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">📊 Statü Dağılımı</h3>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {stats.statuDagilimi.map((item, index) => (
-                <div key={index} className="flex justify-between items-center">
-                  <span className={`text-xs px-2 py-1 rounded-full ${getStatuColor(item.name)}`}>
-                    {item.name}
-                  </span>
-                  <span className="text-sm font-semibold text-gray-900">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Döviz Türü Dağılımı */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-sm font-medium text-gray-500 mb-3">💱 Döviz Türü</h3>
-            <div className="space-y-2">
-              {stats.modulDagilimi.map((item, index) => (
-                <div key={index} className="flex justify-between items-center">
-                  <span className="text-sm text-gray-700">{item.name}</span>
-                  <span className="text-sm font-semibold text-gray-900">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div className="space-y-4 md:space-y-6">
       {/* Kontroller */}
-      <div className="bg-white p-6 rounded-lg shadow">
+      <div className="bg-white p-4 md:p-6 rounded-lg shadow">
         <div className="flex flex-col gap-4">
           {/* Üst satır: Arama ve Export */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             {/* Arama */}
-            <div className="flex-1 max-w-md">
+            <div className="flex-1 w-full max-w-md">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,7 +589,7 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
             </div>
 
             {/* Kontroller */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
               {/* Sayfa başına kayıt */}
               <select
                 value={itemsPerPage}
@@ -593,113 +605,116 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
               {/* Export butonları */}
               <button
                 onClick={exportToExcel}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-2"
+                className="px-3 py-2 md:px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-1.5"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Excel
+                <span className="hidden sm:inline">Excel</span>
               </button>
               
               <button
                 onClick={handlePrint}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
+                className="px-3 py-2 md:px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-1.5"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
-                Yazdır
+                <span className="hidden sm:inline">Yazdır</span>
               </button>
 
               <button
                 onClick={exportToPDF}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium flex items-center gap-2"
+                className="px-3 py-2 md:px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium flex items-center gap-1.5"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
-                PDF
+                <span className="hidden sm:inline">PDF</span>
               </button>
 
-              <ColumnManager
-                orderedColumns={orderedColumns}
-                columnDefs={COLUMN_DEFS}
-                onToggle={toggle}
-                onReorder={reorder}
-                onShowAll={showAll}
-                onHideAll={hideAll}
-              />
+              <div className="hidden md:block">
+                <ColumnManager
+                  orderedColumns={orderedColumns}
+                  columnDefs={COLUMN_DEFS}
+                  onToggle={toggle}
+                  onReorder={reorder}
+                  onShowAll={showAll}
+                  onHideAll={hideAll}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Alt satır: Filtreler */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Tür Filtresi */}
-            <select
-              value={filterTur}
-              onChange={(e) => setFilterTur(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
-            >
-              <option value="">Tüm Türler</option>
-              {uniqueTurler.map((tur, index) => (
-                <option key={index} value={tur}>{tur}</option>
-              ))}
-            </select>
-
-            {/* Güncel Durum Filtresi */}
-            <select
-              value={filterGuncelDurum}
-              onChange={(e) => setFilterGuncelDurum(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
-            >
-              <option value="">Tüm Güncel Durumlar</option>
-              {uniqueGuncelDurumlar.map((d, index) => (
-                <option key={index} value={d}>{d}</option>
-              ))}
-            </select>
-
-            {/* Döviz Türü Filtresi */}
-            <select
-              value={filterDoviz}
-              onChange={(e) => setFilterDoviz(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
-            >
-              <option value="">Tüm Dövizler</option>
-              {uniqueDovizler.map((d, index) => (
-                <option key={index} value={d}>{d}</option>
-              ))}
-            </select>
-
-            {/* Devir Filtresi */}
-            <select
-              value={filterDevir}
-              onChange={(e) => setFilterDevir(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
-            >
-              <option value="">Tüm Devir Durumları</option>
-              <option value="D">Devir Var (D)</option>
-              <option value="EMPTY">Devir Yok</option>
-            </select>
-
-            {/* Filtreleri Temizle */}
-            {activeFilterCount > 0 && (
-              <button
-                onClick={clearFilters}
-                className="px-3 py-2 text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Filtreleri Temizle ({activeFilterCount})
-              </button>
-            )}
-          </div>
+          {/* Alt satır: (eski tür/kategori filtreleri kaldırıldı) */}
         </div>
       </div>
 
-      {/* Tablo */}
+      {/* Tablo alanı: Mobil kart + Masaüstü tablo + Sayfalama */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Mobil: Kart görünümü */}
+      <div className="md:hidden">
+        {activeFilterCount > 0 && (
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+            <span className="text-sm text-amber-800">{activeFilterCount} filtre aktif</span>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm font-medium text-amber-700 hover:text-amber-900"
+            >
+              Filtreleri temizle
+            </button>
+          </div>
+        )}
+        <div className="divide-y divide-gray-100">
+          {paginatedData.map((item, index) => {
+            const isEven = index % 2 === 0;
+            return (
+              <div
+                key={index}
+                className={`p-4 ${isEven ? 'bg-white' : 'bg-gray-50/50'}`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-gray-900 truncate">
+                      {item['Portföy No']} / {item['Seri No']}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTurColor((item['Tür'] ?? item.Tur) || '')}`}>
+                        {item['Tür'] ?? item.Tur}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatuColor((item['Güncel Durumu'] ?? item.Statu) || '')}`}>
+                        {item['Güncel Durumu'] ?? item.Statu}
+                      </span>
+                      {item.Devir === 'D' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium">D</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-sm font-bold text-gray-900">
+                      {item.Tutar != null ? Number(item.Tutar).toLocaleString('tr-TR') : '-'} ₺
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">{formatDate(item['Vade Tarihi'])}</div>
+                  </div>
+                </div>
+                {item['İlgili Hesap'] && (
+                  <div className="text-xs text-gray-600 truncate" title={item['İlgili Hesap']}>
+                    {item['İlgili Hesap']}
+                  </div>
+                )}
+                {item['Çek/Senet Sahibi'] && (
+                  <div className="text-xs text-gray-500 mt-0.5">{item['Çek/Senet Sahibi']}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Masaüstü: Tablo görünümü */}
+      <div className="hidden md:block overflow-visible">
+        <div className="overflow-x-auto overflow-y-visible relative">
           <table
             className="border-collapse"
             style={{
@@ -713,44 +728,173 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
               <col style={{ width: 'auto' }} />
             </colgroup>
             <thead>
+              {/* Başlık satırı + Excel tarzı popup filtre */}
               <tr className="bg-slate-800 text-white">
                 {columns.map((column) => {
                   const w = getColWidth(column.key);
+                  const options = columnOptions[column.key] ?? [];
+                  const selected = columnFilterSelections[column.key] ?? [];
+                  const hasActive = selected.length > 0;
                   const isResizingThis = resizingColumn === column.key;
                   const isDragging = draggedCol === column.key;
                   const isDragOver = dragOverCol === column.key && draggedCol !== column.key;
                   return (
-                    <th key={column.key}
+                    <th
+                      key={column.key}
                       draggable={!resizingColumn}
                       onDragStart={(e) => handleDragStart(e, column.key)}
                       onDragOver={(e) => handleDragOver(e, column.key)}
                       onDrop={(e) => handleDrop(e, column.key)}
                       onDragEnd={handleDragEnd}
-                      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
-                      className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors ${isDragging ? 'opacity-30' : ''} ${isDragOver ? 'bg-slate-600' : ''}`}
-                      style={{ width: w, minWidth: 0, overflow: 'hidden' }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null);
+                      }}
+                      className={`relative text-left text-xs font-bold uppercase tracking-wider select-none border-b border-slate-700 transition-colors ${
+                        isDragging ? 'opacity-30' : ''
+                      } ${isDragOver ? 'bg-slate-600' : ''}`}
+                      style={{ width: w, minWidth: 0, overflow: 'visible' }}
                     >
-                      {isDragOver && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />}
-                      <div
-                        className="flex items-center gap-1.5 px-3 py-3 cursor-grab active:cursor-grabbing hover:bg-slate-700/60 transition-colors"
-                        onClick={() => !draggedCol && column.sortable && handleSort(column.key)}
-                      >
-                        <svg className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70" fill="currentColor" viewBox="0 0 10 16">
-                          <circle cx="2.5" cy="3" r="1.5"/><circle cx="2.5" cy="8" r="1.5"/><circle cx="2.5" cy="13" r="1.5"/>
-                          <circle cx="7.5" cy="3" r="1.5"/><circle cx="7.5" cy="8" r="1.5"/><circle cx="7.5" cy="13" r="1.5"/>
-                        </svg>
-                        <span className="truncate flex-1">{column.label}</span>
-                        {column.sortable && sortColumn === column.key && (
-                          <span className="flex-shrink-0 text-emerald-400">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
+                      {isDragOver && (
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-400 z-20" />
+                      )}
+                      <div className="flex items-center gap-1.5 px-3 py-3 hover:bg-slate-700/60 transition-colors">
+                        <div
+                          className="flex items-center gap-1.5 flex-1 cursor-grab active:cursor-grabbing"
+                          onClick={() => !draggedCol && column.sortable && handleSort(column.key)}
+                        >
+                          <svg
+                            className="w-2.5 h-2.5 text-slate-500 flex-shrink-0 opacity-70"
+                            fill="currentColor"
+                            viewBox="0 0 10 16"
+                          >
+                            <circle cx="2.5" cy="3" r="1.5" />
+                            <circle cx="2.5" cy="8" r="1.5" />
+                            <circle cx="2.5" cy="13" r="1.5" />
+                            <circle cx="7.5" cy="3" r="1.5" />
+                            <circle cx="7.5" cy="8" r="1.5" />
+                            <circle cx="7.5" cy="13" r="1.5" />
+                          </svg>
+                          <span className="truncate flex-1">{column.label}</span>
+                          {column.sortable && sortColumn === column.key && (
+                            <span className="flex-shrink-0 text-emerald-400">
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Excel tarzı filtre butonu */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next = openFilterColumn === column.key ? null : column.key;
+                            if (next) {
+                              filterTriggerRef.current = e.currentTarget as HTMLElement;
+                              const th = (e.currentTarget as HTMLElement).closest('th');
+                              const rect = th?.getBoundingClientRect();
+                              setFilterDropdownRect(
+                                rect
+                                  ? {
+                                      top: rect.bottom + 4,
+                                      left: rect.left,
+                                      width: Math.max(rect.width, 180),
+                                    }
+                                  : null
+                              );
+                            } else {
+                              setFilterDropdownRect(null);
+                            }
+                            setOpenFilterColumn(next);
+                          }}
+                          className={`ml-1 flex items-center justify-center rounded px-1.5 py-1 text-[10px] border ${
+                            hasActive
+                              ? 'border-emerald-400 bg-slate-900 text-emerald-200'
+                              : 'border-slate-600 bg-slate-900 text-slate-200'
+                          }`}
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.382a1 1 0 01-.293.707l-6.414 6.414A1 1 0 0014 14.414V19l-4 2v-6.586a1 1 0 00-.293-.707L3.293 7.09A1 1 0 013 6.382V4z"
+                            />
+                          </svg>
+                        </button>
                       </div>
+                      {/* Kolon filtre dropdown'u - portal ile body'de (z-index sorunu için) */}
+                      {openFilterColumn === column.key &&
+                        filterDropdownRect &&
+                        typeof document !== 'undefined' &&
+                        createPortal(
+                          <div
+                            ref={filterDropdownRef}
+                            className="fixed z-[9999] min-w-[180px] max-w-xs bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-72 overflow-auto"
+                            style={{
+                              top: filterDropdownRect.top,
+                              left: filterDropdownRect.left,
+                              width: filterDropdownRect.width,
+                            }}
+                          >
+                            <div className="flex items-center justify-between px-2 py-1 border-b border-slate-600 text-[11px] text-slate-200">
+                              <span>{column.label} filtresi</span>
+                              {hasActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => clearColumnFilter(column.key)}
+                                  className="text-[10px] text-emerald-300 hover:text-emerald-200"
+                                >
+                                  Temizle
+                                </button>
+                              )}
+                            </div>
+                            <div className="px-2 py-1 space-y-1">
+                              {options.length === 0 ? (
+                                <div className="text-[11px] text-slate-400 px-1 py-1">
+                                  Değer bulunamadı
+                                </div>
+                              ) : (
+                                options.map(opt => (
+                                  <label
+                                    key={opt}
+                                    className="flex items-center gap-2 text-[11px] text-slate-100 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="w-3.5 h-3.5 rounded text-emerald-500 accent-emerald-500"
+                                      checked={selected.includes(opt)}
+                                      onChange={() => toggleFilterValue(column.key, opt)}
+                                    />
+                                    <span className="truncate" title={opt}>
+                                      {opt}
+                                    </span>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          </div>,
+                          document.body
+                        )}
                       <div
                         draggable={false}
                         onDragStart={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, column.key); }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          handleMouseDown(e, column.key);
+                        }}
                         className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize flex items-center justify-center group z-10"
                       >
-                        <div className={`w-0.5 h-4/5 rounded-full transition-all ${isResizingThis ? 'bg-emerald-400 w-1' : 'bg-slate-600 group-hover:bg-emerald-400 group-hover:w-1'}`} />
+                        <div
+                          className={`w-0.5 h-4/5 rounded-full transition-all ${
+                            isResizingThis
+                              ? 'bg-emerald-400 w-1'
+                              : 'bg-slate-600 group-hover:bg-emerald-400 group-hover:w-1'
+                          }`}
+                        />
                       </div>
                     </th>
                   );
@@ -790,10 +934,11 @@ export default function CekSenetTable({ data, stats, currentUser }: CekSenetTabl
             </tbody>
           </table>
         </div>
+      </div>
 
-        {/* Sayfalama */}
+        {/* Sayfalama (mobil + masaüstü) */}
         {totalPages > 1 && (
-          <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+          <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
             <div className="flex-1 flex justify-between sm:hidden">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}

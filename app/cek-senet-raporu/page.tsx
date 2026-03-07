@@ -9,7 +9,6 @@ import DashboardLayout from '../components/DashboardLayout';
 import { fetchUserReports, getCurrentUser } from '../utils/simple-permissions';
 import { sendSecureProxyRequest } from '../utils/api';
 import ReportFilterPanel, { FilterValues, DateRangeValue } from '../components/ReportFilterPanel';
-import DatePicker from '../components/DatePicker';
 
 export default function CekSenetRaporu() {
   const [data, setData] = useState<any[]>([]);
@@ -19,6 +18,9 @@ export default function CekSenetRaporu() {
   const [hasAccess, setHasAccess] = useState<boolean>(false);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const [animationData, setAnimationData] = useState(null);
+  const [selectedTimelineDate, setSelectedTimelineDate] = useState<string | null>(null);
+  const [selectedTimelineItems, setSelectedTimelineItems] = useState<any[] | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
   
   // Tarih filtreleri - yerel saat dilimine göre
   const [startDate, setStartDate] = useState<string>(() => {
@@ -242,6 +244,12 @@ export default function CekSenetRaporu() {
   const fetchData = async () => {
     if (!isAuthenticated) return;
     
+    // Tür filtresi zorunlu
+    if (!docType) {
+      alert('Lütfen önce üstteki "Tür filtresi" alanından bir tür seçin.');
+      return;
+    }
+    
     if (loading) {
       console.log('⚠️ Zaten rapor yükleniyor, duplicate tıklama engellendi');
       return;
@@ -301,8 +309,8 @@ export default function CekSenetRaporu() {
       
       console.log('📅 Tarih aralığı:', startDateSQL, '-', endDateSQL);
       
-      // DOC tipi filtresi (ör: 1=Müşteri Çeki, 2=Müşteri Senedi, 3=Kendi Çekimiz, 4=Borç Senedimiz)
-      const docFilterClause = docType ? ` AND CSC.DOC = ${docType}` : '';
+      // DOC tipi filtresi (zorunlu)
+      const docFilterClause = ` AND CSC.DOC = ${docType}`;
 
       // SQL Sorgusu (OUTER APPLY ile son hareket, CLCARD ile ilgili hesap)
       const sqlQuery = `
@@ -400,7 +408,10 @@ export default function CekSenetRaporu() {
 
       console.log(`✅ ${finalData.length} kayıt başarıyla yüklendi`);
       setData(finalData);
-      
+      setSelectedTimelineDate(null);
+      setSelectedTimelineItems(null);
+      setDataVersion((v) => v + 1);
+
       // İstatistikleri hesapla
       const calculatedStats = calculateStats(finalData);
       setStats(calculatedStats);
@@ -411,45 +422,6 @@ export default function CekSenetRaporu() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Tarih formatı için yardımcı fonksiyon (yerel saat dilimi)
-  const formatDateLocal = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // Hızlı tarih seçiciler
-  const setQuickDateRange = (range: string) => {
-    const today = new Date();
-    let start: Date;
-    let end: Date;
-
-    switch (range) {
-      case 'thisMonth':
-        start = new Date(today.getFullYear(), today.getMonth(), 1);
-        end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        break;
-      case 'nextMonth':
-        start = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-        end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
-        break;
-      case 'next3Months':
-        start = new Date(today.getFullYear(), today.getMonth(), 1);
-        end = new Date(today.getFullYear(), today.getMonth() + 3, 0);
-        break;
-      case 'thisYear':
-        start = new Date(today.getFullYear(), 0, 1);
-        end = new Date(today.getFullYear(), 11, 31);
-        break;
-      default:
-        return;
-    }
-
-    setStartDate(formatDateLocal(start));
-    setEndDate(formatDateLocal(end));
   };
 
   // Loading ve erişim kontrolleri
@@ -561,6 +533,25 @@ export default function CekSenetRaporu() {
 
         {/* CONTENT */}
         <div className="px-4 lg:px-6 py-5 bg-gray-50 min-h-screen space-y-5">
+          {/* Tür (DOC) filtre seçimi - zorunlu ve en üstte */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">Tür filtresi (zorunlu):</span>
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+            >
+              <option value="" disabled>Tür seçin</option>
+              <option value="1">Müşteri Çeki</option>
+              <option value="2">Müşteri Senedi</option>
+              <option value="3">Kendi Çekimiz</option>
+              <option value="4">Borç Senedimiz</option>
+            </select>
+            <span className="text-xs text-gray-500">
+              Raporu getirmeden önce mutlaka bir tür seçmelisiniz.
+            </span>
+          </div>
+
           {/* Filter Panel */}
           <ReportFilterPanel
             filters={[
@@ -578,37 +569,9 @@ export default function CekSenetRaporu() {
             loading={loading}
           />
 
-          {/* Tür (DOC) filtre seçimi */}
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-gray-700">Tür filtresi:</span>
-            <select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-            >
-              <option value="">Tüm türler</option>
-              <option value="1">Müşteri Çeki</option>
-              <option value="2">Müşteri Senedi</option>
-              <option value="3">Kendi Çekimiz</option>
-              <option value="4">Borç Senedimiz</option>
-            </select>
-            {docType && (
-              <button
-                type="button"
-                onClick={() => setDocType('')}
-                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Tür filtresini temizle
-              </button>
-            )}
-          </div>
-
           {/* Stats cards */}
           {stats && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -622,33 +585,52 @@ export default function CekSenetRaporu() {
                   </div>
                 </div>
               </div>
-              {stats.turDagilimi.slice(0, 1).map(t => (
-                <div key={t.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 font-medium">{t.name}</p>
-                      <p className="text-2xl font-bold text-gray-900">{t.count}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 
           {/* Timeline */}
           {data.length > 0 && (
-            <CekSenetTimeline data={data} />
+            <CekSenetTimeline
+              data={data}
+              selectedDate={selectedTimelineDate}
+              onDateChange={(info) => {
+                if (info) {
+                  setSelectedTimelineDate(info.date);
+                  setSelectedTimelineItems(info.items);
+                } else {
+                  setSelectedTimelineDate(null);
+                  setSelectedTimelineItems(null);
+                }
+              }}
+            />
           )}
 
           {/* Table */}
-          {data.length > 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <CekSenetTable data={data} />
+          {(selectedTimelineItems ?? data).length > 0 ? (
+            <div className="space-y-3">
+              {selectedTimelineDate && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-xl border border-blue-100">
+                  <span className="text-sm text-slate-600">
+                    <strong>{new Date(selectedTimelineDate + 'T12:00:00').toLocaleDateString('tr-TR')}</strong> tarihine göre filtrelendi
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTimelineDate(null);
+                      setSelectedTimelineItems(null);
+                    }}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Filtre Temizle
+                  </button>
+                </div>
+              )}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible">
+              <CekSenetTable
+                data={selectedTimelineItems ?? data}
+                filterResetKey={`${dataVersion}-${selectedTimelineDate ?? 'full'}`}
+              />
+            </div>
             </div>
           ) : (
             !loading && (
