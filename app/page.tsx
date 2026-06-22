@@ -58,7 +58,7 @@ export default function Dashboard() {
     const error = searchParams.get('error');
     const report = searchParams.get('report');
     if (error === 'access_denied' && report) {
-      const reportNames: {[key: string]: string} = { 'enpos-ciro': 'Enpos Ciro Raporu', 'c-bakiye': 'Cari Bakiye Raporu', 'hareket-gormeyen-cariler': 'Hareket Görmeyen Cariler' };
+      const reportNames: {[key: string]: string} = { 'enpos-ciro': 'Enpos Ciro Raporu', 'enpos-interbos': 'Enpos Interbos Ciro Raporu', 'c-bakiye': 'Cari Bakiye Raporu', 'hareket-gormeyen-cariler': 'Hareket Görmeyen Cariler' };
       setAccessDeniedInfo({ show: true, report: reportNames[report] || report });
       window.history.replaceState({}, '', '/');
       setTimeout(() => setAccessDeniedInfo(null), 10000);
@@ -868,6 +868,7 @@ const getReportRoute = (report: ReportWithAccess) => {
   if (report.route) return `/${report.route}`;
   const name = report.report_name.toLocaleLowerCase('tr-TR');
   if (name.includes('cari') || name.includes('bakiye')) return '/c-bakiye';
+  if (name.includes('interbos') || name.includes('inter bos')) return '/enpos-interbos';
   if (name.includes('enpos') && name.includes('ciro')) return '/enpos-ciro';
   if (name.includes('stok') || name.includes('envanter')) return '/envanter-raporu';
   if (name.includes('fatura') && name.includes('kontrol')) return '/fatura-kontrol';

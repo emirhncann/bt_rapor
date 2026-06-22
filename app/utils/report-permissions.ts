@@ -23,6 +23,11 @@ export interface ReportWithAccess extends CompanyReport {
 
 // Rapor kategorileri (basit gruplandırma için)
 const REPORT_CATEGORIES: {[key: string]: {name: string, icon: string, route: string}} = {
+  'Enpos Interbos Ciro Raporu': {
+    name: 'Satış Raporları',
+    icon: 'credit-card',
+    route: '/enpos-interbos'
+  },
   'Enpos Ciro Raporu': {
     name: 'Satış Raporları',
     icon: 'credit-card',

@@ -20,11 +20,12 @@ interface CiroTableProps {
   startDate?: string;
   endDate?: string;
   onSubeInfoClick?: (subeNo: number) => void;
+  storageKey?: string;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoClick }: CiroTableProps) {
+export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoClick, storageKey = 'enpos-ciro' }: CiroTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<string | null>('Sube_No');
@@ -704,7 +705,7 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
     columnWidths: savedWidths,
     saveWidths,
     getWidth,
-  } = useColumnPreferences('enpos-ciro', ciroColDefs);
+  } = useColumnPreferences(storageKey, ciroColDefs);
 
   // Aktif genişlik: resize sırasında local, sonra commit ref (async bridge), sonra savedWidths
   const getColWidth = (key: string) =>
