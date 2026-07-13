@@ -299,6 +299,13 @@ export default function ExcelCompare() {
     return `${y}-${m}-${day}`;
   };
 
+  const formatDateForDisplay = (value: any): string => {
+    const normalized = normalizeDate(value);
+    if (!normalized) return value ? String(value) : '-';
+    const [y, m, d] = normalized.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
   // Fatura karşılaştırma işlemi - tutar, KDV ve tarih kontrol eder
   const compareInvoices = (excelInvoices: any[], logoInvoices: any[]) => {
     const missingInvoices: any[] = [];
@@ -1313,6 +1320,9 @@ export default function ExcelCompare() {
                               Fatura No
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
+                              Fatura Tarihi
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
                               Para Birimi
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-orange-700 uppercase tracking-wider">
@@ -1340,6 +1350,9 @@ export default function ExcelCompare() {
                             <tr key={index} className="hover:bg-orange-50">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-orange-600">
                                 {invoice['Fatura No']}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {formatDateForDisplay(invoice['Fatura Tarihi'] ?? invoice['Tarih'])}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
