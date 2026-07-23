@@ -20,15 +20,43 @@ interface CiroTableProps {
   startDate?: string;
   endDate?: string;
   onSubeInfoClick?: (subeNo: number) => void;
+  onBelgeSayisiClick?: (row: { belgetarih: string; subeNo: number; belgeSayisi: number }) => void;
   storageKey?: string;
+  defaultSortColumn?: string;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoClick, storageKey = 'enpos-ciro' }: CiroTableProps) {
+function formatBelgeTarih(val: unknown): string {
+  if (!val) return '-';
+  const s = String(val);
+  try {
+    if (s.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(s)) {
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return s;
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yy = d.getFullYear();
+      return `${dd}.${mm}.${yy}`;
+    }
+    return s;
+  } catch {
+    return s;
+  }
+}
+
+export default function EnposCiroTable({
+  data,
+  startDate,
+  endDate,
+  onSubeInfoClick,
+  onBelgeSayisiClick,
+  storageKey = 'enpos-ciro',
+  defaultSortColumn = 'Sube_No',
+}: CiroTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortColumn, setSortColumn] = useState<string | null>('Sube_No');
+  const [sortColumn, setSortColumn] = useState<string | null>(defaultSortColumn);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [filterColumn, setFilterColumn] = useState<string>('');
   const [minValue, setMinValue] = useState<string>('');
@@ -43,11 +71,14 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
   // resize için aktif genişlikleri local tut, mouseUp'ta hook'a kaydet
   const [localWidths, setLocalWidths] = useState<Record<string, number>>({});
 
-  // Sayısal sütunlar
+  const countColumns = ['Belge Sayısı'];
+
+  // Sayısal sütunlar (para + sayaç)
   const numericColumns = data.length > 0 ? Object.keys(data[0]).filter(key => 
     key === 'NAKİT SATIŞ' || key === 'KREDİ KARTI İLE SATIŞ' || key === 'YEMEK KARTI' || 
-    key === 'NAKİT İADE' || key === 'KREDİ KARTI İADE' || key === 'TOPLAM' || key === 'Sube_No'
-  ) : ['NAKİT SATIŞ', 'KREDİ KARTI İLE SATIŞ', 'YEMEK KARTI', 'NAKİT İADE', 'KREDİ KARTI İADE', 'TOPLAM'];
+    key === 'NAKİT İADE' || key === 'KREDİ KARTI İADE' || key === 'TOPLAM' || key === 'Sube_No' ||
+    countColumns.includes(key)
+  ) : ['NAKİT SATIŞ', 'KREDİ KARTI İLE SATIŞ', 'YEMEK KARTI', 'NAKİT İADE', 'KREDİ KARTI İADE', 'TOPLAM', 'Belge Sayısı'];
 
   // Güvenli sayı parse fonksiyonu
   const safeParseFloat = (value: any): number => {
@@ -70,14 +101,18 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
             const dashIndex = fullName.indexOf('-');
             newRow[key] = dashIndex !== -1 ? fullName.substring(dashIndex + 1) : fullName;
           } else if (numericColumns.includes(key) && key !== 'Sube_No') {
-            // Para formatında TL işaretiyle
             const value = safeParseFloat(row[key]);
-            newRow[key] = value.toLocaleString('tr-TR', { 
-              style: 'currency', 
-              currency: 'TRY',
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            });
+            if (countColumns.includes(key)) {
+              newRow[key] = Math.round(value);
+            } else {
+              // Para formatında TL işaretiyle
+              newRow[key] = value.toLocaleString('tr-TR', { 
+                style: 'currency', 
+                currency: 'TRY',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              });
+            }
           } else {
             newRow[key] = row[key];
           }
@@ -490,6 +525,13 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
     
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
+
+    // Tarih kolonu
+    if (sortColumn === 'BELGETARIH') {
+      const aTime = new Date(String(aValue ?? '')).getTime() || 0;
+      const bTime = new Date(String(bValue ?? '')).getTime() || 0;
+      return sortDirection === 'asc' ? aTime - bTime : bTime - aTime;
+    }
     
     // Sayısal değerler için
     if (numericColumns.includes(sortColumn)) {
@@ -675,8 +717,10 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
 
   // Varsayılan genişlikler
   const DEFAULT_WIDTHS: Record<string, number> = {
+    'BELGETARIH': 120,
     'Sube_No': 80,
     'NAME': 220,
+    'Belge Sayısı': 120,
     'NAKİT SATIŞ': 160,
     'KREDİ KARTI İLE SATIŞ': 190,
     'YEMEK KARTI': 150,
@@ -685,10 +729,18 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
     'TOPLAM': 160,
   };
 
+  const columnLabel = (k: string) => {
+    if (k === 'NAME') return 'Şube Adı';
+    if (k === 'BELGETARIH') return 'Tarih';
+    if (k === 'Sube_No') return 'Şube No';
+    if (k === 'Belge Sayısı') return 'Belge Sayısı';
+    return k;
+  };
+
   const ciroColDefs = useMemo(
     () => allCiroColumns.map(k => ({
       key: k,
-      label: k === 'NAME' ? 'Şube' : k,
+      label: columnLabel(k),
       defaultVisible: true,
       defaultWidth: DEFAULT_WIDTHS[k] ?? 150,
     })),
@@ -904,7 +956,7 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
                         <circle cx="7.5" cy="8"  r="1.5"/>
                         <circle cx="7.5" cy="13" r="1.5"/>
                       </svg>
-                      <span className="truncate flex-1">{column === 'NAME' ? 'Şube Adı' : column}</span>
+                      <span className="truncate flex-1">{columnLabel(column)}</span>
                       <span className="flex-shrink-0">{getSortIcon(column)}</span>
                     </div>
 
@@ -941,10 +993,39 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
                         className={`px-3 py-2.5 text-sm whitespace-nowrap overflow-hidden ${isNumeric ? 'text-right font-medium tabular-nums' : 'text-gray-800'}`}
                         style={{ width: w, minWidth: 0, overflow: 'hidden' }}
                       >
-                        {column === 'Sube_No' ? (
+                        {column === 'BELGETARIH' ? (
+                          <span className="font-medium text-gray-900 tabular-nums">
+                            {formatBelgeTarih(row[column])}
+                          </span>
+                        ) : column === 'Sube_No' ? (
                           <span className="inline-flex items-center justify-center w-8 h-6 bg-slate-100 text-slate-700 rounded-md text-xs font-bold">
                             {subeNo}
                           </span>
+                        ) : column === 'Belge Sayısı' ? (
+                          onBelgeSayisiClick ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onBelgeSayisiClick({
+                                  belgetarih: String(row.BELGETARIH ?? ''),
+                                  subeNo,
+                                  belgeSayisi: Math.round(safeParseFloat(row[column])),
+                                });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-bold tabular-nums text-sm transition-colors"
+                              title="Belge tipi dağılımını göster"
+                            >
+                              {Math.round(safeParseFloat(row[column])).toLocaleString('tr-TR')}
+                              <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          ) : (
+                            <span className="font-bold tabular-nums text-gray-800">
+                              {Math.round(safeParseFloat(row[column])).toLocaleString('tr-TR')}
+                            </span>
+                          )
                         ) : column === 'NAME' ? (
                           <span className="font-medium text-gray-900 truncate block">
                             {(() => {
@@ -995,8 +1076,17 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
                     </td>
                   );
                   if (column === 'NAME') return <td key={column} className="px-3 py-2.5" style={{ width: w }}></td>;
-                  if (!numericColumns.includes(column)) return <td key={column} className="px-3 py-2.5" style={{ width: w }}></td>;
+                  if (!numericColumns.includes(column) || column === 'Sube_No') {
+                    return <td key={column} className="px-3 py-2.5" style={{ width: w }}></td>;
+                  }
                   const total = filteredData.reduce((s, r) => s + safeParseFloat(r[column]), 0);
+                  if (countColumns.includes(column)) {
+                    return (
+                      <td key={column} className="px-3 py-2.5 text-right tabular-nums text-slate-900" style={{ width: w }}>
+                        {Math.round(total).toLocaleString('tr-TR')}
+                      </td>
+                    );
+                  }
                   return (
                     <td key={column} className={`px-3 py-2.5 text-right tabular-nums ${column.includes('İADE') ? 'text-red-600' : 'text-slate-900'}`} style={{ width: w }}>
                       {formatCurrency(total)}
@@ -1026,9 +1116,34 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-8 h-6 bg-slate-800 text-white rounded text-xs font-bold flex items-center justify-center">{subeNo}</span>
-                  <span className="font-semibold text-gray-900 text-sm">{subeName || `Şube ${subeNo}`}</span>
+                  <span className="font-semibold text-gray-900 text-sm">
+                    {row.BELGETARIH ? `${formatBelgeTarih(row.BELGETARIH)} · ` : ''}
+                    {subeName || `Şube ${subeNo}`}
+                  </span>
                 </div>
-                {onSubeInfoClick && (
+                <div className="flex items-center gap-2">
+                  {row['Belge Sayısı'] != null && (
+                    onBelgeSayisiClick ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onBelgeSayisiClick({
+                            belgetarih: String(row.BELGETARIH ?? ''),
+                            subeNo,
+                            belgeSayisi: Math.round(safeParseFloat(row['Belge Sayısı'])),
+                          })
+                        }
+                        className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold"
+                      >
+                        {Math.round(safeParseFloat(row['Belge Sayısı'])).toLocaleString('tr-TR')} belge
+                      </button>
+                    ) : (
+                      <span className="text-xs font-bold text-gray-600">
+                        {Math.round(safeParseFloat(row['Belge Sayısı'])).toLocaleString('tr-TR')} belge
+                      </span>
+                    )
+                  )}
+                  {onSubeInfoClick && (
                   <button onClick={() => onSubeInfoClick(subeNo)}
                     className="text-blue-500 hover:text-blue-700 p-1">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1036,6 +1151,7 @@ export default function EnposCiroTable({ data, startDate, endDate, onSubeInfoCli
                     </svg>
                   </button>
                 )}
+                </div>
               </div>
 
               {/* Satış grid */}

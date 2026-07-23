@@ -33,6 +33,16 @@ const REPORT_CATEGORIES: {[key: string]: {name: string, icon: string, route: str
     icon: 'credit-card',
     route: '/enpos-ciro'
   },
+  'Enpos Ciro Özet': {
+    name: 'Satış Raporları',
+    icon: 'credit-card',
+    route: '/enpos-ciro-ozet'
+  },
+  'Enpos Ciro Özet Raporu': {
+    name: 'Satış Raporları',
+    icon: 'credit-card',
+    route: '/enpos-ciro-ozet'
+  },
   'Cari Bakiye Raporu': {
     name: 'Finansal Raporlar', 
     icon: 'calculator',
